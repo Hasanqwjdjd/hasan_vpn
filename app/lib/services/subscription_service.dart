@@ -148,6 +148,22 @@ class SubscriptionService {
     }
   }
 
+  /// بروزرسانی خودکار همه اشتراک‌ها
+static Future<int> autoUpdateAll(List<Subscription> subs) async {
+  int total = 0;
+  for (final s in subs) {
+    if (!s.autoUpdate) continue;
+    try {
+      final servers = await fetch(s);
+      s.lastUpdated = DateTime.now();
+      s.serverCount = servers.length;
+      total += servers.length;
+    } catch (_) {}
+  }
+  await save(subs);
+  return total;
+}
+
   static String _guessFlag(String name) {
     final n = name.toLowerCase();
     if (n.contains('🇺🇸') || n.contains('us ') || n.contains('america')) return '🇺🇸';
