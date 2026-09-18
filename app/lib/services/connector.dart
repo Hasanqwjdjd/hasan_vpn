@@ -1,16 +1,12 @@
-import 'package:flutter_vless/flutter_vless.dart';
+import 'package:flutter_v2ray_client/flutter_v2ray_client.dart';
 import '../models/server.dart';
 
 class Connector {
-  static late final FlutterVless _flutterVless;
+  static late final FlutterV2rayClient _v2ray;
 
   static Future<void> init() async {
-    _flutterVless = FlutterVless(
-      onStatusChanged: (status) {
-        print('VLESS Status: $status');
-      },
-    );
-    await _flutterVless.initializeVless(
+    _v2ray = FlutterV2rayClient();
+    await _v2ray.initialize(
       providerBundleIdentifier: 'com.hasan.vpn.VPNProvider',
       groupIdentifier: 'group.com.hasan.vpn',
     );
@@ -18,24 +14,24 @@ class Connector {
 
   static Future<bool> connect(VpnServer server) async {
     try {
-      final parsed = FlutterVless.parseFromURL(server.shareLink);
+      final parsed = FlutterV2rayClient.parseFromURL(server.shareLink);
       final config = parsed.getFullConfiguration();
 
-      final allowed = await _flutterVless.requestPermission();
+      final allowed = await _v2ray.requestPermission();
       if (!allowed) return false;
 
-      await _flutterVless.startVless(
+      await _v2ray.startV2Ray(
         remark: parsed.remark,
         config: config,
       );
       return true;
     } catch (e) {
-      print('VLESS connection error: $e');
+      print('V2Ray connection error: $e');
       return false;
     }
   }
 
   static Future<void> disconnect() async {
-    await _flutterVless.stopVless();
+    await _v2ray.stopV2Ray();
   }
 }
