@@ -5,18 +5,22 @@ class ServerTile extends StatelessWidget {
   final VpnServer server;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
 
   const ServerTile({
     super.key,
     required this.server,
     required this.selected,
     required this.onTap,
+    this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
     Color pingColor;
-    if (server.ping == null) {
+    if (server.status == ServerStatus.testing) {
+      pingColor = Colors.white38;
+    } else if (server.ping == null) {
       pingColor = const Color(0xFFE07070);
     } else if (server.ping! < 200) {
       pingColor = const Color(0xFF3DCF9A);
@@ -42,19 +46,21 @@ class ServerTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
-                Text(server.flag, style: const TextStyle(fontSize: 22)),
-                const SizedBox(width: 12),
+                Text(server.flag, style: const TextStyle(fontSize: 20)),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     server.name,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: FontWeight.w500,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 if (server.status == ServerStatus.testing)
@@ -67,27 +73,24 @@ class ServerTile extends StatelessWidget {
                     ),
                   )
                 else
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        server.ping != null ? '${server.ping} ms' : '---',
-                        style: TextStyle(
-                          color: pingColor,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      if (server.speedKbps != null)
-                        Text(
-                          '${server.speedKbps} Kbps',
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 10,
-                          ),
-                        ),
-                    ],
+                  Text(
+                    server.ping != null ? '${server.ping} ms' : '---',
+                    style: TextStyle(
+                      color: pingColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
+                if (onDelete != null && server.isDeletable)
+                  IconButton(
+                    padding: const EdgeInsets.only(right: 4, left: 0),
+                    constraints: const BoxConstraints(),
+                    iconSize: 18,
+                    icon: const Text('🗑️', style: TextStyle(fontSize: 16)),
+                    onPressed: onDelete,
+                  )
+                else
+                  const SizedBox(width: 22),
               ],
             ),
           ),
