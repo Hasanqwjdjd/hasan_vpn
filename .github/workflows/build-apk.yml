@@ -11,24 +11,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.22.0'
           channel: 'stable'
 
       - name: Create clean Flutter project
-        run: |
-          flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite build_src
+        run: flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite build_src
 
       - name: Copy our app code ON TOP
         run: |
@@ -37,13 +31,17 @@ jobs:
           mkdir -p build_src/lib
           cp -r app/lib/. build_src/lib/
 
-      - name: Add VPN Permissions
+      - name: Update Android config (SDK 35 + permissions)
         run: |
+          # ۱. ارتقا compileSdk به 35
+          sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' build_src/android/app/build.gradle
+          
+          # ۲. اضافه کردن مجوزها
           MANIFEST=build_src/android/app/src/main/AndroidManifest.xml
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <application|' "$MANIFEST"
-          sed -i 's|</application>|<service android:name="com.hasan.vpn.VPNProvider" android:permission="android.permission.BIND_VPN_SERVICE" android:exported="true">\n                <intent-filter>\n                    <action android:name="android.net.VpnService"/>\n                </intent-filter>\n            </service>\n        </application>|' "$MANIFEST"
-          echo "--- AndroidManifest ---"
-          cat "$MANIFEST"
+          
+          echo "--- build.gradle ---"
+          grep -A2 "compileSdk" build_src/android/app/build.gradle | head -5
 
       - name: Get dependencies
         working-directory: build_src
