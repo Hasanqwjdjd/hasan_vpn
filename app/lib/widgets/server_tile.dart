@@ -6,6 +6,7 @@ class ServerTile extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback? onDelete;
+  final VoidCallback? onTest;
 
   const ServerTile({
     super.key,
@@ -13,6 +14,7 @@ class ServerTile extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.onDelete,
+    this.onTest,
   });
 
   @override
@@ -46,11 +48,11 @@ class ServerTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Row(
               children: [
                 Text(server.flag, style: const TextStyle(fontSize: 20)),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     server.name,
@@ -63,6 +65,7 @@ class ServerTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                // پینگ یا لودر
                 if (server.status == ServerStatus.testing)
                   const SizedBox(
                     width: 14,
@@ -81,16 +84,29 @@ class ServerTile extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                // دکمه تست جداگانه
+                if (onTest != null)
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    iconSize: 18,
+                    icon: const Icon(Icons.bolt,
+                        color: Color(0xFFFFB74D), size: 18),
+                    onPressed: server.status == ServerStatus.testing
+                        ? null
+                        : onTest,
+                  ),
+                // دکمه حذف
                 if (onDelete != null && server.isDeletable)
                   IconButton(
                     padding: const EdgeInsets.only(right: 4, left: 0),
                     constraints: const BoxConstraints(),
                     iconSize: 18,
-                    icon: const Text('🗑️', style: TextStyle(fontSize: 16)),
+                    icon: const Text('🗑️', style: TextStyle(fontSize: 14)),
                     onPressed: onDelete,
                   )
                 else
-                  const SizedBox(width: 22),
+                  const SizedBox(width: 20),
               ],
             ),
           ),
