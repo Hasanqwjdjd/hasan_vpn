@@ -4,6 +4,7 @@ class Subscription {
   final String url;
   final bool isDefault;
   bool autoUpdate;
+  int intervalHours; // هر چند ساعت بروزرسانی بشه
   DateTime? lastUpdated;
   int serverCount;
 
@@ -13,6 +14,7 @@ class Subscription {
     required this.url,
     this.isDefault = false,
     this.autoUpdate = true,
+    this.intervalHours = 12,
     this.lastUpdated,
     this.serverCount = 0,
   });
@@ -23,6 +25,7 @@ class Subscription {
         'url': url,
         'isDefault': isDefault,
         'autoUpdate': autoUpdate,
+        'intervalHours': intervalHours,
         'lastUpdated': lastUpdated?.toIso8601String(),
         'serverCount': serverCount,
       };
@@ -33,9 +36,17 @@ class Subscription {
         url: json['url'] as String,
         isDefault: json['isDefault'] as bool? ?? false,
         autoUpdate: json['autoUpdate'] as bool? ?? true,
+        intervalHours: json['intervalHours'] as int? ?? 12,
         lastUpdated: json['lastUpdated'] != null
             ? DateTime.tryParse(json['lastUpdated'] as String)
             : null,
         serverCount: json['serverCount'] as int? ?? 0,
       );
+
+  /// آیا وقت بروزرسانی رسیده؟
+  bool needsUpdate() {
+    if (!autoUpdate) return false;
+    if (lastUpdated == null) return true;
+    return DateTime.now().difference(lastUpdated!).inHours >= intervalHours;
+  }
 }
