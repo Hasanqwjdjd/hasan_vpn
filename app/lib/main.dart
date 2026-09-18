@@ -18,17 +18,19 @@ class HasanApp extends StatefulWidget {
 class _HasanAppState extends State<HasanApp> {
   List<Subscription> _subs = [];
   List<VpnServer> _subServers = [];
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadSubs();
+    _bootstrap();
   }
 
-  Future<void> _loadSubs() async {
+  Future<void> _bootstrap() async {
     final subs = await SubscriptionService.load();
     setState(() => _subs = subs);
     await _refreshSubscriptions();
+    setState(() => _loading = false);
   }
 
   Future<void> _refreshSubscriptions() async {
@@ -44,7 +46,7 @@ class _HasanAppState extends State<HasanApp> {
       }
     }
     await SubscriptionService.save(_subs);
-    setState(() => _subServers = all);
+    if (mounted) setState(() => _subServers = all);
   }
 
   Future<void> _onSubsChanged(List<Subscription> subs) async {
@@ -60,20 +62,33 @@ class _HasanAppState extends State<HasanApp> {
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF08090C),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF3DCF9A),
-        ),
+        colorScheme: const ColorScheme.dark(primary: Color(0xFF3DCF9A)),
       ),
       builder: (context, child) => Directionality(
         textDirection: TextDirection.rtl,
         child: child!,
       ),
-      home: RootTabs(
-        subs: _subs,
-        subServers: _subServers,
-        onSubsChanged: _onSubsChanged,
-        onRefreshAll: _refreshSubscriptions,
-      ),
+      home: _loading
+          ? const Scaffold(
+              backgroundColor: Color(0xFF08090C),
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: Color(0xFF3DCF9A)),
+                    SizedBox(height: 16),
+                    Text('در حال بارگذاری سرورها...',
+                        style: TextStyle(color: Colors.white54, fontSize: 13)),
+                  ],
+                ),
+              ),
+            )
+          : RootTabs(
+              subs: _subs,
+              subServers: _subServers,
+              onSubsChanged: _onSubsChanged,
+              onRefreshAll: _refreshSubscriptions,
+            ),
     );
   }
 }
@@ -101,12 +116,6 @@ class _RootTabsState extends State<RootTabs> {
 
   @override
   Widget build(BuildContext context) {
-    // ترکیب سرورهای ثابت + سرورهای اشتراک
-    final allServers = <VpnServer>[
-      ...kServers,
-      ...widget.subServers,
-    ];
-
     final pages = [
       HomeScreen(extraServers: widget.subServers),
       SubscriptionsScreen(
