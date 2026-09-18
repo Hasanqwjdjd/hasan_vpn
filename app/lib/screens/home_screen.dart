@@ -16,13 +16,17 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _testing = false;
   bool _autoMode = true;
   bool _connecting = false;
+  bool _connected = false;
   String _status = 'آماده';
   int _tested = 0;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _runTest());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Connector.init();
+      _runTest();
+    });
   }
 
   Future<void> _runTest() async {
@@ -31,11 +35,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _tested = 0;
       _status = 'در حال تست سرورها...';
     });
-
     await ServerTester.testAll(_servers, onProgress: (done, total) {
       setState(() => _tested = done);
     });
-
     final best = ServerTester.fastest(_servers);
     setState(() {
       _testing = false;
@@ -49,7 +51,23 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _connect() async {
+  Future<void> _toggleConnection() async {
+    if (_connecting) return;
+
+    if (_connected) {
+      setState(() {
+        _connecting = true;
+        _status = 'در حال قطع...';
+      });
+      await Connector.disconnect();
+      setState(() {
+        _connected = false;
+        _connecting = false;
+        _status = 'قطع شد';
+      });
+      return;
+    }
+
     if (_selected == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('اول یه سرور انتخاب کن')),
@@ -66,19 +84,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       _connecting = false;
-      _status = ok
-          ? 'v2rayNG باز شد — Connect رو بزن!'
-          : 'v2rayNG نصب نیست! اول نصبش کن';
+      _connected = ok;
+      _status = ok ? 'متصل به ${_selected!.name}' : 'اتصال ناموفق';
     });
-
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('v2rayNG رو نصب کن، بعد دوباره امتحان کن'),
-          duration: Duration(seconds: 5),
-        ),
-      );
-    }
   }
 
   @override
@@ -110,21 +118,30 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             GestureDetector(
-              onTap: _testing || _connecting ? null : _connect,
+              onTap: _testing || _connecting ? null : _toggleConnection,
               child: Container(
                 width: 140,
                 height: 140,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: _selected != null
+                    color: _connected
                         ? const Color(0xFF3DCF9A)
                         : Colors.white24,
                     width: 3,
                   ),
-                  color: _selected != null
+                  color: _connected
                       ? const Color(0xFF3DCF9A).withOpacity(0.1)
                       : Colors.transparent,
+                  boxShadow: _connected
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFF3DCF9A).withOpacity(0.3),
+                            blurRadius: 30,
+                            spreadRadius: 5,
+                          )
+                        ]
+                      : null,
                 ),
                 child: Center(
                   child: _testing || _connecting
@@ -133,17 +150,19 @@ class _HomeScreenState extends State<HomeScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              Icons.power_settings_new,
-                              color: _selected != null
+                              _connected
+                                  ? Icons.shield
+                                  : Icons.power_settings_new,
+                              color: _connected
                                   ? const Color(0xFF3DCF9A)
                                   : Colors.white38,
                               size: 40,
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              _selected != null ? 'اتصال' : 'انتخاب سرور',
+                              _connected ? 'قطع' : 'اتصال',
                               style: TextStyle(
-                                color: _selected != null
+                                color: _connected
                                     ? const Color(0xFF3DCF9A)
                                     : Colors.white38,
                                 fontSize: 13,
@@ -162,7 +181,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Expanded(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF12141A),
                         borderRadius: BorderRadius.circular(12),
@@ -179,7 +201,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           const Expanded(
                             child: Text(
                               'اتصال خودکار',
-                              style: TextStyle(color: Colors.white70, fontSize: 12),
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
                         ],
@@ -227,11 +252,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
-                  ..._servers.map((s) => ServerTile(
-                        server: s,
-                        selected: _selected?.id == s.id,
-                        onTap: () => setState(() => _selected = s),
-                      )),
+                  ..._servers.map(
+                    (s) => ServerTile(
+                      server: s,
+                      selected: _selected?.id == s.id,
+                      onTap: () => setState(() => _selected = s),
+                    ),
+                  ),
                   const SizedBox(height: 20),
                 ],
               ),
