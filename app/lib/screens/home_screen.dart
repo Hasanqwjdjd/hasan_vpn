@@ -6,13 +6,16 @@ import '../services/connector.dart';
 import '../widgets/server_tile.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final List<VpnServer> extraServers;
+
+  const HomeScreen({super.key, this.extraServers = const []});
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  List<VpnServer> _servers = List.from(kServers);
+  List<VpnServer> _servers = [];
   VpnServer? _selected;
   bool _testing = false;
   bool _autoMode = true;
@@ -23,7 +26,25 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _rebuildServerList();
     WidgetsBinding.instance.addPostFrameCallback((_) => _runTest());
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // وقتی اشتراک‌ها بروزرسانی شدن، لیست رو دوباره بساز
+    if (oldWidget.extraServers.length != widget.extraServers.length) {
+      _rebuildServerList();
+      _runTest();
+    }
+  }
+
+  void _rebuildServerList() {
+    _servers = [
+      ...kServers,
+      ...widget.extraServers,
+    ];
   }
 
   Future<void> _runTest() async {
@@ -230,9 +251,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'سرورها',
-                          style: TextStyle(
+                        Text(
+                          'سرورها (${_servers.length})',
+                          style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
