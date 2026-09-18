@@ -1,49 +1,24 @@
+import 'dart:async';
 import 'dart:io';
 import '../models/server.dart';
 
 class ServerTester {
-  static const String testUrl = 'https://www.gstatic.com/generate_204';
+  static const int _maxConcurrent = 8;
+  static const int _attemptsPerServer = 2;
+  static const int _timeoutMs = 4000;
 
-  static Future<int?> testPing(VpnServer server, {int timeoutMs = 5000}) async {
+  static Future<int?> testPing(VpnServer server) async {
     final results = <int>[];
-    for (int i = 0; i < 3; i++) {
-      final ping = await _singleHttpPing(server, timeoutMs);
+    for (int i = 0; i < _attemptsPerServer; i++) {
+      final ping = await _tcpPing(server, _timeoutMs);
       if (ping != null) results.add(ping);
-      if (i < 2) await Future.delayed(const Duration(milliseconds: 150));
+      if (i < _attemptsPerServer - 1) {
+        await Future.delayed(const Duration(milliseconds: 80));
+      }
     }
     if (results.isEmpty) return null;
     results.sort();
     return results.first;
-  }
-
-  static Future<int?> _singleHttpPing(VpnServer server, int timeoutMs) async {
-    final sw = Stopwatch()..start();
-    HttpClient? client;
-    try {
-      client = HttpClient();
-      client.connectionTimeout = Duration(milliseconds: timeoutMs);
-      client.badCertificateCallback = (cert, host, port) => true;
-
-      final request = await client
-          .getUrl(Uri.parse('https://${server.host}:${server.port}/'))
-          .timeout(Duration(milliseconds: timeoutMs));
-
-      if (server.sniOrHost != null) {
-        request.headers.set('Host', server.sniOrHost!);
-      }
-
-      final response = await request
-          .close()
-          .timeout(Duration(milliseconds: timeoutMs));
-
-      sw.stop();
-      await response.drain();
-      return sw.elapsedMilliseconds;
-    } catch (_) {
-      return await _tcpPing(server, timeoutMs);
-    } finally {
-      client?.close(force: true);
-    }
   }
 
   static Future<int?> _tcpPing(VpnServer server, int timeoutMs) async {
@@ -59,55 +34,91 @@ class ServerTester {
       socket.destroy();
       return sw.elapsedMilliseconds;
     } catch (_) {
-      socket?.destroy();
+      try {
+        socket?.destroy();
+      } catch (_) {}
       return null;
     }
   }
 
-  static Future<int> testSpeed({int durationMs = 4000}) async {
-    final sw = Stopwatch()..start();
-    int bytes = 0;
-    HttpClient? client;
-    try {
-      client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 5);
-      final req = await client.getUrl(
-        Uri.parse('https://speed.cloudflare.com/__down?bytes=10000000'),
-      );
-      final res = await req.close();
-      await for (final chunk in res) {
-        bytes += chunk.length;
-        if (sw.elapsedMilliseconds >= durationMs) break;
+  static Future<void> testAllStreaming(
+    List<VpnServer> servers, {
+    required void Function(VpnServer) onServerTested,
+    required void Function() onListUpdated,
+    bool Function()? isCancelled,
+    int maxConcurrent = _maxConcurrent,
+  }) async {
+    final queue = List<VpnServer>.from(servers);
+    int active = 0;
+    int index = 0;
+    final completer = Completer<void>();
+
+    void tryLaunchNext() {
+      if (isCancelled?.call() ?? false) {
+        if (active == 0 && !completer.isCompleted) completer.complete();
+        return;
       }
-      sw.stop();
-    } catch (_) {
-      return 0;
-    } finally {
-      client?.close(force: true);
+
+      while (active < maxConcurrent && index < queue.length) {
+        final server = queue[index++];
+        active++;
+        server.status = ServerStatus.testing;
+
+        testPing(server).then((ping) {
+          server.ping = ping;
+          server.status =
+              ping != null ? ServerStatus.online : ServerStatus.offline;
+          onServerTested(server);
+          onListUpdated();
+        }).catchError((_) {
+          server.ping = null;
+          server.status = ServerStatus.offline;
+          onListUpdated();
+        }).whenComplete(() {
+          active--;
+          if (index < queue.length) {
+            tryLaunchNext();
+          } else if (active == 0 && !completer.isCompleted) {
+            completer.complete();
+          }
+        });
+      }
+
+      if (active == 0 && index >= queue.length && !completer.isCompleted) {
+        completer.complete();
+      }
     }
-    final sec = sw.elapsedMilliseconds / 1000.0;
-    if (sec <= 0) return 0;
-    return ((bytes * 8) / sec / 1000).round();
+
+    tryLaunchNext();
+    return completer.future;
   }
 
-  static Future<List<VpnServer>> testAll(
-    List<VpnServer> servers, {
-    void Function(int done, int total)? onProgress,
-  }) async {
-    int done = 0;
-    await Future.wait(servers.map((s) async {
-      s.status = ServerStatus.testing;
-      s.ping = await testPing(s);
-      s.status = s.ping != null ? ServerStatus.online : ServerStatus.offline;
-      done++;
-      onProgress?.call(done, servers.length);
-    }));
-    servers.sort((a, b) => (a.ping ?? 99999).compareTo(b.ping ?? 99999));
-    return servers;
+  static void sortServers(List<VpnServer> servers) {
+    servers.sort((a, b) {
+      final aValid = a.ping != null;
+      final bValid = b.ping != null;
+      if (aValid && !bValid) return -1;
+      if (!aValid && bValid) return 1;
+      if (aValid && bValid) {
+        return (a.ping ?? 0).compareTo(b.ping ?? 0);
+      }
+      return 0;
+    });
+  }
+
+  static int removeInvalid(List<VpnServer> servers) {
+    final before = servers.length;
+    servers.removeWhere((s) =>
+        s.isDeletable &&
+        s.status == ServerStatus.offline &&
+        s.ping == null);
+    return before - servers.length;
   }
 
   static VpnServer? fastest(List<VpnServer> servers) {
-    final online = servers.where((s) => s.status == ServerStatus.online).toList();
+    final online = servers
+        .where((s) => s.ping != null && s.status == ServerStatus.online)
+        .toList();
     if (online.isEmpty) return null;
     online.sort((a, b) => (a.ping ?? 99999).compareTo(b.ping ?? 99999));
     return online.first;
