@@ -31,17 +31,10 @@ jobs:
           mkdir -p build_src/lib
           cp -r app/lib/. build_src/lib/
 
-      - name: Update Android config (SDK 35 + permissions)
+      - name: Add Internet permission
         run: |
-          # ۱. ارتقا compileSdk به 35
-          sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' build_src/android/app/build.gradle
-          
-          # ۲. اضافه کردن مجوزها
           MANIFEST=build_src/android/app/src/main/AndroidManifest.xml
-          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <application|' "$MANIFEST"
-          
-          echo "--- build.gradle ---"
-          grep -A2 "compileSdk" build_src/android/app/build.gradle | head -5
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$MANIFEST"
 
       - name: Get dependencies
         working-directory: build_src
