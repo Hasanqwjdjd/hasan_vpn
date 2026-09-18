@@ -42,7 +42,7 @@ jobs:
           MANIFEST=build_src/android/app/src/main/AndroidManifest.xml
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <application|' "$MANIFEST"
           sed -i 's|</application>|<service android:name="com.hasan.vpn.VPNProvider" android:permission="android.permission.BIND_VPN_SERVICE" android:exported="true">\n                <intent-filter>\n                    <action android:name="android.net.VpnService"/>\n                </intent-filter>\n            </service>\n        </application>|' "$MANIFEST"
-          echo "--- Manifest ---"
+          echo "--- AndroidManifest ---"
           cat "$MANIFEST"
 
       - name: Get dependencies
