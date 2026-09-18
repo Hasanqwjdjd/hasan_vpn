@@ -7,12 +7,10 @@ class Connector {
   static Future<bool> connect(VpnServer server) async {
     try {
       final uri = Uri.parse(server.shareLink);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-        return true;
-      }
-      return false;
-    } catch (_) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return true;
+    } catch (e) {
+      print('Launch error: $e');
       return false;
     }
   }
