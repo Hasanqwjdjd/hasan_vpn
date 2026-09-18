@@ -24,17 +24,18 @@ jobs:
           flutter-version: '3.22.0'
           channel: 'stable'
 
-      - name: Copy project files
+      - name: Create clean Flutter project
         run: |
-          # تمام فایل‌های app/ رو به یه پوشه جدید به اسم build_src کپی می‌کنیم
-          mkdir -p build_src
-          cp -r app/. build_src/
+          # ۱. یه پروژه تازه Flutter بساز (فقط ساختار، بدون کد ما)
+          flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite build_src
 
-      - name: Create Flutter scaffold
-        working-directory: build_src
+      - name: Copy our app code ON TOP
         run: |
-          # حالا flutter create رو توی پوشه تمیز اجرا می‌کنیم
-          flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite .
+          # ۲. حالا کد ما رو روی پروژه تازه کپی کن (این کد ما رو جایگزین می‌کنه)
+          cp -f app/pubspec.yaml build_src/pubspec.yaml
+          rm -rf build_src/lib
+          mkdir -p build_src/lib
+          cp -r app/lib/. build_src/lib/
 
       - name: Get dependencies
         working-directory: build_src
