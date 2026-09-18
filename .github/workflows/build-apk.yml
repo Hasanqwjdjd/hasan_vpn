@@ -31,10 +31,53 @@ jobs:
           mkdir -p build_src/lib
           cp -r app/lib/. build_src/lib/
 
-      - name: Add Internet permission
+      - name: Add Internet permission and Queries
         run: |
           MANIFEST=build_src/android/app/src/main/AndroidManifest.xml
+          
+          # ۱. اضافه کردن مجوز اینترنت
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$MANIFEST"
+          
+          # ۲. اضافه کردن queries قبل از </manifest>
+          python3 << 'EOF'
+          import re
+          path = "build_src/android/app/src/main/AndroidManifest.xml"
+          with open(path, "r") as f:
+              content = f.read()
+          
+          queries = '''    <queries>
+              <intent>
+                  <action android:name="android.intent.action.VIEW" />
+                  <category android:name="android.intent.category.BROWSABLE" />
+                  <data android:scheme="trojan" />
+              </intent>
+              <intent>
+                  <action android:name="android.intent.action.VIEW" />
+                  <category android:name="android.intent.category.BROWSABLE" />
+                  <data android:scheme="vless" />
+              </intent>
+              <intent>
+                  <action android:name="android.intent.action.VIEW" />
+                  <category android:name="android.intent.category.BROWSABLE" />
+                  <data android:scheme="vmess" />
+              </intent>
+              <intent>
+                  <action android:name="android.intent.action.VIEW" />
+                  <category android:name="android.intent.category.BROWSABLE" />
+                  <data android:scheme="ss" />
+              </intent>
+          </queries>
+          '''
+          
+          # اضافه کردن queries قبل از </manifest>
+          content = content.replace("</manifest>", queries + "</manifest>")
+          
+          with open(path, "w") as f:
+              f.write(content)
+          EOF
+          
+          echo "--- AndroidManifest ---"
+          cat "$MANIFEST"
 
       - name: Get dependencies
         working-directory: build_src
