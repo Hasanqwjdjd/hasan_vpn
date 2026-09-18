@@ -26,8 +26,7 @@ jobs:
 
       - name: Create Flutter project structure
         run: |
-          flutter create --org com.hasan --project-name hasan_vpn --platforms=android .
-          git checkout -- lib/ pubspec.yaml
+          https://github.com/Hasanqwjdjd/hasan_vpn/blob/main/.github/workflows/build-apk.yml
 
       - name: Get dependencies
         run: flutter pub get
