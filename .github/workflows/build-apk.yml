@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,6 +37,13 @@ jobs:
           mkdir -p build_src/lib
           cp -r app/lib/. build_src/lib/
 
+      - name: Add Internet permission
+        run: |
+          MANIFEST=build_src/android/app/src/main/AndroidManifest.xml
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$MANIFEST"
+          echo "--- AndroidManifest after edit ---"
+          head -20 "$MANIFEST"
+
       - name: Get dependencies
         working-directory: build_src
         run: flutter pub get
@@ -53,7 +62,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v2.0.${{ github.run_number }}
+          tag_name: v3.0.${{ github.run_number }}
           files: build_src/build/app/outputs/flutter-apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
