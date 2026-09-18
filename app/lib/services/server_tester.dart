@@ -2,8 +2,51 @@ import 'dart:io';
 import '../models/server.dart';
 
 class ServerTester {
-  /// پینگ واقعی با TCP Socket (مثل V2RayNG)
-  static Future<int?> testPing(VpnServer server, {int timeoutMs = 3000}) async {
+  static const String testUrl = 'https://www.gstatic.com/generate_204';
+
+  static Future<int?> testPing(VpnServer server, {int timeoutMs = 5000}) async {
+    final results = <int>[];
+    for (int i = 0; i < 3; i++) {
+      final ping = await _singleHttpPing(server, timeoutMs);
+      if (ping != null) results.add(ping);
+      if (i < 2) await Future.delayed(const Duration(milliseconds: 150));
+    }
+    if (results.isEmpty) return null;
+    results.sort();
+    return results.first;
+  }
+
+  static Future<int?> _singleHttpPing(VpnServer server, int timeoutMs) async {
+    final sw = Stopwatch()..start();
+    HttpClient? client;
+    try {
+      client = HttpClient();
+      client.connectionTimeout = Duration(milliseconds: timeoutMs);
+      client.badCertificateCallback = (cert, host, port) => true;
+
+      final request = await client
+          .getUrl(Uri.parse('https://${server.host}:${server.port}/'))
+          .timeout(Duration(milliseconds: timeoutMs));
+
+      if (server.sniOrHost != null) {
+        request.headers.set('Host', server.sniOrHost!);
+      }
+
+      final response = await request
+          .close()
+          .timeout(Duration(milliseconds: timeoutMs));
+
+      sw.stop();
+      await response.drain();
+      return sw.elapsedMilliseconds;
+    } catch (_) {
+      return await _tcpPing(server, timeoutMs);
+    } finally {
+      client?.close(force: true);
+    }
+  }
+
+  static Future<int?> _tcpPing(VpnServer server, int timeoutMs) async {
     final sw = Stopwatch()..start();
     Socket? socket;
     try {
@@ -21,7 +64,6 @@ class ServerTester {
     }
   }
 
-  /// تست سرعت دانلود (Kbps)
   static Future<int> testSpeed({int durationMs = 4000}) async {
     final sw = Stopwatch()..start();
     int bytes = 0;
@@ -48,7 +90,6 @@ class ServerTester {
     return ((bytes * 8) / sec / 1000).round();
   }
 
-  /// تست همه سرورها
   static Future<List<VpnServer>> testAll(
     List<VpnServer> servers, {
     void Function(int done, int total)? onProgress,
@@ -61,12 +102,10 @@ class ServerTester {
       done++;
       onProgress?.call(done, servers.length);
     }));
-
     servers.sort((a, b) => (a.ping ?? 99999).compareTo(b.ping ?? 99999));
     return servers;
   }
 
-  /// سریع‌ترین سرور
   static VpnServer? fastest(List<VpnServer> servers) {
     final online = servers.where((s) => s.status == ServerStatus.online).toList();
     if (online.isEmpty) return null;
