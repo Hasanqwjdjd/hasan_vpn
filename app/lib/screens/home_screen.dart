@@ -9,8 +9,13 @@ import '../widgets/server_tile.dart';
 
 class HomeScreen extends StatefulWidget {
   final List<VpnServer> extraServers;
+  final VoidCallback? onOpenSettings;
 
-  const HomeScreen({super.key, this.extraServers = const []});
+  const HomeScreen({
+    super.key,
+    this.extraServers = const [],
+    this.onOpenSettings,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -35,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadDeleted();
     _rebuildServerList();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _runTest());
+    // ❌ دیگه تست خودکار نداریم — فقط لیست رو آماده می‌کنیم
   }
 
   @override
@@ -43,7 +48,6 @@ class _HomeScreenState extends State<HomeScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.extraServers.length != widget.extraServers.length) {
       _rebuildServerList();
-      _runTest();
     }
   }
 
@@ -63,19 +67,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _rebuildServerList() {
-    _servers = [
-      ...kServers.where((s) => !_deletedIds.contains(s.id)),
-      ...widget.extraServers.where((s) => !_deletedIds.contains(s.id)),
-    ];
+    setState(() {
+      _servers = [
+        ...kServers.where((s) => !_deletedIds.contains(s.id)),
+        ...widget.extraServers.where((s) => !_deletedIds.contains(s.id)),
+      ];
+    });
   }
 
-  Future<void> _runTest() async {
+  /// تست همه سرورها (دستی)
+  Future<void> _testAll() async {
     if (_testing) {
       _cancelTest = true;
       await Future.delayed(const Duration(milliseconds: 300));
     }
-
-    _servers = _servers.where((s) => !_deletedIds.contains(s.id)).toList();
 
     setState(() {
       _testing = true;
@@ -115,6 +120,23 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         _status = 'آماده';
       }
+    });
+  }
+
+  /// تست یک سرور
+  Future<void> _testOne(VpnServer server) async {
+    setState(() {
+      server.status = ServerStatus.testing;
+      server.ping = null;
+    });
+    final ping = await ServerTester.testPing(server);
+    if (!mounted) return;
+    setState(() {
+      server.ping = ping;
+      server.status =
+          ping != null ? ServerStatus.online : ServerStatus.offline;
+      ServerTester.sortServers(_servers);
+      _servers = List.from(_servers);
     });
   }
 
@@ -158,7 +180,8 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('لغو', style: TextStyle(color: Colors.white54)),
+            child: const Text('لغو',
+                style: TextStyle(color: Colors.white54)),
           ),
           TextButton(
             onPressed: () {
@@ -173,12 +196,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
               });
               _saveDeleted();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('${toDelete.length} سرور حذف شد'),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
             },
             child: const Text('حذف',
                 style: TextStyle(color: Color(0xFFE07070))),
@@ -189,7 +206,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _connect() async {
-    if (_selected == null) return;
+    if (_selected == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('اول یه سرور انتخاب کن'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
     setState(() {
       _connecting = true;
       _status = 'در حال اتصال...';
@@ -200,18 +225,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _connecting = false;
       _status = ok ? 'برنامه VPN باز شد' : 'هیچ برنامه‌ای پیدا نشد';
     });
-  }
-
-  Future<void> _copyOne() async {
-    if (_selected == null) return;
-    await Clipboard.setData(ClipboardData(text: _selected!.shareLink));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('لینک ${_selected!.name} کپی شد'),
-        duration: const Duration(seconds: 2),
-      ),
-    );
   }
 
   Future<void> _copyAll() async {
@@ -233,29 +246,51 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // هدر با دکمه تنظیمات
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Column(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+              child: Row(
                 children: [
-                  const Text(
-                    'حسن',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
+                  SizedBox(
+                    width: 40,
+                    child: widget.onOpenSettings != null
+                        ? IconButton(
+                            padding: EdgeInsets.zero,
+                            icon: const Icon(Icons.settings,
+                                color: Colors.white70, size: 22),
+                            onPressed: widget.onOpenSettings,
+                          )
+                        : null,
+                  ),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        const Text(
+                          'حسن',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _status,
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 11),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _status,
-                    style: const TextStyle(color: Colors.white54, fontSize: 12),
-                    textAlign: TextAlign.center,
-                  ),
+                  const SizedBox(width: 40),
                 ],
               ),
             ),
+
+            // دکمه اتصال
             GestureDetector(
-              onTap: _testing || _connecting ? null : _connect,
+              onTap: _connecting ? null : _connect,
               child: Container(
                 width: 130,
                 height: 130,
@@ -272,7 +307,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       : Colors.transparent,
                 ),
                 child: Center(
-                  child: _testing || _connecting
+                  child: _connecting
                       ? const CircularProgressIndicator(color: Colors.white)
                       : Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -300,76 +335,86 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 6),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (_selected != null)
-                  TextButton.icon(
-                    onPressed: _copyOne,
-                    icon: const Icon(Icons.copy,
-                        color: Colors.white54, size: 13),
-                    label: const Text('کپی لینک',
-                        style:
-                            TextStyle(color: Colors.white54, fontSize: 11)),
-                  ),
-                TextButton.icon(
-                  onPressed: _copyAll,
-                  icon: const Icon(Icons.copy_all,
-                      color: Colors.white54, size: 13),
-                  label: const Text('کپی همه',
-                      style: TextStyle(color: Colors.white54, fontSize: 11)),
-                ),
-              ],
+            const SizedBox(height: 4),
+            TextButton.icon(
+              onPressed: _copyAll,
+              icon: const Icon(Icons.copy_all, color: Colors.white54, size: 13),
+              label: const Text('کپی همه سرورها',
+                  style: TextStyle(color: Colors.white54, fontSize: 11)),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
+                  // تست همه
                   Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF12141A),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.white12),
-                      ),
-                      child: Row(
-                        children: [
-                          Transform.scale(
-                            scale: 0.85,
-                            child: Switch(
-                              value: _autoMode,
-                              onChanged: (v) => setState(() => _autoMode = v),
-                              activeColor: const Color(0xFF3DCF9A),
-                            ),
+                    child: GestureDetector(
+                      onTap: _testing ? null : _testAll,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _testing
+                              ? const Color(0xFF1A1D25)
+                              : const Color(0xFF3DCF9A).withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: _testing
+                                ? Colors.white12
+                                : const Color(0xFF3DCF9A),
                           ),
-                          const Expanded(
-                            child: Text(
-                              'اتصال خودکار',
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (_testing)
+                              const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Color(0xFF3DCF9A)),
+                              )
+                            else
+                              const Icon(Icons.speed,
+                                  color: Color(0xFF3DCF9A), size: 16),
+                            const SizedBox(width: 6),
+                            Text(
+                              _testing ? '$_tested / $_total' : 'تست همه',
                               style: TextStyle(
-                                  color: Colors.white70, fontSize: 11),
+                                color: _testing
+                                    ? Colors.white70
+                                    : const Color(0xFF3DCF9A),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 6),
-                  IconButton(
-                    onPressed: _testing ? null : _runTest,
-                    icon:
-                        const Icon(Icons.refresh, color: Colors.white, size: 20),
-                    padding: EdgeInsets.zero,
-                    constraints:
-                        const BoxConstraints(minWidth: 38, minHeight: 38),
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFF12141A),
-                      side: const BorderSide(color: Colors.white12),
+                  // تاگل خودکار
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF12141A),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Transform.scale(
+                      scale: 0.85,
+                      child: Switch(
+                        value: _autoMode,
+                        onChanged: (v) => setState(() => _autoMode = v),
+                        activeColor: const Color(0xFF3DCF9A),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 6),
+                  // حذف نامعتبرها
                   IconButton(
                     onPressed: _deleteInvalid,
                     icon: const Icon(Icons.delete_sweep,
@@ -385,7 +430,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -406,9 +451,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           if (_testing)
-                            Text(
-                              '$_tested / $_total',
-                              style: const TextStyle(
+                            const Text(
+                              'لمس کن روی ⚡ برای تست جداگانه',
+                              style: TextStyle(
                                   color: Colors.white38, fontSize: 10),
                             ),
                         ],
@@ -420,6 +465,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     server: s,
                     selected: _selected?.id == s.id,
                     onTap: () => setState(() => _selected = s),
+                    onTest: () => _testOne(s),
                     onDelete: s.isDeletable ? () => _deleteServer(s) : null,
                   );
                 },
