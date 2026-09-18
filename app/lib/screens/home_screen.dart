@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/server.dart';
 import '../services/server_tester.dart';
 import '../services/connector.dart';
@@ -51,13 +52,38 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_selected == null) return;
     setState(() {
       _connecting = true;
-      _status = 'در حال باز کردن v2rayNG...';
+      _status = 'در حال اتصال...';
     });
     final ok = await Connector.connect(_selected!);
+    if (!mounted) return;
     setState(() {
       _connecting = false;
-      _status = ok ? 'v2rayNG باز شد — Connect بزن' : 'v2rayNG نصب نیست';
+      _status = ok ? 'برنامه VPN باز شد' : 'هیچ برنامه‌ای پیدا نشد';
     });
+  }
+
+  Future<void> _copyOne() async {
+    if (_selected == null) return;
+    await Clipboard.setData(ClipboardData(text: _selected!.shareLink));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('لینک ${_selected!.name} کپی شد'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _copyAll() async {
+    final text = _servers.map((s) => s.shareLink).join('\n');
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${_servers.length} سرور کپی شد'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -128,7 +154,30 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_selected != null)
+                  TextButton.icon(
+                    onPressed: _copyOne,
+                    icon: const Icon(Icons.copy, color: Colors.white54, size: 14),
+                    label: const Text(
+                      'کپی لینک',
+                      style: TextStyle(color: Colors.white54, fontSize: 11),
+                    ),
+                  ),
+                TextButton.icon(
+                  onPressed: _copyAll,
+                  icon: const Icon(Icons.copy_all, color: Colors.white54, size: 14),
+                  label: const Text(
+                    'کپی همه',
+                    style: TextStyle(color: Colors.white54, fontSize: 11),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
