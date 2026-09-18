@@ -26,12 +26,10 @@ jobs:
 
       - name: Create clean Flutter project
         run: |
-          # ۱. یه پروژه تازه Flutter بساز (فقط ساختار، بدون کد ما)
           flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite build_src
 
       - name: Copy our app code ON TOP
         run: |
-          # ۲. حالا کد ما رو روی پروژه تازه کپی کن (این کد ما رو جایگزین می‌کنه)
           cp -f app/pubspec.yaml build_src/pubspec.yaml
           rm -rf build_src/lib
           mkdir -p build_src/lib
@@ -55,7 +53,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v1.0.${{ github.run_number }}
+          tag_name: v2.0.${{ github.run_number }}
           files: build_src/build/app/outputs/flutter-apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
