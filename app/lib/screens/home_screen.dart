@@ -16,17 +16,13 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _testing = false;
   bool _autoMode = true;
   bool _connecting = false;
-  bool _connected = false;
   String _status = 'آماده';
   int _tested = 0;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await Connector.init();
-      _runTest();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _runTest());
   }
 
   Future<void> _runTest() async {
@@ -51,43 +47,16 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _toggle() async {
-    if (_connecting) return;
-
-    // اگه وصل بودیم → قطع
-    if (_connected) {
-      setState(() {
-        _connecting = true;
-        _status = 'در حال قطع...';
-      });
-      await Connector.disconnect();
-      setState(() {
-        _connected = false;
-        _connecting = false;
-        _status = 'قطع شد';
-      });
-      return;
-    }
-
-    // اگه هنوز وصل نشدیم → وصل
-    if (_selected == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اول یه سرور انتخاب کن')),
-      );
-      return;
-    }
-
+  Future<void> _connect() async {
+    if (_selected == null) return;
     setState(() {
       _connecting = true;
-      _status = 'در حال اتصال...';
+      _status = 'در حال باز کردن v2rayNG...';
     });
-
     final ok = await Connector.connect(_selected!);
-
     setState(() {
       _connecting = false;
-      _connected = ok;
-      _status = ok ? 'متصل به ${_selected!.name}' : 'اتصال ناموفق';
+      _status = ok ? 'v2rayNG باز شد — Connect بزن' : 'v2rayNG نصب نیست';
     });
   }
 
@@ -102,33 +71,37 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  const Text('حسن',
-                    style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'حسن',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 4),
-                  Text(_status,
+                  Text(
+                    _status,
                     style: const TextStyle(color: Colors.white54, fontSize: 12),
-                    textAlign: TextAlign.center),
+                    textAlign: TextAlign.center,
+                  ),
                 ],
               ),
             ),
             GestureDetector(
-              onTap: _testing || _connecting ? null : _toggle,
+              onTap: _testing || _connecting ? null : _connect,
               child: Container(
-                width: 140, height: 140,
+                width: 140,
+                height: 140,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: _connected ? const Color(0xFF3DCF9A) : Colors.white24,
+                    color: _selected != null ? const Color(0xFF3DCF9A) : Colors.white24,
                     width: 3,
                   ),
-                  color: _connected
-                      ? const Color(0xFF3DCF9A).withOpacity(0.1) : Colors.transparent,
-                  boxShadow: _connected ? [
-                    BoxShadow(
-                      color: const Color(0xFF3DCF9A).withOpacity(0.3),
-                      blurRadius: 30, spreadRadius: 5,
-                    )
-                  ] : null,
+                  color: _selected != null
+                      ? const Color(0xFF3DCF9A).withOpacity(0.1)
+                      : Colors.transparent,
                 ),
                 child: Center(
                   child: _testing || _connecting
@@ -137,15 +110,19 @@ class _HomeScreenState extends State<HomeScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              _connected ? Icons.shield : Icons.power_settings_new,
-                              color: _connected ? const Color(0xFF3DCF9A) : Colors.white38,
+                              Icons.power_settings_new,
+                              color: _selected != null ? const Color(0xFF3DCF9A) : Colors.white38,
                               size: 40,
                             ),
                             const SizedBox(height: 4),
-                            Text(_connected ? 'قطع' : 'اتصال',
+                            Text(
+                              _selected != null ? 'اتصال' : 'انتخاب سرور',
                               style: TextStyle(
-                                color: _connected ? const Color(0xFF3DCF9A) : Colors.white38,
-                                fontSize: 13, fontWeight: FontWeight.w600)),
+                                color: _selected != null ? const Color(0xFF3DCF9A) : Colors.white38,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         ),
                 ),
@@ -173,157 +150,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(width: 4),
                           const Expanded(
-                            child: Text('اتصال خودکار',
-                              style: TextStyle(color: Colors.white70, fontSize: 12)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: _testing ? null : _runTest,
-                    icon: const Icon(Icons.refresh, color: Colors.white),
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFF12141A),
-                      side: const BorderSide(color: Colors.white12),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('سرورها',
-                          style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
-                        if (_testing)
-                          Text('$_tested / ${_servers.length}',
-                            style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                      ],
-                    ),
-                  ),
-                  ..._servers.map((s) => ServerTile(
-                        server: s,
-                        selected: _selected?.id == s.id,
-                        onTap: () => setState(() => _selected = s),
-                      )),
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _status,
-                    style: const TextStyle(color: Colors.white54, fontSize: 12),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-            GestureDetector(
-              onTap: _testing || _connecting ? null : _toggleConnection,
-              child: Container(
-                width: 140,
-                height: 140,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: _connected
-                        ? const Color(0xFF3DCF9A)
-                        : Colors.white24,
-                    width: 3,
-                  ),
-                  color: _connected
-                      ? const Color(0xFF3DCF9A).withOpacity(0.1)
-                      : Colors.transparent,
-                  boxShadow: _connected
-                      ? [
-                          BoxShadow(
-                            color: const Color(0xFF3DCF9A).withOpacity(0.3),
-                            blurRadius: 30,
-                            spreadRadius: 5,
-                          )
-                        ]
-                      : null,
-                ),
-                child: Center(
-                  child: _testing || _connecting
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              _connected
-                                  ? Icons.shield
-                                  : Icons.power_settings_new,
-                              color: _connected
-                                  ? const Color(0xFF3DCF9A)
-                                  : Colors.white38,
-                              size: 40,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _connected ? 'قطع' : 'اتصال',
-                              style: TextStyle(
-                                color: _connected
-                                    ? const Color(0xFF3DCF9A)
-                                    : Colors.white38,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF12141A),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white12),
-                      ),
-                      child: Row(
-                        children: [
-                          Switch(
-                            value: _autoMode,
-                            onChanged: (v) => setState(() => _autoMode = v),
-                            activeColor: const Color(0xFF3DCF9A),
-                          ),
-                          const SizedBox(width: 4),
-                          const Expanded(
                             child: Text(
                               'اتصال خودکار',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
+                              style: TextStyle(color: Colors.white70, fontSize: 12),
                             ),
                           ),
                         ],
@@ -363,10 +192,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         if (_testing)
                           Text(
                             '$_tested / ${_servers.length}',
-                            style: const TextStyle(
-                              color: Colors.white38,
-                              fontSize: 11,
-                            ),
+                            style: const TextStyle(color: Colors.white38, fontSize: 11),
                           ),
                       ],
                     ),
