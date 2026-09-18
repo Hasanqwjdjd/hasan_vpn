@@ -1,0 +1,60 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+
+      - name: Copy project files
+        run: |
+          # تمام فایل‌های app/ رو به یه پوشه جدید به اسم build_src کپی می‌کنیم
+          mkdir -p build_src
+          cp -r app/. build_src/
+
+      - name: Create Flutter scaffold
+        working-directory: build_src
+        run: |
+          # حالا flutter create رو توی پوشه تمیز اجرا می‌کنیم
+          flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite .
+
+      - name: Get dependencies
+        working-directory: build_src
+        run: flutter pub get
+
+      - name: Build APK
+        working-directory: build_src
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: hasan-vpn-apk
+          path: build_src/build/app/outputs/flutter-apk/*.apk
+
+      - name: Create Release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          files: build_src/build/app/outputs/flutter-apk/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
