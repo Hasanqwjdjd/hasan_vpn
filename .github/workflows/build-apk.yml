@@ -27,7 +27,6 @@ jobs:
       - name: Ensure keystore exists
         run: |
           if [ ! -f hasan.keystore ]; then
-            echo "🔑 Creating new keystore..."
             keytool -genkey -v \
               -keystore hasan.keystore \
               -alias hasan \
@@ -43,7 +42,6 @@ jobs:
             git commit -m "Add keystore (auto-generated)"
             git push
           fi
-          echo "✅ Keystore ready"
           keytool -list -keystore hasan.keystore -storepass hasan12345 -alias hasan
 
       - name: Create clean Flutter project
@@ -159,10 +157,6 @@ jobs:
                       keyPassword keystoreProperties['keyPassword']
                       storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
                       storePassword keystoreProperties['storePassword']
-                      v1SigningEnabled true
-                      v2SigningEnabled true
-                      v3SigningEnabled true
-                      v4SigningEnabled true
                   }
               }
 
@@ -197,9 +191,9 @@ jobs:
         working-directory: build_src
         run: flutter pub get
 
-      - name: Build APK
+      - name: Build APK (split per ABI for smaller size)
         working-directory: build_src
-        run: flutter build apk --release
+        run: flutter build apk --release --split-per-abi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -211,7 +205,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v8.0.${{ github.run_number }}
+          tag_name: v9.0.${{ github.run_number }}
           files: build_src/build/app/outputs/flutter-apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
