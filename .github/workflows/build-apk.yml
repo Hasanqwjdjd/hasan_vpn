@@ -46,38 +46,39 @@ jobs:
           cp android-keystore.jks build_src/android/
           cp key.properties build_src/android/
 
-      - name: Upgrade AGP, Gradle, SDK, NDK
+      - name: Upgrade AGP, Gradle, Kotlin, SDK, NDK
         run: |
           SETTINGS=build_src/android/settings.gradle
           sed -i 's/id "com.android.application" version "[0-9.]*"/id "com.android.application" version "8.3.0"/g' "$SETTINGS"
           sed -i 's/id "com.android.library" version "[0-9.]*"/id "com.android.library" version "8.3.0"/g' "$SETTINGS"
-          sed -i 's/id "org.jetbrains.kotlin.android" version "[0-9.]*"/id "org.jetbrains.kotlin.android" version "1.9.22"/g' "$SETTINGS"
+          # ⭐ Kotlin 2.1.0 (به جای 1.9.22)
+          sed -i 's/id "org.jetbrains.kotlin.android" version "[0-9.]*"/id "org.jetbrains.kotlin.android" version "2.1.0"/g' "$SETTINGS"
           
           WRAPPER=build_src/android/gradle/wrapper/gradle-wrapper.properties
           sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip|' "$WRAPPER"
           
           BUILDGRADLE=build_src/android/app/build.gradle
-          
           # compileSdk 35
           sed -i 's/compileSdk .*/compileSdk 35/' "$BUILDGRADLE"
           sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' "$BUILDGRADLE"
-          
-          # ⭐ minSdk 23 (به جای 21)
+          # minSdk 23
           sed -i 's/minSdk .*/minSdk 23/' "$BUILDGRADLE"
           sed -i 's/minSdkVersion .*/minSdkVersion 23/' "$BUILDGRADLE"
           sed -i 's/flutter.minSdkVersion/23/g' "$BUILDGRADLE"
-          
           # targetSdk 34
           sed -i 's/targetSdk .*/targetSdk 34/' "$BUILDGRADLE"
           sed -i 's/targetSdkVersion .*/targetSdkVersion 34/' "$BUILDGRADLE"
-          
-          # NDK
+          # ⭐ NDK 27.0.12077973 (جدیدتر)
           if ! grep -q "ndkVersion" "$BUILDGRADLE"; then
-            sed -i 's/compileSdk 35/compileSdk 35\n    ndkVersion "25.1.8937393"/' "$BUILDGRADLE"
+            sed -i 's/compileSdk 35/compileSdk 35\n    ndkVersion "27.0.12077973"/' "$BUILDGRADLE"
+          else
+            sed -i 's/ndkVersion .*/ndkVersion "27.0.12077973"/' "$BUILDGRADLE"
           fi
           
-          echo "--- build.gradle ---"
-          grep -E "compileSdk|minSdk|targetSdk|ndkVersion" "$BUILDGRADLE"
+          # ⭐ تنظیمات Kotlin JVM target
+          if ! grep -q "kotlinOptions" "$BUILDGRADLE"; then
+            sed -i 's/compileOptions {/kotlinOptions {\n        jvmTarget = "17"\n    }\n    compileOptions {/' "$BUILDGRADLE"
+          fi
 
       - name: Patch signing
         run: |
