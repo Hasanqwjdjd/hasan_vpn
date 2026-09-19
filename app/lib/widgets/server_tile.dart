@@ -8,8 +8,10 @@ class ServerTile extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback? onDelete;
-  final VoidCallback? onTest;
   final VoidCallback? onPin;
+  final VoidCallback? onShare;
+  final VoidCallback? onEdit;
+  final VoidCallback? onTest; // تست پینگ تکی (صاعقه)
 
   const ServerTile({
     super.key,
@@ -17,8 +19,10 @@ class ServerTile extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.onDelete,
-    this.onTest,
     this.onPin,
+    this.onShare,
+    this.onEdit,
+    this.onTest,
   });
 
   @override
@@ -54,9 +58,10 @@ class ServerTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             child: Row(
               children: [
+                // Pin
                 if (onPin != null)
                   IconButton(
                     padding: EdgeInsets.zero,
@@ -64,13 +69,19 @@ class ServerTile extends StatelessWidget {
                     iconSize: 18,
                     icon: Icon(
                       server.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-                      color: server.isPinned ? AppColors.accent : AppColors.muted2(context),
+                      color: server.isPinned
+                          ? AppColors.accent
+                          : AppColors.muted2(context),
                       size: 18,
                     ),
                     onPressed: onPin,
                   ),
+
+                // Flag
                 Text(server.flag, style: const TextStyle(fontSize: 18)),
                 const SizedBox(width: 6),
+
+                // Name
                 Expanded(
                   child: Text(
                     server.name,
@@ -83,6 +94,8 @@ class ServerTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+
+                // Ping
                 if (server.status == ServerStatus.testing)
                   const SizedBox(
                     width: 14,
@@ -101,6 +114,8 @@ class ServerTile extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+
+                // Copy
                 IconButton(
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 28),
@@ -116,6 +131,8 @@ class ServerTile extends StatelessWidget {
                     );
                   },
                 ),
+
+                // Bolt / Test one server (صاعقه) - طبق درخواست کاربر نگه داشته شد
                 if (onTest != null)
                   IconButton(
                     padding: EdgeInsets.zero,
@@ -124,12 +141,37 @@ class ServerTile extends StatelessWidget {
                     icon: const Icon(Icons.bolt, color: AppColors.warn, size: 16),
                     onPressed: server.status == ServerStatus.testing ? null : onTest,
                   ),
+
+                // Share
+                if (onShare != null)
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 28),
+                    iconSize: 16,
+                    icon: Icon(Icons.share_outlined,
+                        color: AppColors.muted(context), size: 16),
+                    onPressed: onShare,
+                  ),
+
+                // Edit (optional)
+                if (onEdit != null)
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 28),
+                    iconSize: 16,
+                    icon: Icon(Icons.edit_outlined,
+                        color: AppColors.muted(context), size: 16),
+                    onPressed: onEdit,
+                  ),
+
+                // Delete
                 if (onDelete != null)
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 28),
                     iconSize: 16,
-                    icon: const Icon(Icons.delete_outline, color: AppColors.danger, size: 16),
+                    icon: const Icon(Icons.delete_outline,
+                        color: AppColors.danger, size: 16),
                     onPressed: onDelete,
                   )
                 else
