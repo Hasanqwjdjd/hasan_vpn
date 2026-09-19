@@ -46,31 +46,29 @@ jobs:
           cp android-keystore.jks build_src/android/
           cp key.properties build_src/android/
 
-      - name: Upgrade AGP and Gradle (for flutter_vless)
+      - name: Upgrade AGP, Gradle, NDK
         run: |
-          # ⭐ ارتقای AGP به 8.3.0 و Gradle به 8.4
-          
-          # ۱. تغییر AGP در settings.gradle
           SETTINGS=build_src/android/settings.gradle
-          if [ -f "$SETTINGS" ]; then
-            sed -i 's/id "com.android.application" version "[0-9.]*"/id "com.android.application" version "8.3.0"/g' "$SETTINGS"
-            sed -i 's/id "com.android.library" version "[0-9.]*"/id "com.android.library" version "8.3.0"/g' "$SETTINGS"
-            sed -i 's/id "org.jetbrains.kotlin.android" version "[0-9.]*"/id "org.jetbrains.kotlin.android" version "1.9.22"/g' "$SETTINGS"
-          fi
+          sed -i 's/id "com.android.application" version "[0-9.]*"/id "com.android.application" version "8.3.0"/g' "$SETTINGS"
+          sed -i 's/id "com.android.library" version "[0-9.]*"/id "com.android.library" version "8.3.0"/g' "$SETTINGS"
+          sed -i 's/id "org.jetbrains.kotlin.android" version "[0-9.]*"/id "org.jetbrains.kotlin.android" version "1.9.22"/g' "$SETTINGS"
           
-          # ۲. تغییر Gradle wrapper
           WRAPPER=build_src/android/gradle/wrapper/gradle-wrapper.properties
           sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip|' "$WRAPPER"
           
-          # ۳. اضافه کردن namespace و compileSdk 35 به build.gradle
           BUILDGRADLE=build_src/android/app/build.gradle
           sed -i 's/compileSdk .*/compileSdk 35/' "$BUILDGRADLE"
           sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' "$BUILDGRADLE"
           
-          echo "--- settings.gradle ---"
-          cat "$SETTINGS"
-          echo "--- wrapper ---"
-          cat "$WRAPPER"
+          # ⭐ اضافه کردن ndkVersion
+          if ! grep -q "ndkVersion" "$BUILDGRADLE"; then
+            sed -i 's/compileSdk 35/compileSdk 35\n    ndkVersion "25.1.8937393"/' "$BUILDGRADLE"
+          else
+            sed -i 's/ndkVersion .*/ndkVersion "25.1.8937393"/' "$BUILDGRADLE"
+          fi
+          
+          echo "--- build.gradle (head) ---"
+          head -30 "$BUILDGRADLE"
 
       - name: Patch Android build.gradle (signing)
         run: |
@@ -111,7 +109,6 @@ jobs:
               f.write(content)
           PYEOF
 
-          # اضافه کردن مجوز اینترنت
           MANIFEST=build_src/android/app/src/main/AndroidManifest.xml
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$MANIFEST"
 
