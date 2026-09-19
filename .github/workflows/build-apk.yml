@@ -48,6 +48,29 @@ jobs:
           cp -r app/lib/. build_src/lib/
           cp hasan.keystore build_src/android/app/hasan.keystore
 
+      # ========== فیکس اصلی Kotlin Version ==========
+      - name: Force Kotlin 2.1.0 (fix for flutter_vless)
+        run: |
+          set -e
+          echo "=== Fixing Kotlin version ==="
+
+          if [ -f build_src/android/settings.gradle ]; then
+            echo "Found settings.gradle"
+            # هر نسخه قدیمی را با 2.1.0 جایگزین می‌کند
+            sed -i -E 's/(id\s+"org\.jetbrains\.kotlin\.android"\s+version\s+")[^"]+(")/\12.1.0\2/' build_src/android/settings.gradle
+            echo "Updated settings.gradle:"
+            cat build_src/android/settings.gradle
+          elif [ -f build_src/android/settings.gradle.kts ]; then
+            echo "Found settings.gradle.kts"
+            sed -i -E 's/(id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+")[^"]+(")/\12.1.0\2/' build_src/android/settings.gradle.kts
+            echo "Updated settings.gradle.kts:"
+            cat build_src/android/settings.gradle.kts
+          else
+            echo "ERROR: settings.gradle not found!"
+            ls -la build_src/android/
+            exit 1
+          fi
+
       - name: Write v1+v2+v3 signing and VPN manifest
         run: |
           cat > build_src/android/key.properties << 'EOF'
