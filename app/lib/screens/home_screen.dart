@@ -232,7 +232,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     _saveDeleted();
     _showMsg(
-        _t('\( {toDelete.length} سرور حذف شد', ' \){toDelete.length} servers deleted'));
+        _t('${toDelete.length} سرور حذف شد', '${toDelete.length} servers deleted'));
   }
 
   Future<void> _toggleConnection() async {
@@ -492,7 +492,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                           '\( {_t("سرورها", "Servers")} ( \){_servers.length})', 
+                            '${_t("سرورها", "Servers")} (${_servers.length})',
                             style: TextStyle(
                               color: AppColors.muted(context),
                               fontSize: 11,
