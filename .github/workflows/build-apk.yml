@@ -57,7 +57,6 @@ jobs:
           storeFile=hasan.keystore
           EOF
 
-          # Groovy wins; drop the Kotlin DSL template so our signing flags apply.
           rm -f build_src/android/app/build.gradle.kts
           cat > build_src/android/app/build.gradle << 'EOF'
           plugins {
@@ -218,16 +217,14 @@ jobs:
           body: |
             ## نصب روی گوشی اندروید
 
-            **همین فایل را دانلود کنید:** `Hasan-VPN.apk` (برای تقریباً همه گوشی‌های جدید)
+            **همین فایل را دانلود کنید:** `Hasan-VPN.apk`
 
             1. نسخه قبلی برنامه را پاک کنید
-            2. فایل را از Downloads باز کنید (نه از داخل مرورگر)
-            3. اگر پرسید، «نصب از منابع ناشناس» را برای Files/Chrome روشن کنید
-            4. اجازه VPN را وقتی برنامه پرسید بدهید
+            2. فایل را از Downloads باز کنید
+            3. اگر پرسید، «نصب از منابع ناشناس» را روشن کنید
+            4. اجازه VPN را بدهید
 
             گوشی‌های خیلی قدیمی ۳۲بیتی: `Hasan-VPN-32bit.apk`
-
-            این بیلد با امضای v1+v2+v3 ساخته شده تا خطای «بسته معتبر نیست» روی اندروید ۱۱ به بعد تکرار نشود.
           files: dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
