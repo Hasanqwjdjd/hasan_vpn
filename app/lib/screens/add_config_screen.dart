@@ -1,7 +1,11 @@
+# مسیر مقصد در ریپو: app/lib/screens/add_config_screen.dart
+# ------------------------------------------------------------
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/server.dart';
 import '../services/app_colors.dart';
+import '../services/aether_service.dart';
+import 'qr_scan_screen.dart';
 
 class AddConfigScreen extends StatefulWidget {
   final String language;
@@ -22,6 +26,10 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _nameController = TextEditingController();
   bool _isFa = true;
   String _selectedType = 'manual'; // manual | aether | oblivion | siphon | tor
+
+  // تنظیمات Aether
+  String _aetherScan = 'balanced'; // fast | balanced | full
+  String _aetherProtocol = 'auto'; // auto | masque_h3 | masque_h2 | wireguard | gool
 
   @override
   void initState() {
@@ -48,6 +56,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     if (l.startsWith('hysteria2://') || l.startsWith('hy2://')) {
       return VpnProtocol.hysteria2;
     }
+    if (l.startsWith('aether://')) return VpnProtocol.aether;
     return VpnProtocol.custom;
   }
 
@@ -94,7 +103,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     final server = VpnServer(
       id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
       name: name,
-      flag: '🔧',
+      flag: protocol == VpnProtocol.aether ? '🟣' : '🔧',
       shareLink: link,
       protocol: protocol,
       host: _extractHost(link),
@@ -122,7 +131,48 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     }
   }
 
-  // Placeholder for free generators
+  Future<void> _scanQr() async {
+    final result = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => QrScanScreen(language: widget.language)),
+    );
+    if (result != null && result.trim().isNotEmpty) {
+      setState(() {
+        _linkController.text = result.trim();
+        if (_nameController.text.isEmpty) {
+          _nameController.text = _extractName(result.trim());
+        }
+      });
+      _showMsg(_t('کانفیگ از QR خوانده شد', 'Config read from QR'));
+    }
+  }
+
+  void _addAetherServer() {
+    final link = AetherService.buildConfigLink(
+      scanMode: _aetherScan,
+      protocolMode: _aetherProtocol,
+    );
+    final name = _nameController.text.trim().isNotEmpty
+        ? _nameController.text.trim()
+        : (_isFa ? 'Aether - دور زدن فیلترینگ' : 'Aether - Auto Discover');
+
+    final server = VpnServer(
+      id: 'aether_${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      flag: '🟣',
+      shareLink: link,
+      protocol: VpnProtocol.aether,
+      host: 'auto-discover',
+      port: 1819,
+      isDeletable: true,
+    );
+
+    widget.onServerAdded(server);
+    Navigator.pop(context);
+    _showMsg(_t('سرور Aether اضافه شد', 'Aether server added'));
+  }
+
+  // Placeholder for the still-unimplemented free generators (Oblivion/Siphon/Tor)
   void _generateFree(String type) {
     showDialog(
       context: context,
@@ -220,6 +270,176 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
+  Widget _buildChoiceRow({
+    required String label,
+    required List<String> values,
+    required Map<String, String> valueLabelsFa,
+    required Map<String, String> valueLabelsEn,
+    required String selected,
+    required ValueChanged<String> onSelected,
+    required Color color,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: AppColors.muted(context),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: values.map((v) {
+            final isSel = v == selected;
+            final label = _isFa ? (valueLabelsFa[v] ?? v) : (valueLabelsEn[v] ?? v);
+            return ChoiceChip(
+              label: Text(label),
+              selected: isSel,
+              onSelected: (_) => onSelected(v),
+              selectedColor: color.withOpacity(0.25),
+              backgroundColor: AppColors.surface(context),
+              labelStyle: TextStyle(
+                color: isSel ? color : AppColors.muted(context),
+                fontWeight: isSel ? FontWeight.w600 : FontWeight.w400,
+                fontSize: 12.5,
+              ),
+              side: BorderSide(color: isSel ? color : AppColors.border(context)),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAetherForm() {
+    const color = Color(0xFF7C4DFF);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.auto_awesome, color: color, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _t(
+                    'Aether یک سیستم دور زدن فیلترینگ است که خودش مسیر آزاد را پیدا و به آن وصل می‌شود؛ نیازی به لینک سرور نیست.',
+                    'Aether automatically discovers a working route and connects; no server link is needed.',
+                  ),
+                  style: TextStyle(color: AppColors.muted(context), fontSize: 12.5, height: 1.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        _buildChoiceRow(
+          label: _t('سرعت اسکن', 'Scan speed'),
+          values: AetherService.scanModes,
+          valueLabelsFa: const {
+            'fast': 'سریع',
+            'balanced': 'متعادل',
+            'full': 'کامل (دقیق‌تر)',
+          },
+          valueLabelsEn: const {
+            'fast': 'Fast',
+            'balanced': 'Balanced',
+            'full': 'Full (thorough)',
+          },
+          selected: _aetherScan,
+          onSelected: (v) => setState(() => _aetherScan = v),
+          color: color,
+        ),
+        const SizedBox(height: 18),
+        _buildChoiceRow(
+          label: _t('پروتکل انتقال', 'Transport protocol'),
+          values: AetherService.protocolModes,
+          valueLabelsFa: const {
+            'auto': 'خودکار',
+            'masque_h3': 'MASQUE (HTTP/3)',
+            'masque_h2': 'MASQUE (HTTP/2)',
+            'wireguard': 'WireGuard',
+            'gool': 'Nested WireGuard (gool)',
+          },
+          valueLabelsEn: const {
+            'auto': 'Auto',
+            'masque_h3': 'MASQUE (HTTP/3)',
+            'masque_h2': 'MASQUE (HTTP/2)',
+            'wireguard': 'WireGuard',
+            'gool': 'Nested WireGuard (gool)',
+          },
+          selected: _aetherProtocol,
+          onSelected: (v) => setState(() => _aetherProtocol = v),
+          color: color,
+        ),
+        const SizedBox(height: 18),
+        Text(
+          _t('نام (اختیاری)', 'Name (optional)'),
+          style: TextStyle(
+            color: AppColors.muted(context),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _nameController,
+          style: TextStyle(color: AppColors.fg(context)),
+          decoration: InputDecoration(
+            hintText: _t('مثال: Aether من', 'e.g. My Aether'),
+            hintStyle: TextStyle(color: AppColors.muted2(context)),
+            filled: true,
+            fillColor: AppColors.surface(context),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.border(context)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.border(context)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: color, width: 1.5),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton(
+            onPressed: _addAetherServer,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: Text(
+              _t('افزودن Aether', 'Add Aether'),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -233,9 +453,10 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         ),
         iconTheme: IconThemeData(color: AppColors.fg(context)),
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Type selection
             Text(
@@ -250,16 +471,16 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
 
             _buildTypeCard(
               title: _t('دستی / لینک', 'Manual / Link'),
-              subtitle: _t('Paste لینک VLESS / Trojan / ...',
-                  'Paste VLESS / Trojan / ... link'),
+              subtitle: _t('Paste یا اسکن QR لینک VLESS / Trojan / ...',
+                  'Paste or scan a VLESS / Trojan / ... link'),
               icon: Icons.link,
               type: 'manual',
               color: AppColors.accent,
             ),
             _buildTypeCard(
               title: 'Aether',
-              subtitle: _t('ساخت کانفیگ رایگان Aether',
-                  'Generate free Aether config'),
+              subtitle: _t('دور زدن فیلترینگ با اسکن خودکار مسیر',
+                  'Censorship circumvention with automatic route scanning'),
               icon: Icons.auto_awesome,
               type: 'aether',
               color: const Color(0xFF7C4DFF),
@@ -344,17 +565,12 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () {
-                        // QR scan placeholder
-                        _showMsg(_t(
-                            'اسکن QR در نسخه بعدی اضافه می‌شود',
-                            'QR scan will be added in next version'));
-                      },
+                      onPressed: _scanQr,
                       icon: const Icon(Icons.qr_code_scanner, size: 18),
                       label: Text(_t('اسکن QR', 'Scan QR')),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.muted(context),
-                        side: BorderSide(color: AppColors.border(context)),
+                        foregroundColor: AppColors.accent,
+                        side: const BorderSide(color: AppColors.accent),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                     ),
@@ -414,8 +630,10 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   ),
                 ),
               ),
+            ] else if (_selectedType == 'aether') ...[
+              _buildAetherForm(),
             ] else ...[
-              // Free generator section
+              // Free generator section (Oblivion / Siphon / Tor - still placeholder)
               const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.all(16),
