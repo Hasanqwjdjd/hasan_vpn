@@ -89,11 +89,16 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _testAll() async {
-    if (_testing) {
+  void _cancelTesting() {
+    setState(() {
       _cancelTest = true;
-      await Future.delayed(const Duration(milliseconds: 300));
-    }
+      _testing = false;
+      _status = _t('تست لغو شد', 'Test cancelled');
+    });
+  }
+
+  Future<void> _testAll() async {
+    if (_testing) return;
 
     setState(() {
       _testing = true;
@@ -126,12 +131,14 @@ class _HomeScreenState extends State<HomeScreen> {
       ServerTester.sortServers(_servers, descending: !_sortAscending);
       _servers = List.from(_servers);
       _testing = false;
-      final best = ServerTester.fastest(_servers);
-      if (best != null && _autoMode) {
-        _selected = best;
-        _status = '${_t('سریع‌ترین', 'Fastest')}: ${best.name}';
-      } else {
-        _status = _t('آماده', 'Ready');
+      if (!_cancelTest) {
+        final best = ServerTester.fastest(_servers);
+        if (best != null && _autoMode) {
+          _selected = best;
+          _status = '${_t('سریع‌ترین', 'Fastest')}: ${best.name}';
+        } else {
+          _status = _t('آماده', 'Ready');
+        }
       }
     });
   }
@@ -318,15 +325,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       IconButton(
                         icon: _testing
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppColors.accent))
+                            ? const Icon(Icons.stop_circle_outlined,
+                                color: AppColors.danger, size: 22)
                             : Icon(Icons.speed,
                                 color: AppColors.accent, size: 22),
-                        onPressed: _testing ? null : _testAll,
+                        onPressed: _testing ? _cancelTesting : _testAll,
                       ),
                     ],
                   ),
