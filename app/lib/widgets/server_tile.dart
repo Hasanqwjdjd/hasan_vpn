@@ -36,7 +36,9 @@ class ServerTile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: selected ? AppColors.elevated(context) : AppColors.surface(context),
+        color: selected
+            ? AppColors.elevated(context)
+            : AppColors.surface(context),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: selected ? AppColors.accent : AppColors.border(context),
@@ -68,32 +70,47 @@ class ServerTile extends StatelessWidget {
                 ),
                 if (server.status == ServerStatus.testing)
                   const SizedBox(
-                    width: 14, height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.accent,
+                    ),
                   )
                 else
                   Text(
                     server.ping != null ? '${server.ping} ms' : '---',
-                    style: TextStyle(color: pingColor, fontSize: 12, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: pingColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 if (onTest != null)
                   IconButton(
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
+                    constraints: const BoxConstraints(minWidth: 32),
                     iconSize: 18,
-                    icon: const Icon(Icons.bolt, color: AppColors.warn, size: 18),
-                    onPressed: server.status == ServerStatus.testing ? null : onTest,
+                    icon: const Icon(Icons.bolt,
+                        color: AppColors.warn, size: 18),
+                    onPressed: server.status == ServerStatus.testing
+                        ? null
+                        : onTest,
                   ),
                 if (onDelete != null && server.isDeletable)
                   IconButton(
-                    padding: const EdgeInsets.only(right: 4, left: 0),
-                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32),
                     iconSize: 18,
-                    icon: const Text('🗑️', style: TextStyle(fontSize: 14)),
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: AppColors.danger,
+                      size: 18,
+                    ),
                     onPressed: onDelete,
                   )
                 else
-                  const SizedBox(width: 20),
+                  const SizedBox(width: 32),
               ],
             ),
           ),
