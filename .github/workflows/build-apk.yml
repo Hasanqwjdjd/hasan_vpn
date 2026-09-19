@@ -22,9 +22,12 @@ jobs:
           channel: 'stable'
 
       - name: Decode Keystore
-        run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android-keystore.jks
-          ls -la android-keystore.jks
+  run: |
+    echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\n' | tr -d ' ' | base64 -d > android-keystore.jks
+    echo "--- keystore size ---"
+    ls -la android-keystore.jks
+    echo "--- verify keystore ---"
+    keytool -list -keystore android-keystore.jks -storepass "${{ secrets.KEYSTORE_PASSWORD }}" -alias "${{ secrets.KEY_ALIAS }}"
 
       - name: Create clean Flutter project
         run: flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite build_src
