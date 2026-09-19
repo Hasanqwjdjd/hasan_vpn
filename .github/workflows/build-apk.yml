@@ -24,15 +24,7 @@ jobs:
       - name: Decode Keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android-keystore.jks
-
-      - name: Create key.properties
-        run: |
-          cat > key.properties <<EOF
-          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword=${{ secrets.KEY_PASSWORD }}
-          keyAlias=${{ secrets.KEY_ALIAS }}
-          storeFile=$(pwd)/android-keystore.jks
-          EOF
+          ls -la android-keystore.jks
 
       - name: Create clean Flutter project
         run: flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite build_src
@@ -44,129 +36,153 @@ jobs:
           mkdir -p build_src/lib
           cp -r app/lib/. build_src/lib/
           cp android-keystore.jks build_src/android/
-          cp key.properties build_src/android/
 
-      - name: Upgrade AGP, Gradle, Kotlin, SDK, NDK
+      - name: Write custom settings.gradle
         run: |
-          SETTINGS=build_src/android/settings.gradle
-          sed -i 's/id "com.android.application" version "[0-9.]*"/id "com.android.application" version "8.3.0"/g' "$SETTINGS"
-          sed -i 's/id "com.android.library" version "[0-9.]*"/id "com.android.library" version "8.3.0"/g' "$SETTINGS"
-          sed -i 's/id "org.jetbrains.kotlin.android" version "[0-9.]*"/id "org.jetbrains.kotlin.android" version "2.1.0"/g' "$SETTINGS"
-          
-          WRAPPER=build_src/android/gradle/wrapper/gradle-wrapper.properties
-          sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-all.zip|' "$WRAPPER"
-          
-          BUILDGRADLE=build_src/android/app/build.gradle
-          # compileSdk 35
-          sed -i 's/compileSdk .*/compileSdk 35/' "$BUILDGRADLE"
-          sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' "$BUILDGRADLE"
-          # minSdk 23
-          sed -i 's/minSdk .*/minSdk 23/' "$BUILDGRADLE"
-          sed -i 's/minSdkVersion .*/minSdkVersion 23/' "$BUILDGRADLE"
-          sed -i 's/flutter.minSdkVersion/23/g' "$BUILDGRADLE"
-          # targetSdk 34
-          sed -i 's/targetSdk .*/targetSdk 34/' "$BUILDGRADLE"
-          sed -i 's/targetSdkVersion .*/targetSdkVersion 34/' "$BUILDGRADLE"
-          # NDK
-          if ! grep -q "ndkVersion" "$BUILDGRADLE"; then
-            sed -i 's/compileSdk 35/compileSdk 35\n    ndkVersion "27.0.12077973"/' "$BUILDGRADLE"
-          else
-            sed -i 's/ndkVersion .*/ndkVersion "27.0.12077973"/' "$BUILDGRADLE"
-          fi
+          cat > build_src/android/settings.gradle << 'EOF'
+          pluginManagement {
+              def flutterSdkPath = {
+                  def properties = new Properties()
+                  file("local.properties").withInputStream { properties.load(it) }
+                  def flutterSdkPath = properties.getProperty("flutter.sdk")
+                  assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
+                  return flutterSdkPath
+              }()
 
-      - name: Patch build.gradle (JVM 17, signing)
+              includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          plugins {
+              id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+              id "com.android.application" version "8.3.0" apply false
+              id "org.jetbrains.kotlin.android" version "2.1.0" apply false
+          }
+
+          include ":app"
+          EOF
+          echo "--- settings.gradle ---"
+          cat build_src/android/settings.gradle
+
+      - name: Write custom gradle-wrapper.properties
         run: |
-          python3 << 'PYEOF'
-          path = "build_src/android/app/build.gradle"
-          with open(path, "r") as f:
-              content = f.read()
+          cat > build_src/android/gradle/wrapper/gradle-wrapper.properties << 'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.4-all.zip
+          EOF
+          echo "--- wrapper ---"
+          cat build_src/android/gradle/wrapper/gradle-wrapper.properties
 
-          # ۱. import های لازم
-          if "import java.util.Properties" not in content:
-              content = "import java.util.Properties\nimport java.io.FileInputStream\n" + content
+      - name: Write key.properties
+        run: |
+          cat > build_src/android/key.properties << EOF
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=$(pwd)/build_src/android/android-keystore.jks
+          EOF
+          cat build_src/android/key.properties
+          # کپی keystore به پوشه android
+          cp android-keystore.jks build_src/android/android-keystore.jks
 
-          # ۲. keystore properties
-          keystore_block = '''
+      - name: Write custom build.gradle
+        run: |
+          cat > build_src/android/app/build.gradle << 'EOF'
+          plugins {
+              id "com.android.application"
+              id "kotlin-android"
+              id "dev.flutter.flutter-gradle-plugin"
+          }
+
+          def localProperties = new Properties()
+          def localPropertiesFile = rootProject.file("local.properties")
+          if (localPropertiesFile.exists()) {
+              localPropertiesFile.withReader("UTF-8") { reader ->
+                  localProperties.load(reader)
+              }
+          }
+
+          def flutterVersionCode = localProperties.getProperty("flutter.versionCode")
+          if (flutterVersionCode == null) {
+              flutterVersionCode = "1"
+          }
+
+          def flutterVersionName = localProperties.getProperty("flutter.versionName")
+          if (flutterVersionName == null) {
+              flutterVersionName = "1.0"
+          }
+
           def keystoreProperties = new Properties()
           def keystorePropertiesFile = rootProject.file('key.properties')
           if (keystorePropertiesFile.exists()) {
               keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
           }
-          '''
 
-          if "keystoreProperties = new Properties()" not in content:
-              content = content.replace("android {", keystore_block + "\nandroid {", 1)
+          android {
+              namespace = "com.hasan.hasan_vpn"
+              compileSdk = 35
+              ndkVersion = "27.0.12077973"
 
-          # ۳. signingConfigs
-          signing_block = '''    signingConfigs {
-              release {
-                  keyAlias keystoreProperties['keyAlias']
-                  keyPassword keystoreProperties['keyPassword']
-                  storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
-                  storePassword keystoreProperties['storePassword']
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+
+              signingConfigs {
+                  release {
+                      keyAlias keystoreProperties['keyAlias']
+                      keyPassword keystoreProperties['keyPassword']
+                      storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+                      storePassword keystoreProperties['storePassword']
+                  }
+              }
+
+              sourceSets {
+                  main.java.srcDirs += 'src/main/kotlin'
+              }
+
+              defaultConfig {
+                  applicationId = "com.hasan.hasan_vpn"
+                  minSdk = 23
+                  targetSdk = 34
+                  versionCode = flutterVersionCode.toInteger()
+                  versionName = flutterVersionName
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                      shrinkResources false
+                  }
               }
           }
-          '''
-          if "signingConfigs {" not in content:
-              content = content.replace("android {", "android {\n" + signing_block, 1)
 
-          # ۴. signingConfig در buildTypes
-          content = content.replace("signingConfig signingConfigs.debug", "signingConfig signingConfigs.release")
+          flutter {
+              source = "../.."
+          }
+          EOF
+          echo "--- build.gradle ---"
+          cat build_src/android/app/build.gradle
 
-          # ۵. compileOptions با JVM 17
-          import re
-          # اگه compileOptions هست، محتواش رو عوض کن
-          if "compileOptions" in content:
-              # حذف کل بلوک compileOptions قدیمی
-              content = re.sub(
-                  r'compileOptions\s*\{[^{}]*\}',
-                  '''compileOptions {
-                      sourceCompatibility JavaVersion.VERSION_17
-                      targetCompatibility JavaVersion.VERSION_17
-                  }''',
-                  content
-              )
-          else:
-              # اضافه کردن compileOptions به android block
-              content = content.replace(
-                  "android {",
-                  '''android {
-                      compileOptions {
-                          sourceCompatibility JavaVersion.VERSION_17
-                          targetCompatibility JavaVersion.VERSION_17
-                      }''',
-                  1
-              )
-
-          # ۶. kotlinOptions با jvmTarget 17
-          if "kotlinOptions" in content:
-              content = re.sub(
-                  r'kotlinOptions\s*\{[^{}]*\}',
-                  '''kotlinOptions {
-                      jvmTarget = "17"
-                  }''',
-                  content
-              )
-          else:
-              # اضافه بعد از compileOptions
-              content = content.replace(
-                  "compileOptions {",
-                  '''kotlinOptions {
-                      jvmTarget = "17"
-                  }
-                  compileOptions {''',
-                  1
-              )
-
-          with open(path, "w") as f:
-              f.write(content)
-
-          print("--- build.gradle ---")
-          print(content[:3000])
-          PYEOF
-
+      - name: Fix AndroidManifest (internet permission)
+        run: |
           MANIFEST=build_src/android/app/src/main/AndroidManifest.xml
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$MANIFEST"
+          echo "--- Manifest ---"
+          grep "uses-permission" "$MANIFEST"
 
       - name: Get dependencies
         working-directory: build_src
