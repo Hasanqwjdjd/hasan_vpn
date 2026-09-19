@@ -82,7 +82,7 @@ class SubscriptionService {
     final response = await http.get(
       Uri.parse(sub.url),
       headers: {
-        'User-Agent': 'HasanVPN/8.0',
+        'User-Agent': 'HasanVPN/10.0',
         'Accept': '*/*',
       },
     ).timeout(const Duration(seconds: 25));
@@ -93,7 +93,10 @@ class SubscriptionService {
 
     String content = response.body.trim();
 
-    if (content.length > 100 && !content.contains('://')) {
+    if (content.length > 100 &&
+        !content.contains('://') &&
+        !content.trim().startsWith('[') &&
+        !content.trim().startsWith('{')) {
       try {
         content = utf8.decode(base64.decode(base64.normalize(content)));
       } catch (_) {}
@@ -120,13 +123,14 @@ class SubscriptionService {
   static List<VpnServer> parseContent(String content, String subId) {
     final servers = <VpnServer>[];
 
-    if (content.trim().startsWith('[') || content.trim().startsWith('{')) {
+    final trimmed = content.trim();
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
       final fromJson = _parseJson(content, subId);
       if (fromJson.isNotEmpty) return fromJson;
     }
 
     final regex = RegExp(
-      r'(trojan|vless|vmess|hysteria2|hy2|aether)://[^\s"<>\\]+',
+      r'(trojan|vless|vmess|ss|ssr|hysteria2|hy2|aether|ssconf)://[^\s"<>\\]+',
       caseSensitive: false,
     );
 
@@ -154,7 +158,7 @@ class SubscriptionService {
         if (node is String) {
           if (node.contains('://')) {
             final match = RegExp(
-              r'(trojan|vless|vmess|hysteria2|hy2|aether)://[^\s"\\]+',
+              r'(trojan|vless|vmess|ss|ssr|hysteria2|hy2|aether|ssconf)://[^\s"\\]+',
               caseSensitive: false,
             ).firstMatch(node);
             if (match != null) {
@@ -205,8 +209,17 @@ class SubscriptionService {
         case 'aether':
           protocol = VpnProtocol.aether;
           break;
+        case 'ss':
+        case 'ssr':
+        case 'ssconf':
+          protocol = VpnProtocol.shadowsocks;
+          break;
         default:
-          return null;
+          protocol = VpnProtocol.custom;
+      }
+
+      if (scheme == 'ss' || scheme == 'ssr') {
+        return _parseShadowsocks(link, id, protocol);
       }
 
       Uri uri;
@@ -217,7 +230,7 @@ class SubscriptionService {
       }
 
       final host = uri.host;
-      if (host.isEmpty) return null;
+      if (host.isEmpty && scheme != 'vmess') return null;
 
       final port = uri.hasPort ? uri.port : 443;
 
@@ -225,19 +238,19 @@ class SubscriptionService {
       if (uri.fragment.isNotEmpty) {
         name = Uri.decodeComponent(uri.fragment);
       } else {
-        name = '$scheme://$host';
+        name = '\( scheme:// \){host.isEmpty ? "server" : host}';
       }
 
       final sni = uri.queryParameters['sni'] ??
           uri.queryParameters['host'] ??
-          host;
+          (host.isNotEmpty ? host : null);
 
       return VpnServer(
         id: id,
         name: name,
         flag: _guessFlag(name),
         protocol: protocol,
-        host: host,
+        host: host.isEmpty ? 'unknown' : host,
         port: port,
         sniOrHost: sni,
         isDeletable: true,
@@ -248,22 +261,86 @@ class SubscriptionService {
     }
   }
 
+  static VpnServer? _parseShadowsocks(
+      String link, String id, VpnProtocol protocol) {
+    try {
+      String name = 'Shadowsocks';
+      String host = 'unknown';
+      int port = 443;
+
+      final uri = Uri.tryParse(link);
+      if (uri != null && uri.host.isNotEmpty) {
+        host = uri.host;
+        port = uri.hasPort ? uri.port : 443;
+        if (uri.fragment.isNotEmpty) {
+          name = Uri.decodeComponent(uri.fragment);
+        }
+      } else {
+        final withoutScheme =
+            link.contains('://') ? link.split('://').last : link;
+        final hashIdx = withoutScheme.indexOf('#');
+        String main = withoutScheme;
+        if (hashIdx >= 0) {
+          name = Uri.decodeComponent(withoutScheme.substring(hashIdx + 1));
+          main = withoutScheme.substring(0, hashIdx);
+        }
+        try {
+          utf8.decode(base64.decode(base64.normalize(main.split('@').first)));
+        } catch (_) {}
+        if (main.contains('@')) {
+          final afterAt = main.split('@').last;
+          final hostPort = afterAt.split('#')[0];
+          if (hostPort.contains(':')) {
+            final parts = hostPort.split(':');
+            host = parts[0];
+            port = int.tryParse(parts.last) ?? 443;
+          }
+        }
+      }
+
+      return VpnServer(
+        id: id,
+        name: name,
+        flag: _guessFlag(name),
+        protocol: protocol,
+        host: host,
+        port: port,
+        isDeletable: true,
+        shareLink: link,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   static String _guessFlag(String name) {
     final n = name.toLowerCase();
-    if (n.contains('🇺🇸') || n.contains('united states')) return '🇺🇸';
-    if (n.contains('🇩🇪') || n.contains('germany')) return '🇩🇪';
+    if (n.contains('🇺🇸') || n.contains('united states') || n.contains('usa')) {
+      return '🇺🇸';
+    }
+    if (n.contains('🇩🇪') || n.contains('germany') || n.contains('de ')) {
+      return '🇩🇪';
+    }
     if (n.contains('🇫🇷') || n.contains('france')) return '🇫🇷';
-    if (n.contains('🇬🇧') || n.contains('england')) return '🇬🇧';
+    if (n.contains('🇬🇧') || n.contains('england') || n.contains('uk')) {
+      return '🇬🇧';
+    }
     if (n.contains('🇮🇷') || n.contains('iran')) return '🇮🇷';
-    if (n.contains('🇹🇷') || n.contains('turkey')) return '🇹🇷';
+    if (n.contains('🇹🇷') || n.contains('turkey') || n.contains('türk')) {
+      return '🇹🇷';
+    }
     if (n.contains('🇳🇱') || n.contains('netherland')) return '🇳🇱';
     if (n.contains('🇯🇵') || n.contains('japan')) return '🇯🇵';
     if (n.contains('🇭🇰') || n.contains('hong')) return '🇭🇰';
     if (n.contains('🇸🇬') || n.contains('singapore')) return '🇸🇬';
-    if (n.contains('🇦🇪') || n.contains('emirates')) return '🇦🇪';
+    if (n.contains('🇦🇪') || n.contains('emirates') || n.contains('dubai')) {
+      return '🇦🇪';
+    }
     if (n.contains('🇷🇺') || n.contains('russia')) return '🇷🇺';
     if (n.contains('🇨🇦') || n.contains('canada')) return '🇨🇦';
     if (n.contains('🇮🇳') || n.contains('india')) return '🇮🇳';
+    if (n.contains('🇰🇷') || n.contains('korea')) return '🇰🇷';
+    if (n.contains('🇦🇺') || n.contains('australia')) return '🇦🇺';
     return '🌐';
   }
 }
