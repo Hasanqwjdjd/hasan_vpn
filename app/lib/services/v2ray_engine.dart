@@ -6,10 +6,8 @@ class V2RayEngine {
   static bool _connected = false;
   static VpnServer? _current;
 
-  // ⭐ onStatusChanged رو با پارامتر dynamic می‌گیریم (بدون پارس کردن)
   static final FlutterVless _engine = FlutterVless(
     onStatusChanged: (dynamic status) {
-      // فقط پرینت می‌کنیم، تفسیر نمی‌کنیم
       print('V2Ray status: $status');
     },
   );
@@ -19,20 +17,25 @@ class V2RayEngine {
 
   static Future<void> init() async {
     if (_initialized) return;
-    await _engine.initializeVless(
-      notificationIconResourceType: 'mipmap',
-      notificationIconResourceName: 'ic_launcher',
-      providerBundleIdentifier: 'com.hasan.vpn.VPNProvider',
-      groupIdentifier: 'group.com.hasan.vpn',
-    );
+    try {
+      await _engine.initializeVless(
+        providerBundleIdentifier: 'com.hasan.hasan_vpn',
+        groupIdentifier: 'group.com.hasan.hasan_vpn',
+      );
+    } catch (e) {
+      print('V2Ray init error: $e');
+    }
     _initialized = true;
   }
 
-  /// اتصال در حالت پروکسی (بدون VPN)
   static Future<bool> connect(VpnServer server) async {
     try {
-      final parsed = FlutterVless.parseFromURL(server.shareLink);
+      final parsed = FlutterVless.parse(server.shareLink);
       final config = parsed.getFullConfiguration();
+
+      try {
+        await _engine.requestPermission();
+      } catch (_) {}
 
       await _engine.startVless(
         remark: server.name,
