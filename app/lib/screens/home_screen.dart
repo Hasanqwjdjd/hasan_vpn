@@ -473,7 +473,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     selected: _selected?.id == s.id,
                     onTap: () => setState(() => _selected = s),
                     onTest: () => _testOne(s),
-                    onDelete: s.isDeletable ? () => _deleteServer(s) : null,
+                    onDelete: () => _deleteServer(s),
                   );
                 },
               ),
