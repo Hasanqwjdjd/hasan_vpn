@@ -18,10 +18,7 @@ class V2RayEngine {
   static Future<void> init() async {
     if (_initialized) return;
     try {
-      await _engine.initializeVless(
-        providerBundleIdentifier: 'com.hasan.hasan_vpn',
-        groupIdentifier: 'group.com.hasan.hasan_vpn',
-      );
+      await _engine.initializeVless();
     } catch (e) {
       print('V2Ray init error: $e');
     }
@@ -30,7 +27,7 @@ class V2RayEngine {
 
   static Future<bool> connect(VpnServer server) async {
     try {
-      final parsed = FlutterVless.parse(server.shareLink);
+      final parsed = await FlutterVless.parse(server.shareLink);
       final config = parsed.getFullConfiguration();
 
       try {
