@@ -4,9 +4,10 @@ class Subscription {
   final String url;
   final bool isDefault;
   bool autoUpdate;
-  int intervalHours; // هر چند ساعت بروزرسانی بشه
+  int intervalHours;
   DateTime? lastUpdated;
   int serverCount;
+  List<String> cachedLinks;
 
   Subscription({
     required this.id,
@@ -17,7 +18,8 @@ class Subscription {
     this.intervalHours = 12,
     this.lastUpdated,
     this.serverCount = 0,
-  });
+    List<String>? cachedLinks,
+  }) : cachedLinks = cachedLinks ?? [];
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -28,6 +30,7 @@ class Subscription {
         'intervalHours': intervalHours,
         'lastUpdated': lastUpdated?.toIso8601String(),
         'serverCount': serverCount,
+        'cachedLinks': cachedLinks,
       };
 
   factory Subscription.fromJson(Map<String, dynamic> json) => Subscription(
@@ -41,9 +44,11 @@ class Subscription {
             ? DateTime.tryParse(json['lastUpdated'] as String)
             : null,
         serverCount: json['serverCount'] as int? ?? 0,
+        cachedLinks: (json['cachedLinks'] as List?)
+            ?.map((e) => e.toString())
+            .toList(),
       );
 
-  /// آیا وقت بروزرسانی رسیده؟
   bool needsUpdate() {
     if (!autoUpdate) return false;
     if (lastUpdated == null) return true;
