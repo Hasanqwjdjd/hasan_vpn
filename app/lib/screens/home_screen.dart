@@ -196,8 +196,12 @@ class _HomeScreenState extends State<HomeScreen> {
       s.status = ServerStatus.testing;
       s.ping = null;
     });
-    await ServerTester.testOne(s);
-    if (mounted) setState(() {});
+    final ping = await ServerTester.testPing(s);
+    if (!mounted) return;
+    setState(() {
+      s.ping = ping;
+      s.status = ping != null ? ServerStatus.online : ServerStatus.offline;
+    });
   }
 
   void _deleteServer(VpnServer s) {
@@ -227,7 +231,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _rebuildServerList();
     });
     _saveDeleted();
-    _showMsg(_t('\( {toDelete.length} سرور حذف شد', ' \){toDelete.length} servers deleted'));
+    _showMsg(
+        _t('\( {toDelete.length} سرور حذف شد', ' \){toDelete.length} servers deleted'));
   }
 
   Future<void> _toggleConnection() async {
