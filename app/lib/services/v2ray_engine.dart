@@ -18,7 +18,10 @@ class V2RayEngine {
   static Future<void> init() async {
     if (_initialized) return;
     try {
-      await _engine.initializeVless();
+      await _engine.initializeVless(
+        providerBundleIdentifier: 'com.hasan.hasan_vpn',
+        groupIdentifier: 'group.com.hasan.hasan_vpn',
+      );
     } catch (e) {
       print('V2Ray init error: $e');
     }
@@ -27,17 +30,18 @@ class V2RayEngine {
 
   static Future<bool> connect(VpnServer server) async {
     try {
-      final parsed = await FlutterVless.parse(server.shareLink);
-      final config = parsed.getFullConfiguration();
+      final FlutterVlessURL parser = FlutterVless.parse(server.shareLink);
+      final String config = parser.getFullConfiguration();
 
-      try {
-        await _engine.requestPermission();
-      } catch (_) {}
+      final bool allowed = await _engine.requestPermission();
+      if (!allowed) {
+        print('VPN permission denied');
+        return false;
+      }
 
       await _engine.startVless(
-        remark: server.name,
+        remark: parser.remark,
         config: config,
-        proxyOnly: false,
       );
 
       _connected = true;
