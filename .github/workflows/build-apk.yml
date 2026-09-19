@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -12,18 +12,17 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '17'
+          distribution: temurin
+          java-version: "17"
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.27.1'
-          channel: 'stable'
+          flutter-version: "3.27.4"
+          channel: stable
+          cache: true
 
       - name: Ensure keystore exists
         run: |
@@ -37,76 +36,29 @@ jobs:
               -storepass hasan12345 \
               -keypass hasan12345 \
               -dname "CN=Hasan, OU=Hasan, O=Hasan, L=Tehran, S=Tehran, C=IR"
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add hasan.keystore
-            git commit -m "Add keystore (auto-generated)"
-            git push
           fi
           keytool -list -keystore hasan.keystore -storepass hasan12345 -alias hasan
 
-      - name: Create clean Flutter project
-        run: flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite build_src
-
-      - name: Copy our app code ON TOP
+      - name: Create Flutter Android project
         run: |
+          flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite build_src
           cp -f app/pubspec.yaml build_src/pubspec.yaml
           rm -rf build_src/lib
           mkdir -p build_src/lib
           cp -r app/lib/. build_src/lib/
-          cp hasan.keystore build_src/android/
+          cp hasan.keystore build_src/android/app/hasan.keystore
 
-      - name: Write settings.gradle
-        run: |
-          cat > build_src/android/settings.gradle << 'EOF'
-          pluginManagement {
-              def flutterSdkPath = {
-                  def properties = new Properties()
-                  file("local.properties").withInputStream { properties.load(it) }
-                  def flutterSdkPath = properties.getProperty("flutter.sdk")
-                  assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
-                  return flutterSdkPath
-              }()
-
-              includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
-
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-
-          plugins {
-              id "dev.flutter.flutter-plugin-loader" version "1.0.0"
-              id "com.android.application" version "8.7.2" apply false
-              id "org.jetbrains.kotlin.android" version "2.2.0" apply false
-          }
-
-          include ":app"
-          EOF
-
-      - name: Write gradle wrapper
-        run: |
-          cat > build_src/android/gradle/wrapper/gradle-wrapper.properties << 'EOF'
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.9-all.zip
-          EOF
-
-      - name: Write key.properties
+      - name: Write v1+v2+v3 signing and VPN manifest
         run: |
           cat > build_src/android/key.properties << 'EOF'
           storePassword=hasan12345
           keyPassword=hasan12345
           keyAlias=hasan
-          storeFile=../hasan.keystore
+          storeFile=hasan.keystore
           EOF
 
-      - name: Write app build.gradle
-        run: |
+          # Groovy wins; drop the Kotlin DSL template so our signing flags apply.
+          rm -f build_src/android/app/build.gradle.kts
           cat > build_src/android/app/build.gradle << 'EOF'
           plugins {
               id "com.android.application"
@@ -114,26 +66,8 @@ jobs:
               id "dev.flutter.flutter-gradle-plugin"
           }
 
-          def localProperties = new Properties()
-          def localPropertiesFile = rootProject.file("local.properties")
-          if (localPropertiesFile.exists()) {
-              localPropertiesFile.withReader("UTF-8") { reader ->
-                  localProperties.load(reader)
-              }
-          }
-
-          def flutterVersionCode = localProperties.getProperty("flutter.versionCode")
-          if (flutterVersionCode == null) {
-              flutterVersionCode = "1"
-          }
-
-          def flutterVersionName = localProperties.getProperty("flutter.versionName")
-          if (flutterVersionName == null) {
-              flutterVersionName = "1.0"
-          }
-
           def keystoreProperties = new Properties()
-          def keystorePropertiesFile = rootProject.file('key.properties')
+          def keystorePropertiesFile = rootProject.file("key.properties")
           if (keystorePropertiesFile.exists()) {
               keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
           }
@@ -141,7 +75,7 @@ jobs:
           android {
               namespace = "com.hasan.hasan_vpn"
               compileSdk = 35
-              ndkVersion = "27.0.12077973"
+              ndkVersion = flutter.ndkVersion
 
               compileOptions {
                   sourceCompatibility = JavaVersion.VERSION_17
@@ -154,21 +88,22 @@ jobs:
 
               signingConfigs {
                   release {
-                      keyAlias keystoreProperties['keyAlias']
-                      keyPassword keystoreProperties['keyPassword']
-                      storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
-                      storePassword keystoreProperties['storePassword']
+                      keyAlias keystoreProperties["keyAlias"]
+                      keyPassword keystoreProperties["keyPassword"]
+                      storeFile file(keystoreProperties["storeFile"])
+                      storePassword keystoreProperties["storePassword"]
                       v1SigningEnabled true
-                      v2SigningEnabled false
+                      v2SigningEnabled true
+                      enableV3Signing true
                   }
               }
 
               defaultConfig {
                   applicationId = "com.hasan.hasan_vpn"
-                  minSdk = 23
+                  minSdk = 24
                   targetSdk = 34
-                  versionCode = flutterVersionCode.toInteger()
-                  versionName = flutterVersionName
+                  versionCode = flutter.versionCode
+                  versionName = flutter.versionName
               }
 
               buildTypes {
@@ -178,6 +113,12 @@ jobs:
                       shrinkResources false
                   }
               }
+
+              packaging {
+                  jniLibs {
+                      useLegacyPackaging true
+                  }
+              }
           }
 
           flutter {
@@ -185,42 +126,108 @@ jobs:
           }
           EOF
 
-      - name: Add internet permission
-        run: |
-          MANIFEST=build_src/android/app/src/main/AndroidManifest.xml
-          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$MANIFEST"
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("build_src/android/app/src/main/AndroidManifest.xml")
+          text = p.read_text()
+          perms = """    <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+              <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+              <uses-permission android:name="android.permission.WAKE_LOCK"/>
+              <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
+          """
+          if "android.permission.INTERNET" not in text:
+              text = text.replace("<application", perms + "    <application", 1)
+          if 'android:extractNativeLibs' not in text:
+              text = text.replace("<application", '<application android:extractNativeLibs="true" android:usesCleartextTraffic="true"', 1)
+          queries = """    <queries>
+              <intent>
+                  <action android:name="android.net.VpnService"/>
+              </intent>
+          </queries>
+          """
+          if "android.net.VpnService" not in text:
+              text = text.replace("</manifest>", queries + "</manifest>")
+          p.write_text(text)
+          print(p.read_text())
+          PY
 
-      - name: Get dependencies
+      - name: Flutter pub get
         working-directory: build_src
-        run: |
-          flutter clean
-          flutter pub get
-          flutter precache
+        run: flutter pub get
 
-      - name: Build APK
+      - name: Build ARM APKs
         working-directory: build_src
-        run: flutter build apk --release --split-per-abi --no-shrink
+        run: >
+          flutter build apk --release --no-shrink
+          --split-per-abi
+          --target-platform android-arm,android-arm64
+          --build-name=10.0.0
+          --build-number=${{ github.run_number }}
 
-      - name: Verify APK signature
+      - name: Verify APK has v2 signature
         run: |
-          BUILD_TOOLS=$(ls $ANDROID_HOME/build-tools/ | sort -V | tail -n 1)
-          echo "Using build-tools: $BUILD_TOOLS"
+          set -euo pipefail
+          BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools/" | sort -V | tail -n 1)
+          APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner"
+          echo "Using $APKSIGNER"
+          FAIL=0
           for f in build_src/build/app/outputs/flutter-apk/*.apk; do
-            echo "=== Checking $f ==="
-            $ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner verify --verbose "$f" || echo "SIGNATURE FAILED: $f"
+            echo "=== $f ==="
+            ls -lh "$f"
+            OUT=$("$APKSIGNER" verify --verbose "$f" 2>&1) || {
+              echo "$OUT"
+              echo "apksigner verify FAILED: $f"
+              FAIL=1
+              continue
+            }
+            echo "$OUT"
+            if ! echo "$OUT" | grep -q "Verified using v2 scheme"; then
+              echo "MISSING v2 signature: $f"
+              FAIL=1
+            fi
           done
+          exit "$FAIL"
 
-      - name: Upload APK
+      - name: Name installer APKs
+        run: |
+          mkdir -p dist
+          cp build_src/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/Hasan-VPN.apk
+          cp build_src/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/Hasan-VPN-arm64.apk
+          if [ -f build_src/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk ]; then
+            cp build_src/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/Hasan-VPN-32bit.apk
+          fi
+          ls -lh dist
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: hasan-vpn-apk
-          path: build_src/build/app/outputs/flutter-apk/*.apk
+          path: dist/*.apk
 
-      - name: Create Release
+      - name: Create GitHub Release
         if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: v9.0.${{ github.run_number }}
-          files: build_src/build/app/outputs/flutter-apk/*.apk
+          tag_name: v10.0.${{ github.run_number }}
+          name: حسن VPN v10.0.${{ github.run_number }}
+          body: |
+            ## نصب روی گوشی اندروید
+
+            **همین فایل را دانلود کنید:** `Hasan-VPN.apk` (برای تقریباً همه گوشی‌های جدید)
+
+            1. نسخه قبلی برنامه را پاک کنید
+            2. فایل را از Downloads باز کنید (نه از داخل مرورگر)
+            3. اگر پرسید، «نصب از منابع ناشناس» را برای Files/Chrome روشن کنید
+            4. اجازه VPN را وقتی برنامه پرسید بدهید
+
+            گوشی‌های خیلی قدیمی ۳۲بیتی: `Hasan-VPN-32bit.apk`
+
+            این بیلد با امضای v1+v2+v3 ساخته شده تا خطای «بسته معتبر نیست» روی اندروید ۱۱ به بعد تکرار نشود.
+          files: dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
