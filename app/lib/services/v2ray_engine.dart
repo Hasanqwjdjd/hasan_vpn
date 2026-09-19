@@ -2,10 +2,17 @@ import 'package:flutter_vless/flutter_vless.dart';
 import '../models/server.dart';
 
 class V2RayEngine {
-  static final FlutterVless _engine = FlutterVless();
   static bool _initialized = false;
   static bool _connected = false;
   static VpnServer? _current;
+
+  // ⭐ FlutterVless با پارامتر onStatusChanged
+  static final FlutterVless _engine = FlutterVless(
+    onStatusChanged: (VlessStatus status) {
+      // وضعیت اتصال
+      _connected = status.state == VlessState.connected;
+    },
+  );
 
   static bool get isConnected => _connected;
   static VpnServer? get current => _current;
@@ -30,7 +37,7 @@ class V2RayEngine {
       await _engine.startVless(
         remark: server.name,
         config: config,
-        proxyOnly: true, // 🔑 حالت پروکسی — بدون VPN icon
+        proxyOnly: true,
       );
 
       _connected = true;
