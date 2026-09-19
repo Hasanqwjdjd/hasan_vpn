@@ -34,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _autoMode = true;
   bool _connecting = false;
   bool _connected = false;
+  bool _sortAscending = true;
   String _status = 'آماده';
   int _tested = 0;
   int _total = 0;
@@ -45,12 +46,12 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadDeleted();
-    _rebuildServerList();
-    _initEngine();
+    _bootstrap();
   }
 
-  Future<void> _initEngine() async {
+  Future<void> _bootstrap() async {
+    await _loadDeleted();
+    _rebuildServerList();
     await V2RayEngine.init();
   }
 
@@ -66,7 +67,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_deletedKey);
     if (raw != null) {
-      try { _deletedIds = (jsonDecode(raw) as List).cast<String>().toSet(); } catch (_) {}
+      try {
+        _deletedIds = (jsonDecode(raw) as List).cast<String>().toSet();
+      } catch (_) {}
     }
   }
 
@@ -76,11 +79,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _rebuildServerList() {
+    if (!mounted) return;
     setState(() {
       _servers = [
         ...kServers.where((s) => !_deletedIds.contains(s.id)),
         ...widget.extraServers.where((s) => !_deletedIds.contains(s.id)),
       ];
+      ServerTester.sortServers(_servers, descending: !_sortAscending);
     });
   }
 
@@ -95,7 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _cancelTest = false;
       _tested = 0;
       _total = _servers.length;
-      _status = _t('در حال تست سرورها...', 'Testing servers...');
+      _status = _t('در حال تست...', 'Testing...');
       for (final s in _servers) {
         s.ping = null;
         s.status = ServerStatus.idle;
@@ -109,7 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
       onListUpdated: () {
         if (!mounted) return;
         setState(() {
-          ServerTester.sortServers(_servers);
+          ServerTester.sortServers(_servers, descending: !_sortAscending);
           _servers = List.from(_servers);
         });
       },
@@ -118,7 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     setState(() {
-      ServerTester.sortServers(_servers);
+      ServerTester.sortServers(_servers, descending: !_sortAscending);
       _servers = List.from(_servers);
       _testing = false;
       final best = ServerTester.fastest(_servers);
@@ -141,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       server.ping = ping;
       server.status = ping != null ? ServerStatus.online : ServerStatus.offline;
-      ServerTester.sortServers(_servers);
+      ServerTester.sortServers(_servers, descending: !_sortAscending);
       _servers = List.from(_servers);
     });
   }
@@ -157,7 +162,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _deleteInvalid() {
     final toDelete = _servers
-        .where((s) => s.isDeletable && s.status == ServerStatus.offline && s.ping == null)
+        .where((s) =>
+            s.isDeletable &&
+            s.status == ServerStatus.offline &&
+            s.ping == null)
         .toList();
 
     if (toDelete.isEmpty) {
@@ -178,44 +186,58 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text(_t('لغو', 'Cancel'), style: TextStyle(color: AppColors.muted(ctx))),
+            child: Text(_t('لغو', 'Cancel'),
+                style: TextStyle(color: AppColors.muted(ctx))),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
               setState(() {
-                for (final s in toDelete) { _deletedIds.add(s.id); }
+                for (final s in toDelete) {
+                  _deletedIds.add(s.id);
+                }
                 _servers.removeWhere((s) => toDelete.contains(s));
-                if (toDelete.any((s) => s.id == _selected?.id)) _selected = null;
+                if (toDelete.any((s) => s.id == _selected?.id)) {
+                  _selected = null;
+                }
               });
               _saveDeleted();
+              _showMsg('${toDelete.length} ${_t('سرور حذف شد', 'servers deleted')}');
             },
-            child: Text(_t('حذف', 'Delete'), style: const TextStyle(color: AppColors.danger)),
+            child: Text(_t('حذف', 'Delete'),
+                style: const TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
     );
   }
 
-  /// اتصال / قطع اتصال
   Future<void> _toggleConnection() async {
     if (_connecting) return;
 
-    // اگه وصل بودیم → قطع
     if (_connected) {
-      setState(() { _connecting = true; _status = _t('در حال قطع...', 'Disconnecting...'); });
+      setState(() {
+        _connecting = true;
+        _status = _t('در حال قطع...', 'Disconnecting...');
+      });
       await V2RayEngine.disconnect();
-      setState(() { _connected = false; _connecting = false; _status = _t('قطع شد', 'Disconnected'); });
+      setState(() {
+        _connected = false;
+        _connecting = false;
+        _status = _t('قطع شد', 'Disconnected');
+      });
       return;
     }
 
-    // وصل شدن
     if (_selected == null) {
       _showMsg(_t('اول یه سرور انتخاب کن', 'Select a server first'));
       return;
     }
 
-    setState(() { _connecting = true; _status = _t('در حال اتصال...', 'Connecting...'); });
+    setState(() {
+      _connecting = true;
+      _status = _t('در حال اتصال...', 'Connecting...');
+    });
 
     final ok = await V2RayEngine.connect(_selected!);
 
@@ -237,6 +259,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _showMsg('${_servers.length} ${_t('سرور کپی شد', 'servers copied')}');
   }
 
+  void _toggleSort() {
+    setState(() {
+      _sortAscending = !_sortAscending;
+      ServerTester.sortServers(_servers, descending: !_sortAscending);
+      _servers = List.from(_servers);
+    });
+  }
+
   void _showMsg(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -251,74 +281,154 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-              child: Row(
+            Container(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+              child: Column(
                 children: [
-                  SizedBox(
-                    width: 40,
-                    child: widget.onOpenSettings != null
-                        ? IconButton(
-                            padding: EdgeInsets.zero,
-                            icon: Icon(Icons.settings, color: AppColors.muted(context), size: 22),
-                            onPressed: widget.onOpenSettings,
-                          )
-                        : null,
-                  ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        Text(
-                          _isFa ? 'حسن' : 'Hasan',
-                          style: TextStyle(color: AppColors.fg(context), fontSize: 24, fontWeight: FontWeight.bold),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.settings,
+                            color: AppColors.muted(context), size: 22),
+                        onPressed: widget.onOpenSettings,
+                      ),
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text(
+                              _isFa ? 'حسن' : 'Hasan',
+                              style: TextStyle(
+                                color: AppColors.fg(context),
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _status,
+                              style: TextStyle(
+                                  color: AppColors.muted(context),
+                                  fontSize: 11),
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _status,
-                          style: TextStyle(color: AppColors.muted(context), fontSize: 11),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
+                      ),
+                      IconButton(
+                        icon: _testing
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.accent))
+                            : Icon(Icons.speed,
+                                color: AppColors.accent, size: 22),
+                        onPressed: _testing ? null : _testAll,
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 40),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.sort,
+                            color: AppColors.muted(context), size: 20),
+                        onPressed: _toggleSort,
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.delete_sweep,
+                            color: AppColors.danger, size: 20),
+                        onPressed: _deleteInvalid,
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.copy_all,
+                            color: AppColors.muted(context), size: 20),
+                        onPressed: _copyAll,
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          _autoMode
+                              ? Icons.auto_mode
+                              : Icons.auto_mode_outlined,
+                          color: _autoMode
+                              ? AppColors.accent
+                              : AppColors.muted(context),
+                          size: 20,
+                        ),
+                        onPressed: () =>
+                            setState(() => _autoMode = !_autoMode),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
-            // دکمه اتصال
+            const SizedBox(height: 8),
             GestureDetector(
               onTap: _connecting ? null : _toggleConnection,
               child: Container(
-                width: 130, height: 130,
+                width: 130,
+                height: 130,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: _connected ? AppColors.accent : (_selected != null ? AppColors.accent : AppColors.border(context)),
+                    color: _connected
+                        ? AppColors.accent
+                        : (_selected != null
+                            ? AppColors.accent
+                            : AppColors.border(context)),
                     width: 3,
                   ),
                   color: _connected
                       ? AppColors.accent.withOpacity(0.15)
-                      : (_selected != null ? AppColors.accent.withOpacity(0.05) : Colors.transparent),
-                  boxShadow: _connected ? [BoxShadow(color: AppColors.accent.withOpacity(0.3), blurRadius: 30, spreadRadius: 5)] : null,
+                      : (_selected != null
+                          ? AppColors.accent.withOpacity(0.05)
+                          : Colors.transparent),
+                  boxShadow: _connected
+                      ? [
+                          BoxShadow(
+                              color: AppColors.accent.withOpacity(0.3),
+                              blurRadius: 30,
+                              spreadRadius: 5)
+                        ]
+                      : null,
                 ),
                 child: Center(
                   child: _connecting
-                      ? const CircularProgressIndicator(color: AppColors.accent)
+                      ? const CircularProgressIndicator(
+                          color: AppColors.accent)
                       : Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              _connected ? Icons.shield : Icons.power_settings_new,
-                              color: _connected ? AppColors.accent : (_selected != null ? AppColors.accent : AppColors.muted2(context)),
+                              _connected
+                                  ? Icons.shield
+                                  : Icons.power_settings_new,
+                              color: _connected
+                                  ? AppColors.accent
+                                  : (_selected != null
+                                      ? AppColors.accent
+                                      : AppColors.muted2(context)),
                               size: 36,
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              _connected ? _t('قطع', 'Disconnect') : (_selected != null ? _t('اتصال', 'Connect') : _t('انتخاب سرور', 'Pick server')),
+                              _connected
+                                  ? _t('قطع', 'Disconnect')
+                                  : (_selected != null
+                                      ? _t('اتصال', 'Connect')
+                                      : _t('انتخاب سرور', 'Pick server')),
                               style: TextStyle(
-                                color: _connected ? AppColors.accent : (_selected != null ? AppColors.accent : AppColors.muted2(context)),
-                                fontSize: 12, fontWeight: FontWeight.w600,
+                                color: _connected
+                                    ? AppColors.accent
+                                    : (_selected != null
+                                        ? AppColors.accent
+                                        : AppColors.muted2(context)),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
@@ -326,70 +436,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 4),
-            TextButton.icon(
-              onPressed: _copyAll,
-              icon: Icon(Icons.copy_all, color: AppColors.muted(context), size: 13),
-              label: Text(_t('کپی همه سرورها', 'Copy all servers'), style: TextStyle(color: AppColors.muted(context), fontSize: 11)),
-            ),
-            // دکمه‌های تست و تنظیمات
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: _testing ? null : _testAll,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: _testing ? AppColors.elevated(context) : AppColors.accent.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: _testing ? AppColors.border(context) : AppColors.accent),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (_testing)
-                              const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent))
-                            else
-                              const Icon(Icons.speed, color: AppColors.accent, size: 16),
-                            const SizedBox(width: 6),
-                            Text(
-                              _testing ? '$_tested / $_total' : _t('تست همه', 'Test All'),
-                              style: TextStyle(color: _testing ? AppColors.fg(context) : AppColors.accent, fontSize: 12, fontWeight: FontWeight.w600),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface(context),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.border(context)),
-                    ),
-                    child: Transform.scale(
-                      scale: 0.85,
-                      child: Switch(value: _autoMode, onChanged: (v) => setState(() => _autoMode = v), activeColor: AppColors.accent),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  IconButton(
-                    onPressed: _deleteInvalid,
-                    icon: const Icon(Icons.delete_sweep, color: AppColors.danger, size: 20),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
-                    style: IconButton.styleFrom(backgroundColor: AppColors.surface(context), side: BorderSide(color: AppColors.border(context))),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            // لیست سرورها
+            const SizedBox(height: 12),
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -403,8 +450,19 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           Text(
                             '${_t('سرورها', 'Servers')} (${_servers.length})',
-                            style: TextStyle(color: AppColors.muted(context), fontSize: 11, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              color: AppColors.muted(context),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
+                          if (_testing)
+                            Text(
+                              '$_tested / $_total',
+                              style: TextStyle(
+                                  color: AppColors.muted2(context),
+                                  fontSize: 10),
+                            ),
                         ],
                       ),
                     );
