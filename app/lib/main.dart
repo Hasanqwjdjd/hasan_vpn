@@ -31,8 +31,9 @@ class _HasanAppState extends State<HasanApp> {
     _bootstrap();
   }
 
-  Future<void> _bootstrap() async {
-    await SettingsService.loadVersion();
+Future<void> _bootstrap() async {
+  await SettingsService.loadVersion();
+  _themeMode = await SettingsService.getThemeMode();
     _themeMode = await SettingsService.getThemeMode();
     _language = await SettingsService.getLanguage();
     final subs = await SubscriptionService.load();
