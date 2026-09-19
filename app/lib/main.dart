@@ -31,10 +31,8 @@ class _HasanAppState extends State<HasanApp> {
     _bootstrap();
   }
 
-Future<void> _bootstrap() async {
-  await SettingsService.loadVersion();
-  _themeMode = await SettingsService.getThemeMode();
-  _themeMode = await SettingsService.getThemeMode();
+  Future<void> _bootstrap() async {
+    await SettingsService.loadVersion();
     _themeMode = await SettingsService.getThemeMode();
     _language = await SettingsService.getLanguage();
     final subs = await SubscriptionService.load();
@@ -102,7 +100,8 @@ Future<void> _bootstrap() async {
       darkTheme: _darkTheme(),
       themeMode: _themeModeEnum(),
       builder: (context, child) => Directionality(
-        textDirection: _language == 'fa' ? TextDirection.rtl : TextDirection.ltr,
+        textDirection:
+            _language == 'fa' ? TextDirection.rtl : TextDirection.ltr,
         child: child!,
       ),
       home: _loading
@@ -140,7 +139,8 @@ class _LoadingScreen extends StatelessWidget {
             const CircularProgressIndicator(color: AppColors.accent),
             const SizedBox(height: 16),
             Text('در حال بارگذاری سرورها...',
-                style: TextStyle(color: AppColors.muted(context), fontSize: 13)),
+                style:
+                    TextStyle(color: AppColors.muted(context), fontSize: 13)),
           ],
         ),
       ),
