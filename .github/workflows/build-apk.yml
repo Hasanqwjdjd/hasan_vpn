@@ -51,7 +51,6 @@ jobs:
           SETTINGS=build_src/android/settings.gradle
           sed -i 's/id "com.android.application" version "[0-9.]*"/id "com.android.application" version "8.3.0"/g' "$SETTINGS"
           sed -i 's/id "com.android.library" version "[0-9.]*"/id "com.android.library" version "8.3.0"/g' "$SETTINGS"
-          # ⭐ Kotlin 2.1.0 (به جای 1.9.22)
           sed -i 's/id "org.jetbrains.kotlin.android" version "[0-9.]*"/id "org.jetbrains.kotlin.android" version "2.1.0"/g' "$SETTINGS"
           
           WRAPPER=build_src/android/gradle/wrapper/gradle-wrapper.properties
@@ -68,28 +67,25 @@ jobs:
           # targetSdk 34
           sed -i 's/targetSdk .*/targetSdk 34/' "$BUILDGRADLE"
           sed -i 's/targetSdkVersion .*/targetSdkVersion 34/' "$BUILDGRADLE"
-          # ⭐ NDK 27.0.12077973 (جدیدتر)
+          # NDK
           if ! grep -q "ndkVersion" "$BUILDGRADLE"; then
             sed -i 's/compileSdk 35/compileSdk 35\n    ndkVersion "27.0.12077973"/' "$BUILDGRADLE"
           else
             sed -i 's/ndkVersion .*/ndkVersion "27.0.12077973"/' "$BUILDGRADLE"
           fi
-          
-          # ⭐ تنظیمات Kotlin JVM target
-          if ! grep -q "kotlinOptions" "$BUILDGRADLE"; then
-            sed -i 's/compileOptions {/kotlinOptions {\n        jvmTarget = "17"\n    }\n    compileOptions {/' "$BUILDGRADLE"
-          fi
 
-      - name: Patch signing
+      - name: Patch build.gradle (JVM 17, signing)
         run: |
           python3 << 'PYEOF'
           path = "build_src/android/app/build.gradle"
           with open(path, "r") as f:
               content = f.read()
 
+          # ۱. import های لازم
           if "import java.util.Properties" not in content:
               content = "import java.util.Properties\nimport java.io.FileInputStream\n" + content
 
+          # ۲. keystore properties
           keystore_block = '''
           def keystoreProperties = new Properties()
           def keystorePropertiesFile = rootProject.file('key.properties')
@@ -101,6 +97,7 @@ jobs:
           if "keystoreProperties = new Properties()" not in content:
               content = content.replace("android {", keystore_block + "\nandroid {", 1)
 
+          # ۳. signingConfigs
           signing_block = '''    signingConfigs {
               release {
                   keyAlias keystoreProperties['keyAlias']
@@ -113,10 +110,59 @@ jobs:
           if "signingConfigs {" not in content:
               content = content.replace("android {", "android {\n" + signing_block, 1)
 
+          # ۴. signingConfig در buildTypes
           content = content.replace("signingConfig signingConfigs.debug", "signingConfig signingConfigs.release")
+
+          # ۵. compileOptions با JVM 17
+          import re
+          # اگه compileOptions هست، محتواش رو عوض کن
+          if "compileOptions" in content:
+              # حذف کل بلوک compileOptions قدیمی
+              content = re.sub(
+                  r'compileOptions\s*\{[^{}]*\}',
+                  '''compileOptions {
+                      sourceCompatibility JavaVersion.VERSION_17
+                      targetCompatibility JavaVersion.VERSION_17
+                  }''',
+                  content
+              )
+          else:
+              # اضافه کردن compileOptions به android block
+              content = content.replace(
+                  "android {",
+                  '''android {
+                      compileOptions {
+                          sourceCompatibility JavaVersion.VERSION_17
+                          targetCompatibility JavaVersion.VERSION_17
+                      }''',
+                  1
+              )
+
+          # ۶. kotlinOptions با jvmTarget 17
+          if "kotlinOptions" in content:
+              content = re.sub(
+                  r'kotlinOptions\s*\{[^{}]*\}',
+                  '''kotlinOptions {
+                      jvmTarget = "17"
+                  }''',
+                  content
+              )
+          else:
+              # اضافه بعد از compileOptions
+              content = content.replace(
+                  "compileOptions {",
+                  '''kotlinOptions {
+                      jvmTarget = "17"
+                  }
+                  compileOptions {''',
+                  1
+              )
 
           with open(path, "w") as f:
               f.write(content)
+
+          print("--- build.gradle ---")
+          print(content[:3000])
           PYEOF
 
           MANIFEST=build_src/android/app/src/main/AndroidManifest.xml
