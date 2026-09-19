@@ -27,7 +27,7 @@ jobs:
       - name: Ensure keystore exists
         run: |
           if [ ! -f hasan.keystore ]; then
-            echo "🔑 Keystore not found. Creating new one..."
+            echo "🔑 Creating new keystore..."
             keytool -genkey -v \
               -keystore hasan.keystore \
               -alias hasan \
@@ -37,17 +37,13 @@ jobs:
               -storepass hasan12345 \
               -keypass hasan12345 \
               -dname "CN=Hasan, OU=Hasan, O=Hasan, L=Tehran, S=Tehran, C=IR"
-            echo "✅ Keystore created"
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add hasan.keystore
             git commit -m "Add keystore (auto-generated)"
             git push
-          else
-            echo "✅ Keystore already exists"
           fi
-          echo "--- verify ---"
-          keytool -list -keystore hasan.keystore -storepass hasan12345 -alias hasan
+          echo "✅ Keystore ready"
 
       - name: Create clean Flutter project
         run: flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite build_src
@@ -176,8 +172,8 @@ jobs:
               buildTypes {
                   release {
                       signingConfig signingConfigs.release
-                      minifyEnabled true
-                      shrinkResources true
+                      minifyEnabled false
+                      shrinkResources false
                   }
               }
           }
@@ -196,7 +192,7 @@ jobs:
         working-directory: build_src
         run: flutter pub get
 
-      - name: Build APK (split per ABI)
+      - name: Build APK (split per ABI for smaller size)
         working-directory: build_src
         run: flutter build apk --release --split-per-abi
 
@@ -210,7 +206,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v6.3.${{ github.run_number }}
+          tag_name: v7.0.${{ github.run_number }}
           files: build_src/build/app/outputs/flutter-apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
