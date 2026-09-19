@@ -24,7 +24,6 @@ jobs:
       - name: Decode Keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android-keystore.jks
-          ls -la android-keystore.jks
 
       - name: Create key.properties
         run: |
@@ -34,8 +33,6 @@ jobs:
           keyAlias=${{ secrets.KEY_ALIAS }}
           storeFile=$(pwd)/android-keystore.jks
           EOF
-          echo "--- key.properties ---"
-          cat key.properties
 
       - name: Create clean Flutter project
         run: flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite build_src
@@ -49,7 +46,7 @@ jobs:
           cp android-keystore.jks build_src/android/
           cp key.properties build_src/android/
 
-      - name: Patch Android build.gradle (signing + permission)
+      - name: Patch Android build.gradle (signing)
         run: |
           python3 << 'PYEOF'
           path = "build_src/android/app/build.gradle"
@@ -82,17 +79,18 @@ jobs:
           if "signingConfigs {" not in content:
               content = content.replace("android {", "android {\n" + signing_block, 1)
 
-          content = content.replace(
-              "signingConfig signingConfigs.debug",
-              "signingConfig signingConfigs.release"
-          )
+          content = content.replace("signingConfig signingConfigs.debug", "signingConfig signingConfigs.release")
 
           with open(path, "w") as f:
               f.write(content)
           PYEOF
 
+      - name: Add Internet permission
+        run: |
           MANIFEST=build_src/android/app/src/main/AndroidManifest.xml
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$MANIFEST"
+          echo "--- Manifest ---"
+          grep "uses-permission" "$MANIFEST"
 
       - name: Get dependencies
         working-directory: build_src
@@ -112,7 +110,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v5.0.${{ github.run_number }}
+          tag_name: v6.0.${{ github.run_number }}
           files: build_src/build/app/outputs/flutter-apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
