@@ -6,11 +6,11 @@ class V2RayEngine {
   static bool _connected = false;
   static VpnServer? _current;
 
-  // ⭐ FlutterVless با پارامتر onStatusChanged
+  // ⭐ onStatusChanged رو با پارامتر dynamic می‌گیریم (بدون پارس کردن)
   static final FlutterVless _engine = FlutterVless(
-    onStatusChanged: (VlessStatus status) {
-      // وضعیت اتصال
-      _connected = status.state == VlessState.connected;
+    onStatusChanged: (dynamic status) {
+      // فقط پرینت می‌کنیم، تفسیر نمی‌کنیم
+      print('V2Ray status: $status');
     },
   );
 
