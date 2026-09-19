@@ -7,17 +7,20 @@ import '../services/server_tester.dart';
 import '../services/v2ray_engine.dart';
 import '../services/app_colors.dart';
 import '../widgets/server_tile.dart';
+import 'add_config_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final List<VpnServer> extraServers;
   final VoidCallback? onOpenSettings;
   final String language;
+  final VoidCallback? onRefreshSubscriptions;
 
   const HomeScreen({
     super.key,
     this.extraServers = const [],
     this.onOpenSettings,
     this.language = 'fa',
+    this.onRefreshSubscriptions,
   });
 
   @override
@@ -27,8 +30,10 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   static const String _deletedKey = 'deleted_server_ids_v1';
   static const String _pinnedKey = 'pinned_server_ids_v1';
+  static const String _customKey = 'custom_servers_v1';
 
   List<VpnServer> _servers = [];
+  List<VpnServer> _customServers = [];
   Set<String> _deletedIds = {};
   Set<String> _pinnedIds = {};
   VpnServer? _selected;
@@ -41,6 +46,9 @@ class _HomeScreenState extends State<HomeScreen> {
   int _tested = 0;
   int _total = 0;
   bool _cancelTest = false;
+  String _searchQuery = '';
+  bool _showSearch = false;
+  final TextEditingController _searchController = TextEditingController();
 
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
@@ -53,6 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _bootstrap() async {
     await _loadDeleted();
+    await _loadCustomServers();
     _rebuildServerList();
     await V2RayEngine.init();
   }
@@ -79,6 +88,48 @@ class _HomeScreenState extends State<HomeScreen> {
         _pinnedIds = (jsonDecode(rawPin) as List).cast<String>().toSet();
       } catch (_) {}
     }
+  }
+
+  Future<void> _loadCustomServers() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_customKey);
+    if (raw != null) {
+      try {
+        final list = jsonDecode(raw) as List;
+        _customServers = list.map((e) {
+          final m = e as Map<String, dynamic>;
+          return VpnServer(
+            id: m['id'] as String,
+            name: m['name'] as String,
+            flag: m['flag'] as String? ?? '🔧',
+            shareLink: m['shareLink'] as String,
+            protocol: VpnProtocol.values.firstWhere(
+              (p) => p.name == (m['protocol'] as String? ?? 'custom'),
+              orElse: () => VpnProtocol.custom,
+            ),
+            host: m['host'] as String? ?? '',
+            port: m['port'] as int? ?? 443,
+            isDeletable: true,
+          );
+        }).toList();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _saveCustomServers() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = _customServers
+        .map((s) => {
+              'id': s.id,
+              'name': s.name,
+              'flag': s.flag,
+              'shareLink': s.shareLink,
+              'protocol': s.protocol.name,
+              'host': s.host,
+              'port': s.port,
+            })
+        .toList();
+    await prefs.setString(_customKey, jsonEncode(list));
   }
 
   Future<void> _saveDeleted() async {
@@ -110,10 +161,20 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _servers = [
         ...kServers.where((s) => !_deletedIds.contains(s.id)),
+        ..._customServers.where((s) => !_deletedIds.contains(s.id)),
         ...widget.extraServers.where((s) => !_deletedIds.contains(s.id)),
       ];
       for (final s in _servers) {
         s.isPinned = _pinnedIds.contains(s.id);
+      }
+      if (_searchQuery.isNotEmpty) {
+        final q = _searchQuery.toLowerCase();
+        _servers = _servers
+            .where((s) =>
+                s.name.toLowerCase().contains(q) ||
+                s.host.toLowerCase().contains(q) ||
+                s.protocol.name.toLowerCase().contains(q))
+            .toList();
       }
       ServerTester.sortServers(_servers, descending: !_sortAscending);
       _servers.sort((a, b) {
@@ -207,10 +268,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void _deleteServer(VpnServer s) {
     setState(() {
       _deletedIds.add(s.id);
+      _customServers.removeWhere((c) => c.id == s.id);
       if (_selected?.id == s.id) _selected = null;
       _rebuildServerList();
     });
     _saveDeleted();
+    _saveCustomServers();
   }
 
   void _deleteInvalid() {
@@ -224,6 +287,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       for (final s in toDelete) {
         _deletedIds.add(s.id);
+        _customServers.removeWhere((c) => c.id == s.id);
       }
       if (_selected != null && _deletedIds.contains(_selected!.id)) {
         _selected = null;
@@ -231,6 +295,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _rebuildServerList();
     });
     _saveDeleted();
+    _saveCustomServers();
     _showMsg(
         _t('${toDelete.length} سرور حذف شد', '${toDelete.length} servers deleted'));
   }
@@ -295,6 +360,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _showMsg(_t('همه لینک‌ها کپی شد', 'All links copied'));
   }
 
+  void _shareServer(VpnServer s) {
+    Clipboard.setData(ClipboardData(text: s.shareLink));
+    _showMsg(_t('لینک سرور کپی شد (می‌توانید ارسال کنید)',
+        'Server link copied (you can share it)'));
+  }
+
   void _toggleSort() {
     setState(() {
       _sortAscending = !_sortAscending;
@@ -314,6 +385,118 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _openAddConfig() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddConfigScreen(
+          language: widget.language,
+          onServerAdded: (server) {
+            setState(() {
+              _customServers.add(server);
+              _rebuildServerList();
+            });
+            _saveCustomServers();
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showMainMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.elevated(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.muted2(context),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.add_circle_outline,
+                    color: AppColors.accent),
+                title: Text(_t('افزودن کانفیگ', 'Add Config'),
+                    style: TextStyle(color: AppColors.fg(context))),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _openAddConfig();
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.search, color: AppColors.muted(context)),
+                title: Text(_t('جستجو در سرورها', 'Search Servers'),
+                    style: TextStyle(color: AppColors.fg(context))),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  setState(() => _showSearch = true);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.sort, color: AppColors.muted(context)),
+                title: Text(_t('مرتب‌سازی', 'Sort'),
+                    style: TextStyle(color: AppColors.fg(context))),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _toggleSort();
+                },
+              ),
+              ListTile(
+                leading:
+                    const Icon(Icons.delete_sweep, color: AppColors.danger),
+                title: Text(_t('حذف سرورهای آفلاین', 'Delete Offline'),
+                    style: TextStyle(color: AppColors.fg(context))),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _deleteInvalid();
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.copy_all, color: AppColors.muted(context)),
+                title: Text(_t('کپی همه لینک‌ها', 'Copy All Links'),
+                    style: TextStyle(color: AppColors.fg(context))),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _copyAll();
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  _autoMode ? Icons.auto_mode : Icons.auto_mode_outlined,
+                  color: _autoMode ? AppColors.accent : AppColors.muted(context),
+                ),
+                title: Text(
+                    _t('حالت خودکار', 'Auto Mode'),
+                    style: TextStyle(color: AppColors.fg(context))),
+                trailing: Switch(
+                  value: _autoMode,
+                  activeColor: AppColors.accent,
+                  onChanged: (v) {
+                    setState(() => _autoMode = v);
+                    Navigator.pop(ctx);
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -321,17 +504,22 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // ========== TOP BAR ==========
             Container(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+              padding: const EdgeInsets.fromLTRB(4, 6, 4, 4),
               child: Column(
                 children: [
                   Row(
                     children: [
+                      // Hamburger Menu (≡)
                       IconButton(
-                        icon: Icon(Icons.settings,
-                            color: AppColors.muted(context), size: 22),
-                        onPressed: widget.onOpenSettings,
+                        icon: Icon(Icons.menu,
+                            color: AppColors.muted(context), size: 24),
+                        onPressed: _showMainMenu,
+                        tooltip: _t('منو', 'Menu'),
                       ),
+
+                      // Title
                       Expanded(
                         child: Column(
                           children: [
@@ -339,7 +527,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               _isFa ? 'حسن' : 'Hasan',
                               style: TextStyle(
                                 color: AppColors.fg(context),
-                                fontSize: 22,
+                                fontSize: 20,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -356,6 +544,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                       ),
+
+                      // Speed Test
                       IconButton(
                         icon: _testing
                             ? const Icon(Icons.stop_circle_outlined,
@@ -363,46 +553,76 @@ class _HomeScreenState extends State<HomeScreen> {
                             : Icon(Icons.speed,
                                 color: AppColors.accent, size: 22),
                         onPressed: _testing ? _cancelTesting : _testAll,
+                        tooltip: _t('تست همه', 'Test All'),
+                      ),
+
+                      // Settings (gear)
+                      IconButton(
+                        icon: Icon(Icons.settings,
+                            color: AppColors.muted(context), size: 22),
+                        onPressed: widget.onOpenSettings,
+                        tooltip: _t('تنظیمات', 'Settings'),
                       ),
                     ],
                   ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      IconButton(
-                        icon: Icon(Icons.sort,
-                            color: AppColors.muted(context), size: 20),
-                        onPressed: _toggleSort,
+
+                  // Search bar (when active)
+                  if (_showSearch)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              autofocus: true,
+                              style: TextStyle(
+                                  color: AppColors.fg(context), fontSize: 14),
+                              decoration: InputDecoration(
+                                hintText: _t('جستجو...', 'Search...'),
+                                hintStyle: TextStyle(
+                                    color: AppColors.muted2(context)),
+                                prefixIcon: Icon(Icons.search,
+                                    color: AppColors.muted(context), size: 20),
+                                filled: true,
+                                fillColor: AppColors.surface(context),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                              onChanged: (v) {
+                                setState(() {
+                                  _searchQuery = v;
+                                  _rebuildServerList();
+                                });
+                              },
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.close,
+                                color: AppColors.muted(context)),
+                            onPressed: () {
+                              setState(() {
+                                _showSearch = false;
+                                _searchQuery = '';
+                                _searchController.clear();
+                                _rebuildServerList();
+                              });
+                            },
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        icon: Icon(Icons.delete_sweep,
-                            color: AppColors.danger, size: 20),
-                        onPressed: _deleteInvalid,
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.copy_all,
-                            color: AppColors.muted(context), size: 20),
-                        onPressed: _copyAll,
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          _autoMode
-                              ? Icons.auto_mode
-                              : Icons.auto_mode_outlined,
-                          color: _autoMode
-                              ? AppColors.accent
-                              : AppColors.muted(context),
-                          size: 20,
-                        ),
-                        onPressed: () =>
-                            setState(() => _autoMode = !_autoMode),
-                      ),
-                    ],
-                  ),
+                    ),
                 ],
               ),
             ),
-            const SizedBox(height: 8),
+
+            const SizedBox(height: 4),
+
+            // ========== CONNECT BUTTON ==========
             GestureDetector(
               onTap: _connecting ? null : _toggleConnection,
               child: Container(
@@ -479,7 +699,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
+
             const SizedBox(height: 12),
+
+            // ========== SERVER LIST ==========
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -515,9 +738,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     server: s,
                     selected: _selected?.id == s.id,
                     onTap: () => setState(() => _selected = s),
-                    onTest: () => _testOne(s),
                     onDelete: () => _deleteServer(s),
                     onPin: () => _togglePin(s),
+                    onShare: () => _shareServer(s),
+                    onTest: () => _testOne(s), // صاعقه نگه داشته شد
                   );
                 },
               ),
@@ -525,6 +749,19 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
+
+      // Floating + button
+      floatingActionButton: FloatingActionButton(
+        onPressed: _openAddConfig,
+        backgroundColor: AppColors.accent,
+        child: const Icon(Icons.add, color: Colors.black),
+      ),
     );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 }
