@@ -1,7 +1,7 @@
 name: hasan_vpn
 description: Hasan VPN
 publish_to: 'none'
-version: 6.0.0+1
+version: 9.0.94+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -13,6 +13,7 @@ dependencies:
   http: ^1.1.0
   shared_preferences: ^2.2.2
   url_launcher: ^6.2.4
+  package_info_plus: ^8.0.0
 
 dev_dependencies:
   flutter_lints: ^3.0.0
