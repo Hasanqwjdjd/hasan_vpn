@@ -21,13 +21,13 @@ jobs:
           flutter-version: '3.22.0'
           channel: 'stable'
 
-      - name: Decode Keystore
-  run: |
-    echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\n' | tr -d ' ' | base64 -d > android-keystore.jks
-    echo "--- keystore size ---"
-    ls -la android-keystore.jks
-    echo "--- verify keystore ---"
-    keytool -list -keystore android-keystore.jks -storepass "${{ secrets.KEYSTORE_PASSWORD }}" -alias "${{ secrets.KEY_ALIAS }}"
+      - name: Decode and verify Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\n' | tr -d ' ' | base64 -d > android-keystore.jks
+          echo "--- keystore size ---"
+          ls -la android-keystore.jks
+          echo "--- verify keystore ---"
+          keytool -list -keystore android-keystore.jks -storepass "${{ secrets.KEYSTORE_PASSWORD }}" -alias "${{ secrets.KEY_ALIAS }}"
 
       - name: Create clean Flutter project
         run: flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite build_src
@@ -40,7 +40,7 @@ jobs:
           cp -r app/lib/. build_src/lib/
           cp android-keystore.jks build_src/android/
 
-      - name: Write custom settings.gradle
+      - name: Write settings.gradle
         run: |
           cat > build_src/android/settings.gradle << 'EOF'
           pluginManagement {
@@ -69,10 +69,8 @@ jobs:
 
           include ":app"
           EOF
-          echo "--- settings.gradle ---"
-          cat build_src/android/settings.gradle
 
-      - name: Write custom gradle-wrapper.properties
+      - name: Write gradle wrapper
         run: |
           cat > build_src/android/gradle/wrapper/gradle-wrapper.properties << 'EOF'
           distributionBase=GRADLE_USER_HOME
@@ -81,8 +79,6 @@ jobs:
           zipStorePath=wrapper/dists
           distributionUrl=https\://services.gradle.org/distributions/gradle-8.4-all.zip
           EOF
-          echo "--- wrapper ---"
-          cat build_src/android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Write key.properties
         run: |
@@ -92,11 +88,9 @@ jobs:
           keyAlias=${{ secrets.KEY_ALIAS }}
           storeFile=$(pwd)/build_src/android/android-keystore.jks
           EOF
-          cat build_src/android/key.properties
-          # کپی keystore به پوشه android
           cp android-keystore.jks build_src/android/android-keystore.jks
 
-      - name: Write custom build.gradle
+      - name: Write app build.gradle
         run: |
           cat > build_src/android/app/build.gradle << 'EOF'
           plugins {
@@ -177,15 +171,11 @@ jobs:
               source = "../.."
           }
           EOF
-          echo "--- build.gradle ---"
-          cat build_src/android/app/build.gradle
 
-      - name: Fix AndroidManifest (internet permission)
+      - name: Add internet permission
         run: |
           MANIFEST=build_src/android/app/src/main/AndroidManifest.xml
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$MANIFEST"
-          echo "--- Manifest ---"
-          grep "uses-permission" "$MANIFEST"
 
       - name: Get dependencies
         working-directory: build_src
