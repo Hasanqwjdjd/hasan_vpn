@@ -18,10 +18,7 @@ class V2RayEngine {
   static Future<void> init() async {
     if (_initialized) return;
     try {
-      await _engine.initializeVless(
-        providerBundleIdentifier: 'com.hasan.hasan_vpn',
-        groupIdentifier: 'group.com.hasan.hasan_vpn',
-      );
+      await _engine.initializeVless();
     } catch (e) {
       print('V2Ray init error: $e');
     }
@@ -42,6 +39,7 @@ class V2RayEngine {
       await _engine.startVless(
         remark: parser.remark,
         config: config,
+        proxyOnly: false,
       );
 
       _connected = true;
