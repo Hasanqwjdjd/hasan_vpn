@@ -97,7 +97,7 @@ class ServerTile extends StatelessWidget {
                         ? null
                         : onTest,
                   ),
-                if (onDelete != null && server.isDeletable)
+                if (onDelete != null)
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 32),
