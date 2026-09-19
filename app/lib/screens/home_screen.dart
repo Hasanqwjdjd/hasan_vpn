@@ -4,17 +4,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../models/server.dart';
 import '../services/server_tester.dart';
-import '../services/connector.dart';
+import '../services/v2ray_engine.dart';
+import '../services/app_colors.dart';
 import '../widgets/server_tile.dart';
 
 class HomeScreen extends StatefulWidget {
   final List<VpnServer> extraServers;
   final VoidCallback? onOpenSettings;
+  final String language;
 
   const HomeScreen({
     super.key,
     this.extraServers = const [],
     this.onOpenSettings,
+    this.language = 'fa',
   });
 
   @override
@@ -30,17 +33,25 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _testing = false;
   bool _autoMode = true;
   bool _connecting = false;
+  bool _connected = false;
   String _status = 'آماده';
   int _tested = 0;
   int _total = 0;
   bool _cancelTest = false;
+
+  bool get _isFa => widget.language == 'fa';
+  String _t(String fa, String en) => _isFa ? fa : en;
 
   @override
   void initState() {
     super.initState();
     _loadDeleted();
     _rebuildServerList();
-    // ❌ دیگه تست خودکار نداریم — فقط لیست رو آماده می‌کنیم
+    _initEngine();
+  }
+
+  Future<void> _initEngine() async {
+    await V2RayEngine.init();
   }
 
   @override
@@ -55,9 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_deletedKey);
     if (raw != null) {
-      try {
-        _deletedIds = (jsonDecode(raw) as List).cast<String>().toSet();
-      } catch (_) {}
+      try { _deletedIds = (jsonDecode(raw) as List).cast<String>().toSet(); } catch (_) {}
     }
   }
 
@@ -75,7 +84,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// تست همه سرورها (دستی)
   Future<void> _testAll() async {
     if (_testing) {
       _cancelTest = true;
@@ -87,7 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _cancelTest = false;
       _tested = 0;
       _total = _servers.length;
-      _status = 'در حال تست سرورها...';
+      _status = _t('در حال تست سرورها...', 'Testing servers...');
       for (final s in _servers) {
         s.ping = null;
         s.status = ServerStatus.idle;
@@ -116,14 +124,13 @@ class _HomeScreenState extends State<HomeScreen> {
       final best = ServerTester.fastest(_servers);
       if (best != null && _autoMode) {
         _selected = best;
-        _status = 'سریع‌ترین: ${best.name}';
+        _status = '${_t('سریع‌ترین', 'Fastest')}: ${best.name}';
       } else {
-        _status = 'آماده';
+        _status = _t('آماده', 'Ready');
       }
     });
   }
 
-  /// تست یک سرور
   Future<void> _testOne(VpnServer server) async {
     setState(() {
       server.status = ServerStatus.testing;
@@ -133,8 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     setState(() {
       server.ping = ping;
-      server.status =
-          ping != null ? ServerStatus.online : ServerStatus.offline;
+      server.status = ping != null ? ServerStatus.online : ServerStatus.offline;
       ServerTester.sortServers(_servers);
       _servers = List.from(_servers);
     });
@@ -151,79 +157,76 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _deleteInvalid() {
     final toDelete = _servers
-        .where((s) =>
-            s.isDeletable &&
-            s.status == ServerStatus.offline &&
-            s.ping == null)
+        .where((s) => s.isDeletable && s.status == ServerStatus.offline && s.ping == null)
         .toList();
 
     if (toDelete.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('سرور نامعتبری برای حذف نیست'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      _showMsg(_t('سرور نامعتبری نیست', 'No invalid servers'));
       return;
     }
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1D25),
-        title: const Text('حذف سرورهای نامعتبر',
-            style: TextStyle(color: Colors.white)),
+        backgroundColor: AppColors.elevated(ctx),
+        title: Text(_t('حذف سرورهای نامعتبر', 'Delete invalid servers'),
+            style: TextStyle(color: AppColors.fg(ctx))),
         content: Text(
-          '${toDelete.length} سرور نامعتبر حذف بشه؟',
-          style: const TextStyle(color: Colors.white70),
+          '${toDelete.length} ${_t('سرور حذف بشه؟', 'servers will be deleted?')}',
+          style: TextStyle(color: AppColors.muted(ctx)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('لغو',
-                style: TextStyle(color: Colors.white54)),
+            child: Text(_t('لغو', 'Cancel'), style: TextStyle(color: AppColors.muted(ctx))),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
               setState(() {
-                for (final s in toDelete) {
-                  _deletedIds.add(s.id);
-                }
+                for (final s in toDelete) { _deletedIds.add(s.id); }
                 _servers.removeWhere((s) => toDelete.contains(s));
-                if (toDelete.any((s) => s.id == _selected?.id)) {
-                  _selected = null;
-                }
+                if (toDelete.any((s) => s.id == _selected?.id)) _selected = null;
               });
               _saveDeleted();
             },
-            child: const Text('حذف',
-                style: TextStyle(color: Color(0xFFE07070))),
+            child: Text(_t('حذف', 'Delete'), style: const TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _connect() async {
-    if (_selected == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('اول یه سرور انتخاب کن'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+  /// اتصال / قطع اتصال
+  Future<void> _toggleConnection() async {
+    if (_connecting) return;
+
+    // اگه وصل بودیم → قطع
+    if (_connected) {
+      setState(() { _connecting = true; _status = _t('در حال قطع...', 'Disconnecting...'); });
+      await V2RayEngine.disconnect();
+      setState(() { _connected = false; _connecting = false; _status = _t('قطع شد', 'Disconnected'); });
       return;
     }
-    setState(() {
-      _connecting = true;
-      _status = 'در حال اتصال...';
-    });
-    final ok = await Connector.connect(_selected!);
+
+    // وصل شدن
+    if (_selected == null) {
+      _showMsg(_t('اول یه سرور انتخاب کن', 'Select a server first'));
+      return;
+    }
+
+    setState(() { _connecting = true; _status = _t('در حال اتصال...', 'Connecting...'); });
+
+    final ok = await V2RayEngine.connect(_selected!);
+
     if (!mounted) return;
+
     setState(() {
       _connecting = false;
-      _status = ok ? 'برنامه VPN باز شد' : 'هیچ برنامه‌ای پیدا نشد';
+      _connected = ok;
+      _status = ok
+          ? '${_t('متصل به', 'Connected to')} ${_selected!.name}'
+          : _t('اتصال ناموفق', 'Connection failed');
     });
   }
 
@@ -231,22 +234,24 @@ class _HomeScreenState extends State<HomeScreen> {
     final text = _servers.map((s) => s.shareLink).join('\n');
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
+    _showMsg('${_servers.length} ${_t('سرور کپی شد', 'servers copied')}');
+  }
+
+  void _showMsg(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${_servers.length} سرور کپی شد'),
-        duration: const Duration(seconds: 2),
-      ),
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF08090C),
+      backgroundColor: AppColors.bg(context),
       body: SafeArea(
         child: Column(
           children: [
-            // هدر با دکمه تنظیمات
+            // Header
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
               child: Row(
@@ -256,8 +261,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: widget.onOpenSettings != null
                         ? IconButton(
                             padding: EdgeInsets.zero,
-                            icon: const Icon(Icons.settings,
-                                color: Colors.white70, size: 22),
+                            icon: Icon(Icons.settings, color: AppColors.muted(context), size: 22),
                             onPressed: widget.onOpenSettings,
                           )
                         : null,
@@ -265,19 +269,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   Expanded(
                     child: Column(
                       children: [
-                        const Text(
-                          'حسن',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        Text(
+                          _isFa ? 'حسن' : 'Hasan',
+                          style: TextStyle(color: AppColors.fg(context), fontSize: 24, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           _status,
-                          style: const TextStyle(
-                              color: Colors.white54, fontSize: 11),
+                          style: TextStyle(color: AppColors.muted(context), fontSize: 11),
                           textAlign: TextAlign.center,
                         ),
                       ],
@@ -287,47 +286,39 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-
             // دکمه اتصال
             GestureDetector(
-              onTap: _connecting ? null : _connect,
+              onTap: _connecting ? null : _toggleConnection,
               child: Container(
-                width: 130,
-                height: 130,
+                width: 130, height: 130,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: _selected != null
-                        ? const Color(0xFF3DCF9A)
-                        : Colors.white24,
+                    color: _connected ? AppColors.accent : (_selected != null ? AppColors.accent : AppColors.border(context)),
                     width: 3,
                   ),
-                  color: _selected != null
-                      ? const Color(0xFF3DCF9A).withOpacity(0.1)
-                      : Colors.transparent,
+                  color: _connected
+                      ? AppColors.accent.withOpacity(0.15)
+                      : (_selected != null ? AppColors.accent.withOpacity(0.05) : Colors.transparent),
+                  boxShadow: _connected ? [BoxShadow(color: AppColors.accent.withOpacity(0.3), blurRadius: 30, spreadRadius: 5)] : null,
                 ),
                 child: Center(
                   child: _connecting
-                      ? const CircularProgressIndicator(color: Colors.white)
+                      ? const CircularProgressIndicator(color: AppColors.accent)
                       : Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              Icons.power_settings_new,
-                              color: _selected != null
-                                  ? const Color(0xFF3DCF9A)
-                                  : Colors.white38,
+                              _connected ? Icons.shield : Icons.power_settings_new,
+                              color: _connected ? AppColors.accent : (_selected != null ? AppColors.accent : AppColors.muted2(context)),
                               size: 36,
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              _selected != null ? 'اتصال' : 'انتخاب سرور',
+                              _connected ? _t('قطع', 'Disconnect') : (_selected != null ? _t('اتصال', 'Connect') : _t('انتخاب سرور', 'Pick server')),
                               style: TextStyle(
-                                color: _selected != null
-                                    ? const Color(0xFF3DCF9A)
-                                    : Colors.white38,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                                color: _connected ? AppColors.accent : (_selected != null ? AppColors.accent : AppColors.muted2(context)),
+                                fontSize: 12, fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
@@ -338,56 +329,35 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 4),
             TextButton.icon(
               onPressed: _copyAll,
-              icon: const Icon(Icons.copy_all, color: Colors.white54, size: 13),
-              label: const Text('کپی همه سرورها',
-                  style: TextStyle(color: Colors.white54, fontSize: 11)),
+              icon: Icon(Icons.copy_all, color: AppColors.muted(context), size: 13),
+              label: Text(_t('کپی همه سرورها', 'Copy all servers'), style: TextStyle(color: AppColors.muted(context), fontSize: 11)),
             ),
+            // دکمه‌های تست و تنظیمات
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  // تست همه
                   Expanded(
                     child: GestureDetector(
                       onTap: _testing ? null : _testAll,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                         decoration: BoxDecoration(
-                          color: _testing
-                              ? const Color(0xFF1A1D25)
-                              : const Color(0xFF3DCF9A).withOpacity(0.15),
+                          color: _testing ? AppColors.elevated(context) : AppColors.accent.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: _testing
-                                ? Colors.white12
-                                : const Color(0xFF3DCF9A),
-                          ),
+                          border: Border.all(color: _testing ? AppColors.border(context) : AppColors.accent),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             if (_testing)
-                              const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Color(0xFF3DCF9A)),
-                              )
+                              const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent))
                             else
-                              const Icon(Icons.speed,
-                                  color: Color(0xFF3DCF9A), size: 16),
+                              const Icon(Icons.speed, color: AppColors.accent, size: 16),
                             const SizedBox(width: 6),
                             Text(
-                              _testing ? '$_tested / $_total' : 'تست همه',
-                              style: TextStyle(
-                                color: _testing
-                                    ? Colors.white70
-                                    : const Color(0xFF3DCF9A),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              _testing ? '$_tested / $_total' : _t('تست همه', 'Test All'),
+                              style: TextStyle(color: _testing ? AppColors.fg(context) : AppColors.accent, fontSize: 12, fontWeight: FontWeight.w600),
                             ),
                           ],
                         ),
@@ -395,42 +365,31 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  // تاگل خودکار
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF12141A),
+                      color: AppColors.surface(context),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.white12),
+                      border: Border.all(color: AppColors.border(context)),
                     ),
                     child: Transform.scale(
                       scale: 0.85,
-                      child: Switch(
-                        value: _autoMode,
-                        onChanged: (v) => setState(() => _autoMode = v),
-                        activeColor: const Color(0xFF3DCF9A),
-                      ),
+                      child: Switch(value: _autoMode, onChanged: (v) => setState(() => _autoMode = v), activeColor: AppColors.accent),
                     ),
                   ),
                   const SizedBox(width: 6),
-                  // حذف نامعتبرها
                   IconButton(
                     onPressed: _deleteInvalid,
-                    icon: const Icon(Icons.delete_sweep,
-                        color: Color(0xFFE07070), size: 20),
+                    icon: const Icon(Icons.delete_sweep, color: AppColors.danger, size: 20),
                     padding: EdgeInsets.zero,
-                    constraints:
-                        const BoxConstraints(minWidth: 38, minHeight: 38),
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFF12141A),
-                      side: const BorderSide(color: Colors.white12),
-                    ),
+                    constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
+                    style: IconButton.styleFrom(backgroundColor: AppColors.surface(context), side: BorderSide(color: AppColors.border(context))),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 8),
+            // لیست سرورها
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -443,19 +402,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'سرورها (${_servers.length})',
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            '${_t('سرورها', 'Servers')} (${_servers.length})',
+                            style: TextStyle(color: AppColors.muted(context), fontSize: 11, fontWeight: FontWeight.w600),
                           ),
-                          if (_testing)
-                            const Text(
-                              'لمس کن روی ⚡ برای تست جداگانه',
-                              style: TextStyle(
-                                  color: Colors.white38, fontSize: 10),
-                            ),
                         ],
                       ),
                     );
