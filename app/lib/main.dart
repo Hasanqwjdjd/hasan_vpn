@@ -3,6 +3,7 @@ import 'models/subscription.dart';
 import 'models/server.dart';
 import 'services/subscription_service.dart';
 import 'services/settings_service.dart';
+import 'services/app_colors.dart';
 import 'screens/home_screen.dart';
 import 'screens/subscriptions_screen.dart';
 import 'screens/settings_screen.dart';
@@ -49,9 +50,6 @@ class _HasanAppState extends State<HasanApp> {
           s.serverCount = servers.length;
           all.addAll(servers);
         } catch (_) {}
-      } else {
-        // سرورهای ذخیره‌شده قبلی (بدون دانلود مجدد)
-        // اینجا ساده کار می‌کنیم و اگه نیاز به بروزرسانی نبود از کش استفاده نمی‌کنیم
       }
     }
     await SubscriptionService.save(_subs);
@@ -65,25 +63,22 @@ class _HasanAppState extends State<HasanApp> {
 
   ThemeMode _themeModeEnum() {
     switch (_themeMode) {
-      case 'light':
-        return ThemeMode.light;
-      case 'system':
-        return ThemeMode.system;
-      default:
-        return ThemeMode.dark;
+      case 'light': return ThemeMode.light;
+      case 'system': return ThemeMode.system;
+      default: return ThemeMode.dark;
     }
   }
 
   ThemeData _darkTheme() => ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF08090C),
-        colorScheme: const ColorScheme.dark(primary: const Color(0xFF3DCF9A)),
+        colorScheme: const ColorScheme.dark(primary: Color(0xFF3DCF9A), surface: Color(0xFF12141A)),
       );
 
   ThemeData _lightTheme() => ThemeData(
         brightness: Brightness.light,
         scaffoldBackgroundColor: const Color(0xFFF5F6F8),
-        colorScheme: const ColorScheme.light(primary: const Color(0xFF3DCF9A)),
+        colorScheme: const ColorScheme.light(primary: Color(0xFF3DCF9A), surface: Colors.white),
       );
 
   @override
@@ -95,26 +90,11 @@ class _HasanAppState extends State<HasanApp> {
       darkTheme: _darkTheme(),
       themeMode: _themeModeEnum(),
       builder: (context, child) => Directionality(
-        textDirection: _language == 'fa'
-            ? TextDirection.rtl
-            : TextDirection.ltr,
+        textDirection: _language == 'fa' ? TextDirection.rtl : TextDirection.ltr,
         child: child!,
       ),
       home: _loading
-          ? const Scaffold(
-              backgroundColor: Color(0xFF08090C),
-              body: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(color: Color(0xFF3DCF9A)),
-                    SizedBox(height: 16),
-                    Text('در حال بارگذاری سرورها...',
-                        style: TextStyle(color: Colors.white54, fontSize: 13)),
-                  ],
-                ),
-              ),
-            )
+          ? const _LoadingScreen()
           : RootTabs(
               subs: _subs,
               subServers: _subServers,
@@ -131,6 +111,26 @@ class _HasanAppState extends State<HasanApp> {
                 setState(() => _language = l);
               },
             ),
+    );
+  }
+}
+
+class _LoadingScreen extends StatelessWidget {
+  const _LoadingScreen();
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg(context),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: AppColors.accent),
+            const SizedBox(height: 16),
+            Text('در حال بارگذاری سرورها...', style: TextStyle(color: AppColors.muted(context), fontSize: 13)),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -164,8 +164,8 @@ class RootTabs extends StatefulWidget {
 class _RootTabsState extends State<RootTabs> {
   int _index = 0;
 
-  void _openSettings() {
-    Navigator.push(
+  void _openSettings() async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => SettingsScreen(
@@ -175,10 +175,8 @@ class _RootTabsState extends State<RootTabs> {
           onLanguageChanged: widget.onLanguageChanged,
         ),
       ),
-    ).then((_) {
-      // وقتی برگشت، تم/زبان رو refresh کن
-      setState(() {});
-    });
+    );
+    if (mounted) setState(() {});
   }
 
   @override
@@ -188,27 +186,29 @@ class _RootTabsState extends State<RootTabs> {
       HomeScreen(
         extraServers: widget.subServers,
         onOpenSettings: _openSettings,
+        language: widget.language,
       ),
       SubscriptionsScreen(
         subscriptions: widget.subs,
         onChanged: widget.onSubsChanged,
+        language: widget.language,
       ),
     ];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF08090C),
+      backgroundColor: AppColors.bg(context),
       body: pages[_index],
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF0E1015),
-          border: Border(top: BorderSide(color: Colors.white12)),
+        decoration: BoxDecoration(
+          color: AppColors.navBar(context),
+          border: Border(top: BorderSide(color: AppColors.border(context))),
         ),
         child: BottomNavigationBar(
           currentIndex: _index,
           onTap: (i) => setState(() => _index = i),
-          backgroundColor: const Color(0xFF0E1015),
-          selectedItemColor: const Color(0xFF3DCF9A),
-          unselectedItemColor: Colors.white38,
+          backgroundColor: AppColors.navBar(context),
+          selectedItemColor: AppColors.accent,
+          unselectedItemColor: AppColors.muted2(context),
           type: BottomNavigationBarType.fixed,
           items: [
             BottomNavigationBarItem(
