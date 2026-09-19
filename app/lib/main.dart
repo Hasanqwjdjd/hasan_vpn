@@ -32,6 +32,7 @@ class _HasanAppState extends State<HasanApp> {
   }
 
   Future<void> _bootstrap() async {
+    await SettingsService.loadVersion();
     _themeMode = await SettingsService.getThemeMode();
     _language = await SettingsService.getLanguage();
     final subs = await SubscriptionService.load();
@@ -49,7 +50,11 @@ class _HasanAppState extends State<HasanApp> {
           s.lastUpdated = DateTime.now();
           s.serverCount = servers.length;
           all.addAll(servers);
-        } catch (_) {}
+        } catch (_) {
+          all.addAll(SubscriptionService.fromCache(s));
+        }
+      } else {
+        all.addAll(SubscriptionService.fromCache(s));
       }
     }
     await SubscriptionService.save(_subs);
@@ -63,22 +68,27 @@ class _HasanAppState extends State<HasanApp> {
 
   ThemeMode _themeModeEnum() {
     switch (_themeMode) {
-      case 'light': return ThemeMode.light;
-      case 'system': return ThemeMode.system;
-      default: return ThemeMode.dark;
+      case 'light':
+        return ThemeMode.light;
+      case 'system':
+        return ThemeMode.system;
+      default:
+        return ThemeMode.dark;
     }
   }
 
   ThemeData _darkTheme() => ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF08090C),
-        colorScheme: const ColorScheme.dark(primary: Color(0xFF3DCF9A), surface: Color(0xFF12141A)),
+        colorScheme: const ColorScheme.dark(
+            primary: Color(0xFF3DCF9A), surface: Color(0xFF12141A)),
       );
 
   ThemeData _lightTheme() => ThemeData(
         brightness: Brightness.light,
         scaffoldBackgroundColor: const Color(0xFFF5F6F8),
-        colorScheme: const ColorScheme.light(primary: Color(0xFF3DCF9A), surface: Colors.white),
+        colorScheme: const ColorScheme.light(
+            primary: Color(0xFF3DCF9A), surface: Colors.white),
       );
 
   @override
@@ -127,7 +137,8 @@ class _LoadingScreen extends StatelessWidget {
           children: [
             const CircularProgressIndicator(color: AppColors.accent),
             const SizedBox(height: 16),
-            Text('در حال بارگذاری سرورها...', style: TextStyle(color: AppColors.muted(context), fontSize: 13)),
+            Text('در حال بارگذاری سرورها...',
+                style: TextStyle(color: AppColors.muted(context), fontSize: 13)),
           ],
         ),
       ),
