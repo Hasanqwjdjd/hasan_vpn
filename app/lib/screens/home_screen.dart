@@ -1,3 +1,5 @@
+# مسیر مقصد در ریپو: app/lib/screens/home_screen.dart
+# ------------------------------------------------------------
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,9 +7,11 @@ import 'dart:convert';
 import '../models/server.dart';
 import '../services/server_tester.dart';
 import '../services/v2ray_engine.dart';
+import '../services/aether_service.dart';
 import '../services/app_colors.dart';
 import '../widgets/server_tile.dart';
 import 'add_config_screen.dart';
+import 'qr_share_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final List<VpnServer> extraServers;
@@ -309,7 +313,12 @@ class _HomeScreenState extends State<HomeScreen> {
         _status = _t('در حال قطع...', 'Disconnecting...');
       });
       try {
-        await V2RayEngine.disconnect();
+        // هر دو موتور را متوقف می‌کند؛ آن که فعال نیست بی‌ضرر است.
+        if (AetherService.isConnected) {
+          await AetherService.disconnect();
+        } else {
+          await V2RayEngine.disconnect();
+        }
       } catch (_) {}
       if (mounted) {
         setState(() {
@@ -332,14 +341,24 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      final ok = await V2RayEngine.connect(_selected!);
+      final bool ok;
+      final String? err;
+      if (_selected!.isAether) {
+        ok = await AetherService.connect(_selected!);
+        err = AetherService.lastError;
+      } else {
+        ok = await V2RayEngine.connect(_selected!);
+        err = V2RayEngine.lastError;
+      }
       if (mounted) {
         setState(() {
           _connected = ok;
           _connecting = false;
           _status = ok
               ? _t('متصل شد', 'Connected')
-              : _t('اتصال ناموفق', 'Connection failed');
+              : (err != null
+                  ? _t('اتصال ناموفق: $err', 'Connection failed: $err')
+                  : _t('اتصال ناموفق', 'Connection failed'));
         });
       }
     } catch (e) {
@@ -361,9 +380,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _shareServer(VpnServer s) {
-    Clipboard.setData(ClipboardData(text: s.shareLink));
-    _showMsg(_t('لینک سرور کپی شد (می‌توانید ارسال کنید)',
-        'Server link copied (you can share it)'));
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => QrShareScreen(server: s, language: widget.language),
+      ),
+    );
   }
 
   void _toggleSort() {
