@@ -492,7 +492,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            '\( {_t('سرورها', 'Servers')} ( \){_servers.length})',
+                           '\( {_t("سرورها", "Servers")} ( \){_servers.length})', 
                             style: TextStyle(
                               color: AppColors.muted(context),
                               fontSize: 11,
