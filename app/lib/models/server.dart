@@ -1,3 +1,5 @@
+# مسیر مقصد در ریپو: app/lib/models/server.dart
+# ------------------------------------------------------------
 enum VpnProtocol { trojan, vless, vmess, hysteria2, aether, shadowsocks, custom }
 
 class VpnServer {
@@ -31,6 +33,9 @@ class VpnServer {
     this.speedKbps,
     this.status = ServerStatus.idle,
   });
+
+  /// true اگر این سرور از نوع Aether (سیستم دور زدن فیلترینگ با اسکن خودکار) باشد.
+  bool get isAether => protocol == VpnProtocol.aether;
 }
 
 enum ServerStatus { idle, testing, online, offline }
