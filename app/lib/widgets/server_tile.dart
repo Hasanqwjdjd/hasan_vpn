@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/server.dart';
+import '../services/app_colors.dart';
 
 class ServerTile extends StatelessWidget {
   final VpnServer server;
@@ -21,24 +22,24 @@ class ServerTile extends StatelessWidget {
   Widget build(BuildContext context) {
     Color pingColor;
     if (server.status == ServerStatus.testing) {
-      pingColor = Colors.white38;
+      pingColor = AppColors.muted2(context);
     } else if (server.ping == null) {
-      pingColor = const Color(0xFFE07070);
+      pingColor = AppColors.danger;
     } else if (server.ping! < 200) {
-      pingColor = const Color(0xFF3DCF9A);
+      pingColor = AppColors.accent;
     } else if (server.ping! < 500) {
-      pingColor = const Color(0xFFFFB74D);
+      pingColor = AppColors.warn;
     } else {
-      pingColor = const Color(0xFFE07070);
+      pingColor = AppColors.danger;
     }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: selected ? const Color(0xFF1A1D25) : const Color(0xFF12141A),
+        color: selected ? AppColors.elevated(context) : AppColors.surface(context),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: selected ? const Color(0xFF3DCF9A) : Colors.white12,
+          color: selected ? AppColors.accent : AppColors.border(context),
           width: selected ? 1.5 : 1,
         ),
       ),
@@ -56,8 +57,8 @@ class ServerTile extends StatelessWidget {
                 Expanded(
                   child: Text(
                     server.name,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: AppColors.fg(context),
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                     ),
@@ -65,38 +66,24 @@ class ServerTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                // پینگ یا لودر
                 if (server.status == ServerStatus.testing)
                   const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Color(0xFF3DCF9A),
-                    ),
+                    width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
                   )
                 else
                   Text(
                     server.ping != null ? '${server.ping} ms' : '---',
-                    style: TextStyle(
-                      color: pingColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(color: pingColor, fontSize: 12, fontWeight: FontWeight.w600),
                   ),
-                // دکمه تست جداگانه
                 if (onTest != null)
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                     iconSize: 18,
-                    icon: const Icon(Icons.bolt,
-                        color: Color(0xFFFFB74D), size: 18),
-                    onPressed: server.status == ServerStatus.testing
-                        ? null
-                        : onTest,
+                    icon: const Icon(Icons.bolt, color: AppColors.warn, size: 18),
+                    onPressed: server.status == ServerStatus.testing ? null : onTest,
                   ),
-                // دکمه حذف
                 if (onDelete != null && server.isDeletable)
                   IconButton(
                     padding: const EdgeInsets.only(right: 4, left: 0),
