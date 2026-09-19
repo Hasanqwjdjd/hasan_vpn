@@ -48,22 +48,15 @@ jobs:
           cp -r app/lib/. build_src/lib/
           cp hasan.keystore build_src/android/app/hasan.keystore
 
-      # ========== فیکس اصلی Kotlin Version ==========
       - name: Force Kotlin 2.1.0 (fix for flutter_vless)
         run: |
           set -e
           echo "=== Fixing Kotlin version ==="
-
           if [ -f build_src/android/settings.gradle ]; then
-            echo "Found settings.gradle"
-            # هر نسخه قدیمی را با 2.1.0 جایگزین می‌کند
             sed -i -E 's/(id\s+"org\.jetbrains\.kotlin\.android"\s+version\s+")[^"]+(")/\12.1.0\2/' build_src/android/settings.gradle
-            echo "Updated settings.gradle:"
             cat build_src/android/settings.gradle
           elif [ -f build_src/android/settings.gradle.kts ]; then
-            echo "Found settings.gradle.kts"
             sed -i -E 's/(id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+")[^"]+(")/\12.1.0\2/' build_src/android/settings.gradle.kts
-            echo "Updated settings.gradle.kts:"
             cat build_src/android/settings.gradle.kts
           else
             echo "ERROR: settings.gradle not found!"
@@ -188,7 +181,7 @@ jobs:
           flutter build apk --release --no-shrink
           --split-per-abi
           --target-platform android-arm,android-arm64
-          --build-name=10.0.0
+          --build-name=10.0.${{ github.run_number }}
           --build-number=${{ github.run_number }}
 
       - name: Verify APK has v2 signature
@@ -218,10 +211,11 @@ jobs:
       - name: Name installer APKs
         run: |
           mkdir -p dist
-          cp build_src/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/Hasan-VPN.apk
-          cp build_src/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/Hasan-VPN-arm64.apk
+          VER="10.0.${{ github.run_number }}"
+          cp build_src/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/Hasan-VPN-v${VER}-arm64.apk"
+          cp build_src/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/Hasan-VPN-v${VER}.apk"
           if [ -f build_src/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk ]; then
-            cp build_src/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/Hasan-VPN-32bit.apk
+            cp build_src/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/Hasan-VPN-v${VER}-32bit.apk"
           fi
           ls -lh dist
 
@@ -240,14 +234,14 @@ jobs:
           body: |
             ## نصب روی گوشی اندروید
 
-            **همین فایل را دانلود کنید:** `Hasan-VPN.apk`
+            **همین فایل را دانلود کنید:** `Hasan-VPN-v10.0.${{ github.run_number }}.apk`
 
             1. نسخه قبلی برنامه را پاک کنید
             2. فایل را از Downloads باز کنید
             3. اگر پرسید، «نصب از منابع ناشناس» را روشن کنید
             4. اجازه VPN را بدهید
 
-            گوشی‌های خیلی قدیمی ۳۲بیتی: `Hasan-VPN-32bit.apk`
+            گوشی‌های خیلی قدیمی ۳۲بیتی: `Hasan-VPN-v10.0.${{ github.run_number }}-32bit.apk`
           files: dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
