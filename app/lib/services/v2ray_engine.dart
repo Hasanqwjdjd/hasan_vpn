@@ -40,7 +40,7 @@ class V2RayEngine {
       await _engine.startVless(
         remark: server.name,
         config: config,
-        proxyOnly: true,
+        proxyOnly: false,
       );
 
       _connected = true;
