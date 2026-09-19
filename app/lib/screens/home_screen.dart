@@ -253,9 +253,14 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _connecting = false;
       _connected = ok;
-      _status = ok
-          ? '${_t('متصل به', 'Connected to')} ${_selected!.name}'
-          : _t('اتصال ناموفق', 'Connection failed');
+      if (ok) {
+        _status = '${_t('متصل به', 'Connected to')} ${_selected!.name}';
+      } else {
+        final err = V2RayEngine.lastError;
+        _status = err == null || err.isEmpty
+            ? _t('اتصال ناموفق', 'Connection failed')
+            : '${_t('اتصال ناموفق', 'Connection failed')}: $err';
+      }
     });
   }
 
