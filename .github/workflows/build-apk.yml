@@ -12,6 +12,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
@@ -21,13 +24,30 @@ jobs:
           flutter-version: '3.22.0'
           channel: 'stable'
 
-      - name: Decode Keystore to absolute path
+      - name: Ensure keystore exists
         run: |
-          mkdir -p $HOME/keys
-          tr -d '\n' < android-keystore.b64 | tr -d ' ' | base64 -d > $HOME/keys/hasan.jks
-          ls -la $HOME/keys/hasan.jks
-          echo "--- verify keystore ---"
-          keytool -list -keystore $HOME/keys/hasan.jks -storepass hasan12345 -alias hasan
+          if [ ! -f hasan.keystore ]; then
+            echo "🔑 Keystore not found. Creating new one..."
+            keytool -genkey -v \
+              -keystore hasan.keystore \
+              -alias hasan \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass hasan12345 \
+              -keypass hasan12345 \
+              -dname "CN=Hasan, OU=Hasan, O=Hasan, L=Tehran, S=Tehran, C=IR"
+            echo "✅ Keystore created"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add hasan.keystore
+            git commit -m "Add keystore (auto-generated)"
+            git push
+          else
+            echo "✅ Keystore already exists"
+          fi
+          echo "--- verify ---"
+          keytool -list -keystore hasan.keystore -storepass hasan12345 -alias hasan
 
       - name: Create clean Flutter project
         run: flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite build_src
@@ -38,6 +58,7 @@ jobs:
           rm -rf build_src/lib
           mkdir -p build_src/lib
           cp -r app/lib/. build_src/lib/
+          cp hasan.keystore build_src/android/
 
       - name: Write settings.gradle
         run: |
@@ -79,16 +100,14 @@ jobs:
           distributionUrl=https\://services.gradle.org/distributions/gradle-8.4-all.zip
           EOF
 
-      - name: Write key.properties (absolute path!)
+      - name: Write key.properties
         run: |
-          cat > build_src/android/key.properties << EOF
+          cat > build_src/android/key.properties << 'EOF'
           storePassword=hasan12345
           keyPassword=hasan12345
           keyAlias=hasan
-          storeFile=$HOME/keys/hasan.jks
+          storeFile=../hasan.keystore
           EOF
-          echo "--- key.properties ---"
-          cat build_src/android/key.properties
 
       - name: Write app build.gradle
         run: |
@@ -177,7 +196,7 @@ jobs:
         working-directory: build_src
         run: flutter pub get
 
-      - name: Build APK (split per ABI for smaller size)
+      - name: Build APK (split per ABI)
         working-directory: build_src
         run: flutter build apk --release --split-per-abi
 
@@ -191,7 +210,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v6.1.${{ github.run_number }}
+          tag_name: v6.3.${{ github.run_number }}
           files: build_src/build/app/outputs/flutter-apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
