@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/server.dart';
 import '../services/app_colors.dart';
 
@@ -86,6 +87,23 @@ class ServerTile extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32),
+                  iconSize: 18,
+                  icon: const Icon(Icons.copy,
+                      color: AppColors.accent, size: 18),
+                  onPressed: () {
+                    Clipboard.setData(
+                        ClipboardData(text: server.shareLink));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('لینک کپی شد'),
+                        duration: Duration(seconds: 1),
+                      ),
+                    );
+                  },
+                ),
                 if (onTest != null)
                   IconButton(
                     padding: EdgeInsets.zero,
