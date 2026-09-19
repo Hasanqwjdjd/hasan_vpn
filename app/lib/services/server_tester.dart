@@ -4,21 +4,36 @@ import '../models/server.dart';
 
 class ServerTester {
   static const int _maxConcurrent = 8;
-  static const int _attemptsPerServer = 2;
+  static const int _attemptsPerServer = 4;
   static const int _timeoutMs = 4000;
+  static const int _minValidPing = 10;
 
   static Future<int?> testPing(VpnServer server) async {
     final results = <int>[];
+
     for (int i = 0; i < _attemptsPerServer; i++) {
       final ping = await _tcpPing(server, _timeoutMs);
       if (ping != null) results.add(ping);
       if (i < _attemptsPerServer - 1) {
-        await Future.delayed(const Duration(milliseconds: 80));
+        await Future.delayed(const Duration(milliseconds: 100));
       }
     }
+
     if (results.isEmpty) return null;
-    results.sort();
-    return results.first;
+    if (results.length < 2) return null;
+
+    final validResults = results.length >= 3
+        ? results.sublist(1)
+        : results;
+
+    final sum = validResults.reduce((a, b) => a + b);
+    final avg = (sum / validResults.length).round();
+
+    if (avg < _minValidPing) {
+      return _minValidPing;
+    }
+
+    return avg;
   }
 
   static Future<int?> _tcpPing(VpnServer server, int timeoutMs) async {
@@ -93,26 +108,19 @@ class ServerTester {
     return completer.future;
   }
 
-  static void sortServers(List<VpnServer> servers) {
+  static void sortServers(List<VpnServer> servers, {bool descending = false}) {
     servers.sort((a, b) {
       final aValid = a.ping != null;
       final bValid = b.ping != null;
       if (aValid && !bValid) return -1;
       if (!aValid && bValid) return 1;
       if (aValid && bValid) {
-        return (a.ping ?? 0).compareTo(b.ping ?? 0);
+        return descending
+            ? (b.ping ?? 0).compareTo(a.ping ?? 0)
+            : (a.ping ?? 0).compareTo(b.ping ?? 0);
       }
       return 0;
     });
-  }
-
-  static int removeInvalid(List<VpnServer> servers) {
-    final before = servers.length;
-    servers.removeWhere((s) =>
-        s.isDeletable &&
-        s.status == ServerStatus.offline &&
-        s.ping == null);
-    return before - servers.length;
   }
 
   static VpnServer? fastest(List<VpnServer> servers) {
