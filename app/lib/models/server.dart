@@ -1,4 +1,4 @@
-enum VpnProtocol { trojan, vless, vmess, hysteria2, aether }
+enum VpnProtocol { trojan, vless, vmess, hysteria2, aether, shadowsocks, custom }
 
 class VpnServer {
   final String id;
@@ -10,6 +10,7 @@ class VpnServer {
   final int port;
   String? sniOrHost;
   bool isDeletable;
+  bool isPinned;
 
   int? ping;
   int? speedKbps;
@@ -25,6 +26,7 @@ class VpnServer {
     required this.port,
     this.sniOrHost,
     this.isDeletable = true,
+    this.isPinned = false,
     this.ping,
     this.speedKbps,
     this.status = ServerStatus.idle,
