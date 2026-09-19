@@ -104,6 +104,19 @@ class SubscriptionService {
     return servers;
   }
 
+  static List<VpnServer> fromCache(Subscription sub) {
+    final servers = <VpnServer>[];
+    int i = 0;
+    for (final link in sub.cachedLinks) {
+      final s = _parseLink(link, '${sub.id}_$i');
+      if (s != null) {
+        servers.add(s);
+        i++;
+      }
+    }
+    return servers;
+  }
+
   static List<VpnServer> parseContent(String content, String subId) {
     final servers = <VpnServer>[];
 
