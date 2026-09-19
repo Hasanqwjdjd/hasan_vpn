@@ -9,6 +9,7 @@ class ServerTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onDelete;
   final VoidCallback? onTest;
+  final VoidCallback? onPin;
 
   const ServerTile({
     super.key,
@@ -17,6 +18,7 @@ class ServerTile extends StatelessWidget {
     required this.onTap,
     this.onDelete,
     this.onTest,
+    this.onPin,
   });
 
   @override
@@ -52,11 +54,23 @@ class ServerTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
             child: Row(
               children: [
-                Text(server.flag, style: const TextStyle(fontSize: 20)),
-                const SizedBox(width: 8),
+                if (onPin != null)
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 28),
+                    iconSize: 18,
+                    icon: Icon(
+                      server.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                      color: server.isPinned ? AppColors.accent : AppColors.muted2(context),
+                      size: 18,
+                    ),
+                    onPressed: onPin,
+                  ),
+                Text(server.flag, style: const TextStyle(fontSize: 18)),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     server.name,
@@ -89,13 +103,11 @@ class ServerTile extends StatelessWidget {
                   ),
                 IconButton(
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32),
-                  iconSize: 18,
-                  icon: const Icon(Icons.copy,
-                      color: AppColors.accent, size: 18),
+                  constraints: const BoxConstraints(minWidth: 28),
+                  iconSize: 16,
+                  icon: const Icon(Icons.copy, color: AppColors.accent, size: 16),
                   onPressed: () {
-                    Clipboard.setData(
-                        ClipboardData(text: server.shareLink));
+                    Clipboard.setData(ClipboardData(text: server.shareLink));
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text('لینک کپی شد'),
@@ -107,28 +119,21 @@ class ServerTile extends StatelessWidget {
                 if (onTest != null)
                   IconButton(
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32),
-                    iconSize: 18,
-                    icon: const Icon(Icons.bolt,
-                        color: AppColors.warn, size: 18),
-                    onPressed: server.status == ServerStatus.testing
-                        ? null
-                        : onTest,
+                    constraints: const BoxConstraints(minWidth: 28),
+                    iconSize: 16,
+                    icon: const Icon(Icons.bolt, color: AppColors.warn, size: 16),
+                    onPressed: server.status == ServerStatus.testing ? null : onTest,
                   ),
                 if (onDelete != null)
                   IconButton(
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32),
-                    iconSize: 18,
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: AppColors.danger,
-                      size: 18,
-                    ),
+                    constraints: const BoxConstraints(minWidth: 28),
+                    iconSize: 16,
+                    icon: const Icon(Icons.delete_outline, color: AppColors.danger, size: 16),
                     onPressed: onDelete,
                   )
                 else
-                  const SizedBox(width: 32),
+                  const SizedBox(width: 28),
               ],
             ),
           ),
