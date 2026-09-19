@@ -26,9 +26,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   static const String _deletedKey = 'deleted_server_ids_v1';
+  static const String _pinnedKey = 'pinned_server_ids_v1';
 
   List<VpnServer> _servers = [];
   Set<String> _deletedIds = {};
+  Set<String> _pinnedIds = {};
   VpnServer? _selected;
   bool _testing = false;
   bool _autoMode = true;
@@ -71,11 +73,36 @@ class _HomeScreenState extends State<HomeScreen> {
         _deletedIds = (jsonDecode(raw) as List).cast<String>().toSet();
       } catch (_) {}
     }
+    final rawPin = prefs.getString(_pinnedKey);
+    if (rawPin != null) {
+      try {
+        _pinnedIds = (jsonDecode(rawPin) as List).cast<String>().toSet();
+      } catch (_) {}
+    }
   }
 
   Future<void> _saveDeleted() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_deletedKey, jsonEncode(_deletedIds.toList()));
+  }
+
+  Future<void> _savePinned() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pinnedKey, jsonEncode(_pinnedIds.toList()));
+  }
+
+  void _togglePin(VpnServer s) {
+    setState(() {
+      if (_pinnedIds.contains(s.id)) {
+        _pinnedIds.remove(s.id);
+        s.isPinned = false;
+      } else {
+        _pinnedIds.add(s.id);
+        s.isPinned = true;
+      }
+      _rebuildServerList();
+    });
+    _savePinned();
   }
 
   void _rebuildServerList() {
@@ -85,7 +112,15 @@ class _HomeScreenState extends State<HomeScreen> {
         ...kServers.where((s) => !_deletedIds.contains(s.id)),
         ...widget.extraServers.where((s) => !_deletedIds.contains(s.id)),
       ];
+      for (final s in _servers) {
+        s.isPinned = _pinnedIds.contains(s.id);
+      }
       ServerTester.sortServers(_servers, descending: !_sortAscending);
+      _servers.sort((a, b) {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return 0;
+      });
     });
   }
 
@@ -115,11 +150,18 @@ class _HomeScreenState extends State<HomeScreen> {
     await ServerTester.testAllStreaming(
       _servers,
       isCancelled: () => _cancelTest,
-      onServerTested: (server) => _tested++,
+      onServerTested: (server) {
+        if (mounted) setState(() => _tested++);
+      },
       onListUpdated: () {
         if (!mounted) return;
         setState(() {
           ServerTester.sortServers(_servers, descending: !_sortAscending);
+          _servers.sort((a, b) {
+            if (a.isPinned && !b.isPinned) return -1;
+            if (!a.isPinned && b.isPinned) return 1;
+            return 0;
+          });
           _servers = List.from(_servers);
         });
       },
@@ -129,94 +171,63 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       ServerTester.sortServers(_servers, descending: !_sortAscending);
+      _servers.sort((a, b) {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return 0;
+      });
       _servers = List.from(_servers);
       _testing = false;
       if (!_cancelTest) {
         final best = ServerTester.fastest(_servers);
         if (best != null && _autoMode) {
           _selected = best;
-          _status = '${_t('سریع‌ترین', 'Fastest')}: ${best.name}';
+          _status = _t('بهترین سرور انتخاب شد', 'Best server selected');
         } else {
-          _status = _t('آماده', 'Ready');
+          _status = _t('تست تمام شد', 'Test finished');
         }
       }
     });
   }
 
-  Future<void> _testOne(VpnServer server) async {
+  Future<void> _testOne(VpnServer s) async {
+    if (s.status == ServerStatus.testing) return;
     setState(() {
-      server.status = ServerStatus.testing;
-      server.ping = null;
+      s.status = ServerStatus.testing;
+      s.ping = null;
     });
-    final ping = await ServerTester.testPing(server);
-    if (!mounted) return;
-    setState(() {
-      server.ping = ping;
-      server.status = ping != null ? ServerStatus.online : ServerStatus.offline;
-      ServerTester.sortServers(_servers, descending: !_sortAscending);
-      _servers = List.from(_servers);
-    });
+    await ServerTester.testOne(s);
+    if (mounted) setState(() {});
   }
 
-  void _deleteServer(VpnServer server) {
+  void _deleteServer(VpnServer s) {
     setState(() {
-      _deletedIds.add(server.id);
-      _servers.removeWhere((s) => s.id == server.id);
-      if (_selected?.id == server.id) _selected = null;
+      _deletedIds.add(s.id);
+      if (_selected?.id == s.id) _selected = null;
+      _rebuildServerList();
     });
     _saveDeleted();
   }
 
   void _deleteInvalid() {
     final toDelete = _servers
-        .where((s) =>
-            s.isDeletable &&
-            s.status == ServerStatus.offline &&
-            s.ping == null)
+        .where((s) => s.ping == null && s.status == ServerStatus.offline)
         .toList();
-
     if (toDelete.isEmpty) {
-      _showMsg(_t('سرور نامعتبری نیست', 'No invalid servers'));
+      _showMsg(_t('سرور آفلاینی برای حذف نیست', 'No offline servers to delete'));
       return;
     }
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.elevated(ctx),
-        title: Text(_t('حذف سرورهای نامعتبر', 'Delete invalid servers'),
-            style: TextStyle(color: AppColors.fg(ctx))),
-        content: Text(
-          '${toDelete.length} ${_t('سرور حذف بشه؟', 'servers will be deleted?')}',
-          style: TextStyle(color: AppColors.muted(ctx)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(_t('لغو', 'Cancel'),
-                style: TextStyle(color: AppColors.muted(ctx))),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              setState(() {
-                for (final s in toDelete) {
-                  _deletedIds.add(s.id);
-                }
-                _servers.removeWhere((s) => toDelete.contains(s));
-                if (toDelete.any((s) => s.id == _selected?.id)) {
-                  _selected = null;
-                }
-              });
-              _saveDeleted();
-              _showMsg('${toDelete.length} ${_t('سرور حذف شد', 'servers deleted')}');
-            },
-            child: Text(_t('حذف', 'Delete'),
-                style: const TextStyle(color: AppColors.danger)),
-          ),
-        ],
-      ),
-    );
+    setState(() {
+      for (final s in toDelete) {
+        _deletedIds.add(s.id);
+      }
+      if (_selected != null && _deletedIds.contains(_selected!.id)) {
+        _selected = null;
+      }
+      _rebuildServerList();
+    });
+    _saveDeleted();
+    _showMsg(_t('\( {toDelete.length} سرور حذف شد', ' \){toDelete.length} servers deleted'));
   }
 
   Future<void> _toggleConnection() async {
@@ -227,17 +238,21 @@ class _HomeScreenState extends State<HomeScreen> {
         _connecting = true;
         _status = _t('در حال قطع...', 'Disconnecting...');
       });
-      await V2RayEngine.disconnect();
-      setState(() {
-        _connected = false;
-        _connecting = false;
-        _status = _t('قطع شد', 'Disconnected');
-      });
+      try {
+        await V2RayEngine.disconnect();
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _connected = false;
+          _connecting = false;
+          _status = _t('آماده', 'Ready');
+        });
+      }
       return;
     }
 
     if (_selected == null) {
-      _showMsg(_t('اول یه سرور انتخاب کن', 'Select a server first'));
+      _showMsg(_t('اول یک سرور انتخاب کن', 'Select a server first'));
       return;
     }
 
@@ -246,36 +261,44 @@ class _HomeScreenState extends State<HomeScreen> {
       _status = _t('در حال اتصال...', 'Connecting...');
     });
 
-    final ok = await V2RayEngine.connect(_selected!);
-
-    if (!mounted) return;
-
-    setState(() {
-      _connecting = false;
-      _connected = ok;
-      if (ok) {
-        _status = '${_t('متصل به', 'Connected to')} ${_selected!.name}';
-      } else {
-        final err = V2RayEngine.lastError;
-        _status = err == null || err.isEmpty
-            ? _t('اتصال ناموفق', 'Connection failed')
-            : '${_t('اتصال ناموفق', 'Connection failed')}: $err';
+    try {
+      final ok = await V2RayEngine.connect(_selected!);
+      if (mounted) {
+        setState(() {
+          _connected = ok;
+          _connecting = false;
+          _status = ok
+              ? _t('متصل شد', 'Connected')
+              : _t('اتصال ناموفق', 'Connection failed');
+        });
       }
-    });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _connected = false;
+          _connecting = false;
+          _status = _t('خطا در اتصال', 'Connection error');
+        });
+      }
+    }
   }
 
   Future<void> _copyAll() async {
-    final text = _servers.map((s) => s.shareLink).join('\n');
-    await Clipboard.setData(ClipboardData(text: text));
-    if (!mounted) return;
-    _showMsg('${_servers.length} ${_t('سرور کپی شد', 'servers copied')}');
+    final links =
+        _servers.map((s) => s.shareLink).where((l) => l.isNotEmpty).join('\n');
+    await Clipboard.setData(ClipboardData(text: links));
+    _showMsg(_t('همه لینک‌ها کپی شد', 'All links copied'));
   }
 
   void _toggleSort() {
     setState(() {
       _sortAscending = !_sortAscending;
       ServerTester.sortServers(_servers, descending: !_sortAscending);
-      _servers = List.from(_servers);
+      _servers.sort((a, b) {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return 0;
+      });
     });
   }
 
@@ -398,16 +421,23 @@ class _HomeScreenState extends State<HomeScreen> {
                   boxShadow: _connected
                       ? [
                           BoxShadow(
-                              color: AppColors.accent.withOpacity(0.3),
-                              blurRadius: 30,
-                              spreadRadius: 5)
+                            color: AppColors.accent.withOpacity(0.3),
+                            blurRadius: 20,
+                            spreadRadius: 2,
+                          )
                         ]
                       : null,
                 ),
                 child: Center(
                   child: _connecting
-                      ? const CircularProgressIndicator(
-                          color: AppColors.accent)
+                      ? const SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            color: AppColors.accent,
+                          ),
+                        )
                       : Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -415,17 +445,17 @@ class _HomeScreenState extends State<HomeScreen> {
                               _connected
                                   ? Icons.shield
                                   : Icons.power_settings_new,
+                              size: 42,
                               color: _connected
                                   ? AppColors.accent
                                   : (_selected != null
                                       ? AppColors.accent
                                       : AppColors.muted2(context)),
-                              size: 36,
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 6),
                             Text(
                               _connected
-                                  ? _t('قطع', 'Disconnect')
+                                  ? _t('قطع اتصال', 'Disconnect')
                                   : (_selected != null
                                       ? _t('اتصال', 'Connect')
                                       : _t('انتخاب سرور', 'Pick server')),
@@ -457,7 +487,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            '${_t('سرورها', 'Servers')} (${_servers.length})',
+                            '\( {_t('سرورها', 'Servers')} ( \){_servers.length})',
                             style: TextStyle(
                               color: AppColors.muted(context),
                               fontSize: 11,
@@ -482,6 +512,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     onTap: () => setState(() => _selected = s),
                     onTest: () => _testOne(s),
                     onDelete: () => _deleteServer(s),
+                    onPin: () => _togglePin(s),
                   );
                 },
               ),
