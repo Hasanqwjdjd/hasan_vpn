@@ -21,6 +21,22 @@ jobs:
           flutter-version: '3.22.0'
           channel: 'stable'
 
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android-keystore.jks
+          ls -la android-keystore.jks
+
+      - name: Create key.properties
+        run: |
+          cat > key.properties <<EOF
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=$(pwd)/android-keystore.jks
+          EOF
+          echo "--- key.properties ---"
+          cat key.properties
+
       - name: Create clean Flutter project
         run: flutter create --org com.hasan --project-name hasan_vpn --platforms=android --overwrite build_src
 
@@ -30,54 +46,53 @@ jobs:
           rm -rf build_src/lib
           mkdir -p build_src/lib
           cp -r app/lib/. build_src/lib/
+          cp android-keystore.jks build_src/android/
+          cp key.properties build_src/android/
 
-      - name: Add Internet permission and Queries
+      - name: Patch Android build.gradle (signing + permission)
         run: |
-          MANIFEST=build_src/android/app/src/main/AndroidManifest.xml
-          
-          # ۱. اضافه کردن مجوز اینترنت
-          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$MANIFEST"
-          
-          # ۲. اضافه کردن queries قبل از </manifest>
-          python3 << 'EOF'
-          import re
-          path = "build_src/android/app/src/main/AndroidManifest.xml"
+          python3 << 'PYEOF'
+          path = "build_src/android/app/build.gradle"
           with open(path, "r") as f:
               content = f.read()
-          
-          queries = '''    <queries>
-              <intent>
-                  <action android:name="android.intent.action.VIEW" />
-                  <category android:name="android.intent.category.BROWSABLE" />
-                  <data android:scheme="trojan" />
-              </intent>
-              <intent>
-                  <action android:name="android.intent.action.VIEW" />
-                  <category android:name="android.intent.category.BROWSABLE" />
-                  <data android:scheme="vless" />
-              </intent>
-              <intent>
-                  <action android:name="android.intent.action.VIEW" />
-                  <category android:name="android.intent.category.BROWSABLE" />
-                  <data android:scheme="vmess" />
-              </intent>
-              <intent>
-                  <action android:name="android.intent.action.VIEW" />
-                  <category android:name="android.intent.category.BROWSABLE" />
-                  <data android:scheme="ss" />
-              </intent>
-          </queries>
+
+          if "import java.util.Properties" not in content:
+              content = "import java.util.Properties\nimport java.io.FileInputStream\n" + content
+
+          keystore_block = '''
+          def keystoreProperties = new Properties()
+          def keystorePropertiesFile = rootProject.file('key.properties')
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+          }
           '''
-          
-          # اضافه کردن queries قبل از </manifest>
-          content = content.replace("</manifest>", queries + "</manifest>")
-          
+
+          if "keystoreProperties = new Properties()" not in content:
+              content = content.replace("android {", keystore_block + "\nandroid {", 1)
+
+          signing_block = '''    signingConfigs {
+              release {
+                  keyAlias keystoreProperties['keyAlias']
+                  keyPassword keystoreProperties['keyPassword']
+                  storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+                  storePassword keystoreProperties['storePassword']
+              }
+          }
+          '''
+          if "signingConfigs {" not in content:
+              content = content.replace("android {", "android {\n" + signing_block, 1)
+
+          content = content.replace(
+              "signingConfig signingConfigs.debug",
+              "signingConfig signingConfigs.release"
+          )
+
           with open(path, "w") as f:
               f.write(content)
-          EOF
-          
-          echo "--- AndroidManifest ---"
-          cat "$MANIFEST"
+          PYEOF
+
+          MANIFEST=build_src/android/app/src/main/AndroidManifest.xml
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$MANIFEST"
 
       - name: Get dependencies
         working-directory: build_src
@@ -97,7 +112,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v3.0.${{ github.run_number }}
+          tag_name: v5.0.${{ github.run_number }}
           files: build_src/build/app/outputs/flutter-apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
