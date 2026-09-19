@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_vless/flutter_vless.dart';
 import '../models/server.dart';
 
@@ -5,10 +6,25 @@ class V2RayEngine {
   static bool _initialized = false;
   static bool _connected = false;
   static VpnServer? _current;
+  static String? lastError;
 
   static final FlutterVless _engine = FlutterVless(
     onStatusChanged: (dynamic status) {
-      print('V2Ray status: $status');
+      debugPrint('V2Ray status: $status');
+      try {
+        final raw = status.connectionState?.toString() ??
+            status.state?.toString() ??
+            status.toString();
+        final s = raw.toLowerCase();
+        if (s.contains('disconnect') ||
+            s.contains('idle') ||
+            s.contains('stop') ||
+            s.contains('closed')) {
+          _connected = false;
+        } else if (s.contains('connected') || s.contains('connecting')) {
+          _connected = s.contains('connected');
+        }
+      } catch (_) {}
     },
   );
 
@@ -18,26 +34,37 @@ class V2RayEngine {
   static Future<void> init() async {
     if (_initialized) return;
     try {
-      await _engine.initializeVless();
+      await _engine.initializeVless(
+        notificationIconResourceType: 'mipmap',
+        notificationIconResourceName: 'ic_launcher',
+      );
     } catch (e) {
-      print('V2Ray init error: $e');
+      debugPrint('V2Ray init error: $e');
     }
     _initialized = true;
   }
 
   static Future<bool> connect(VpnServer server) async {
+    lastError = null;
     try {
+      await init();
+
       final FlutterVlessURL parser = FlutterVless.parse(server.shareLink);
       final String config = parser.getFullConfiguration();
+      if (config.trim().isEmpty) {
+        lastError = 'empty config';
+        return false;
+      }
 
       final bool allowed = await _engine.requestPermission();
       if (!allowed) {
-        print('VPN permission denied');
+        lastError = 'VPN permission denied';
+        debugPrint(lastError);
         return false;
       }
 
       await _engine.startVless(
-        remark: parser.remark,
+        remark: parser.remark.isNotEmpty ? parser.remark : server.name,
         config: config,
         proxyOnly: false,
       );
@@ -46,8 +73,10 @@ class V2RayEngine {
       _current = server;
       return true;
     } catch (e) {
-      print('V2Ray connect error: $e');
+      lastError = e.toString();
+      debugPrint('V2Ray connect error: $e');
       _connected = false;
+      _current = null;
       return false;
     }
   }
