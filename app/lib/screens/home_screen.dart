@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -45,13 +46,26 @@ class _HomeScreenState extends State<HomeScreen> {
 
   VpnServer? _selected;
 
+  /// سروری که الان به آن وصل هستیم (ممکن است با [_selected] فرق کند).
+  VpnServer? _active;
+
+  TestSession? _session;
+  Timer? _pollTimer;
+
   bool _testing = false;
   bool _autoMode = true;
   bool _connecting = false;
   bool _connected = false;
   bool _sortAscending = true;
-  bool _cancelTest = false;
   bool _showSearch = false;
+  bool _cancelConnect = false;
+  bool _polling = false;
+
+  int _pollTick = 0;
+  int _deadStrikes = 0;
+
+  /// آخرین پینگ زنده‌ی اتصال فعلی (کل مسیر: اپ ← تونل ← اینترنت).
+  int? _livePing;
 
   String _searchQuery = '';
   String _status = 'آماده';
@@ -77,6 +91,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _rebuildServerList();
 
     await V2RayEngine.init();
+    if (!mounted) return;
+
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => _poll(),
+    );
   }
 
   @override
@@ -214,16 +234,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _sortCurrentServers() {
+    // sortServers خودش پین‌شده‌ها را اول می‌گذارد و ترتیب را پایدار نگه می‌دارد.
     ServerTester.sortServers(
       _servers,
       descending: !_sortAscending,
     );
-
-    _servers.sort((a, b) {
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
-      return 0;
-    });
   }
 
   void _rebuildServerList() {
@@ -271,50 +286,71 @@ class _HomeScreenState extends State<HomeScreen> {
   void _cancelTesting() {
     if (!mounted) return;
 
+    _session?.cancel();
+
     setState(() {
-      _cancelTest = true;
       _testing = false;
       _status = _t('تست لغو شد', 'Test cancelled');
+
+      // سرورهایی که وسط تست بودند نباید برای همیشه «در حال تست» بمانند.
+      for (final server in _servers) {
+        if (server.status == ServerStatus.testing) {
+          server.status =
+              server.ping != null ? ServerStatus.online : ServerStatus.idle;
+        }
+      }
     });
   }
 
   Future<void> _testAll() async {
     if (_testing || _servers.isEmpty) return;
 
+    final targets = _servers.where((s) => !s.isAether).toList();
+    if (targets.isEmpty) {
+      _showMsg(_t('سروری برای تست نیست', 'Nothing to test'));
+      return;
+    }
+
+    // وقتی با یک VPN معمولی وصل هستیم، ترافیک تست هم از داخل همان تونل می‌رود
+    // و عددها واقعی نیستند (Aether مستثنا است، چون خود برنامه از VPN خارج است).
+    if (_connected && _active?.isAether != true) {
+      _showMsg(
+        _t(
+          'الان وصل هستی؛ پینگ‌ها از داخل تونل فعلی اندازه‌گیری می‌شوند. برای عدد دقیق اول قطع کن.',
+          'You are connected; pings are measured through the current tunnel. Disconnect for accurate numbers.',
+        ),
+      );
+    }
+
+    final session = TestSession();
+    _session = session;
+
     setState(() {
       _testing = true;
-      _cancelTest = false;
       _tested = 0;
-      _total = _servers.length;
+      _total = targets.length;
       _status = _t('در حال تست...', 'Testing...');
 
-      for (final server in _servers) {
-        server.ping = null;
-        server.status = ServerStatus.idle;
+      for (final server in targets) {
+        server.resetPing();
       }
     });
 
-    await ServerTester.testAllStreaming(
-      _servers,
-      isCancelled: () => _cancelTest,
-      onServerTested: (_) {
-        if (!mounted) return;
-        setState(() {
-          _tested++;
-        });
+    final summary = await ServerTester.testAll(
+      targets,
+      session: session,
+      onServerDone: (_) {
+        if (!mounted || session.cancelled) return;
+        setState(() => _tested++);
       },
-      onListUpdated: () {
-        if (!mounted) return;
-
+      onChanged: () {
+        if (!mounted || session.cancelled) return;
         _sortCurrentServers();
-
-        setState(() {
-          _servers = List<VpnServer>.from(_servers);
-        });
+        setState(() => _servers = List<VpnServer>.from(_servers));
       },
     );
 
-    if (!mounted) return;
+    if (!mounted || session.cancelled) return;
 
     _sortCurrentServers();
 
@@ -322,15 +358,24 @@ class _HomeScreenState extends State<HomeScreen> {
       _servers = List<VpnServer>.from(_servers);
       _testing = false;
 
-      if (!_cancelTest) {
-        final fastest = ServerTester.fastest(_servers);
+      final fastest = ServerTester.fastest(_servers);
+      final counts = '${summary.online}/${summary.total}';
 
-        if (_autoMode && fastest != null) {
-          _selected = fastest;
-          _status = _t('بهترین سرور انتخاب شد', 'Best server selected');
-        } else {
-          _status = _t('تست تمام شد', 'Test finished');
-        }
+      if (_autoMode && fastest != null && !_connected) {
+        _selected = fastest;
+        _status = _t(
+          'بهترین سرور انتخاب شد ($counts آنلاین)',
+          'Best server selected ($counts online)',
+        );
+      } else {
+        _status = _t('تست تمام شد ($counts آنلاین)', 'Test finished ($counts online)');
+      }
+
+      if (summary.realUnavailable) {
+        _status += _t(
+          ' · پینگ واقعی پشتیبانی نشد، فقط TCP',
+          ' · real ping unsupported, TCP only',
+        );
       }
     });
   }
@@ -339,29 +384,41 @@ class _HomeScreenState extends State<HomeScreen> {
     if (server.status == ServerStatus.testing) return;
 
     if (server.isAether) {
-      _showMsg(
-        _t(
-          'تست پینگ برای Aether قابل استفاده نیست',
-          'Ping test is not available for Aether',
-        ),
-      );
+      // پینگ Aether فقط وقتی تونل بالاست معنا دارد.
+      if (_connected && _active?.id == server.id) {
+        await _measureLive(force: true);
+        _showMsg(
+          _livePing != null
+              ? _t('پینگ زنده: $_livePing ms', 'Live ping: $_livePing ms')
+              : _t('پاسخی از تونل نیامد', 'No response through the tunnel'),
+        );
+      } else {
+        _showMsg(
+          _t(
+            'Aether آدرس ثابت ندارد؛ برای دیدن پینگ ابتدا وصل شو',
+            'Aether has no fixed address; connect first to see its ping',
+          ),
+        );
+      }
       return;
     }
 
     setState(() {
       server.status = ServerStatus.testing;
-      server.ping = null;
     });
 
-    final ping = await ServerTester.testPing(server);
+    final session = TestSession();
+
+    await ServerTester.testOne(
+      server,
+      session: session,
+      onChanged: () {
+        if (mounted) setState(() {});
+      },
+    );
 
     if (!mounted) return;
-
-    setState(() {
-      server.ping = ping;
-      server.status =
-          ping == null ? ServerStatus.offline : ServerStatus.online;
-    });
+    setState(() {});
   }
 
   void _deleteServer(VpnServer server) {
@@ -418,30 +475,89 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _refreshConnectionState() async {
-    if (!_connected) return;
-
-    if (_selected?.isAether == true) {
-      final alive = await AetherService.syncStatus();
-
-      if (!alive && mounted) {
-        setState(() {
-          _connected = false;
-          _status = _t('آماده', 'Ready');
-        });
-      }
-    }
-  }
-
   Future<void> _disconnectAll() async {
     await AetherService.disconnect();
     await V2RayEngine.disconnect();
   }
 
-  Future<void> _toggleConnection() async {
-    if (_connecting) return;
+  void _markDisconnected(String status) {
+    _active = null;
+    _livePing = null;
+    _deadStrikes = 0;
+    _pollTick = 0;
+    if (!mounted) return;
+    setState(() {
+      _connected = false;
+      _connecting = false;
+      _status = status;
+    });
+  }
 
-    await _refreshConnectionState();
+  /// هر ۴ ثانیه: وضعیت واقعی اتصال را با هسته هماهنگ می‌کند (مثلاً وقتی کاربر
+  /// از نوتیفیکیشن قطع می‌کند یا پردازه‌ی Aether می‌میرد) و هر ~۱۲ ثانیه پینگ
+  /// زنده را به‌روز می‌کند.
+  Future<void> _poll() async {
+    if (!mounted || _connecting || _polling || !_connected) return;
+    _polling = true;
+
+    try {
+      final active = _active;
+      var alive = V2RayEngine.isConnected;
+
+      if (alive && active?.isAether == true) {
+        alive = await AetherService.syncStatus();
+      }
+
+      if (!alive) {
+        // یک بار خطا را ندیده می‌گیریم تا رویداد گذرای افزونه قطع کاذب نسازد.
+        _deadStrikes++;
+        if (_deadStrikes >= 2) {
+          try {
+            await _disconnectAll();
+          } catch (_) {}
+          _markDisconnected(
+            _t('اتصال قطع شد', 'Connection lost'),
+          );
+        }
+        return;
+      }
+
+      _deadStrikes = 0;
+      _pollTick++;
+      if (_pollTick % 3 == 1) await _measureLive();
+    } finally {
+      _polling = false;
+    }
+  }
+
+  /// پینگ زنده‌ی واقعی: یک درخواست HTTP از داخل خود تونل.
+  Future<void> _measureLive({bool force = false}) async {
+    if (!_connected) return;
+    if (!force && _connecting) return;
+
+    final result = await V2RayEngine.probeConnected();
+    if (!mounted || !_connected) return;
+
+    setState(() {
+      _livePing = result.ms;
+
+      final active = _active;
+      if (active != null && result.ok) {
+        active.ping = result.ms;
+        active.jitter = result.jitter;
+        active.pingKind = PingKind.real;
+        active.status = ServerStatus.online;
+      }
+    });
+  }
+
+  Future<void> _toggleConnection() async {
+    // حین اتصال، دوباره زدن دکمه = لغو (برای Aether که ممکن است طول بکشد).
+    if (_connecting) {
+      _cancelConnect = true;
+      setState(() => _status = _t('در حال لغو...', 'Cancelling...'));
+      return;
+    }
 
     if (_connected) {
       setState(() {
@@ -453,14 +569,7 @@ class _HomeScreenState extends State<HomeScreen> {
         await _disconnectAll();
       } catch (_) {}
 
-      if (!mounted) return;
-
-      setState(() {
-        _connected = false;
-        _connecting = false;
-        _status = _t('آماده', 'Ready');
-      });
-
+      _markDisconnected(_t('آماده', 'Ready'));
       return;
     }
 
@@ -476,8 +585,11 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    _cancelConnect = false;
+
     setState(() {
       _connecting = true;
+      _livePing = null;
       _status = _t('در حال اتصال...', 'Connecting...');
     });
 
@@ -486,7 +598,14 @@ class _HomeScreenState extends State<HomeScreen> {
       final String? error;
 
       if (selected.isAether) {
-        connected = await AetherService.connect(selected);
+        connected = await AetherService.connect(
+          selected,
+          isCancelled: () => _cancelConnect,
+          onProgress: (message) {
+            if (!mounted || _cancelConnect) return;
+            setState(() => _status = message.replaceAll('\n', ' · '));
+          },
+        );
         error = AetherService.lastError;
       } else {
         connected = await V2RayEngine.connect(selected);
@@ -495,12 +614,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
+      if (connected && _cancelConnect) {
+        // کاربر وسط راه لغو کرد ولی اتصال برقرار شده بود.
+        try {
+          await _disconnectAll();
+        } catch (_) {}
+        _markDisconnected(_t('لغو شد', 'Cancelled'));
+        return;
+      }
+
+      _deadStrikes = 0;
+      _pollTick = 0;
+
       setState(() {
         _connected = connected;
         _connecting = false;
+        _active = connected ? selected : null;
 
         if (connected) {
           _status = _t('متصل شد', 'Connected');
+        } else if (_cancelConnect) {
+          _status = _t('لغو شد', 'Cancelled');
         } else if (error != null && error.isNotEmpty) {
           _status = _t(
             'اتصال ناموفق: $error',
@@ -510,12 +644,19 @@ class _HomeScreenState extends State<HomeScreen> {
           _status = _t('اتصال ناموفق', 'Connection failed');
         }
       });
+
+      if (connected) {
+        // کمی صبر تا تونل جا بیفتد، بعد اولین پینگ زنده.
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+        await _measureLive();
+      }
     } catch (error) {
       if (!mounted) return;
 
       setState(() {
         _connected = false;
         _connecting = false;
+        _active = null;
         _status = _t(
           'خطا در اتصال',
           'Connection error',
@@ -770,7 +911,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 2),
                     Text(
                       _status,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -868,7 +1009,7 @@ class _HomeScreenState extends State<HomeScreen> {
         : AppColors.accent;
 
     return GestureDetector(
-      onTap: _connecting ? null : _toggleConnection,
+      onTap: _toggleConnection,
       child: Container(
         width: 130,
         height: 130,
@@ -895,17 +1036,42 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: Center(
           child: _connecting
-              ? const SizedBox(
-                  width: 36,
-                  height: 36,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 3,
-                    color: AppColors.accent,
-                  ),
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _t('لغو', 'Cancel'),
+                      style: TextStyle(
+                        color: AppColors.muted(context),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                 )
               : Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    if (_connected && _livePing != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text(
+                          '$_livePing ms',
+                          style: const TextStyle(
+                            color: AppColors.accent,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
                     Icon(
                       _connected
                           ? Icons.shield
@@ -979,6 +1145,7 @@ class _HomeScreenState extends State<HomeScreen> {
           return ServerTile(
             server: server,
             selected: _selected?.id == server.id,
+            active: _connected && _active?.id == server.id,
             onTap: () {
               setState(() {
                 _selected = server;
@@ -1022,6 +1189,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
+    _session?.cancel();
     _searchController.dispose();
     super.dispose();
   }
