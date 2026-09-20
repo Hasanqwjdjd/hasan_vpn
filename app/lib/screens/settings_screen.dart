@@ -27,6 +27,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late String _theme;
   late String _lang;
+  String _vpnMode = 'vpn';
   bool _checkingUpdate = false;
 
   @override
@@ -34,6 +35,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _theme = widget.themeMode;
     _lang = widget.language;
+    SettingsService.getVpnMode().then((m) {
+      if (mounted) setState(() => _vpnMode = m);
+    });
   }
 
   String _t(String fa, String en) => _lang == 'fa' ? fa : en;
@@ -141,6 +145,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // حالت اتصال
+          _sectionTitle(_t('حالت اتصال', 'Connection Mode')),
+          _card(
+            context,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      _vpnMode == 'vpn' ? Icons.vpn_lock : Icons.settings_ethernet,
+                      color: AppColors.muted(context),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _lang == 'fa'
+                            ? (_vpnMode == 'vpn' ? 'VPN کامل (پیش‌فرض)' : 'فقط پروکسی (SOCKS/HTTP)')
+                            : (_vpnMode == 'vpn' ? 'Full VPN (default)' : 'Proxy only (SOCKS/HTTP)'),
+                        style: TextStyle(color: AppColors.fg(context), fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _modeChip(context, 'vpn', _t('VPN', 'VPN')),
+                    const SizedBox(width: 6),
+                    _modeChip(context, 'proxy', _t('فقط پروکسی', 'Proxy only')),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _lang == 'fa'
+                      ? 'در حالت «فقط پروکسی» هیچ VPN‌ای روشن نمی‌شه و باید برنامه‌ها رو دستی روی SOCKS5 127.0.0.1:10808 (یا HTTP روی 10809) تنظیم کنی.'
+                      : 'In proxy-only mode no system VPN is created; configure apps manually to SOCKS5 127.0.0.1:10808 (or HTTP on 10809).',
+                  style: TextStyle(color: AppColors.muted2(context), fontSize: 11, height: 1.5),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // تم
           _sectionTitle(_t('تم برنامه', 'Theme')),
           _card(
@@ -244,8 +293,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 12),
                 Text(
                   _lang == 'fa'
-                      ? 'این برنامه با تلاش حسن کله‌کیری برای یه عده کسخل مثل کباب السگ نوشته شده است'
-                      : 'This app was made with the effort of Hasan Kale-kiri for some losers like Kebab Al-Sag',
+                      ? 'این برنامه با تلاش حسن سیگما برای به عده اسکل مثل کباب السگ نوشته شده است'
+                      : 'This app was made with the effort of Hasan Sigma for some idiots like Kebab Al-Sag',
                   style: TextStyle(color: AppColors.muted(context), fontSize: 12, height: 1.7),
                 ),
                 const SizedBox(height: 14),
@@ -322,6 +371,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
             border: Border.all(color: active ? AppColors.accent : AppColors.border(context)),
           ),
           child: Text(label, textAlign: TextAlign.center, style: TextStyle(color: active ? AppColors.accent : AppColors.muted(context), fontSize: 12)),
+        ),
+      ),
+    );
+  }
+
+  Widget _modeChip(BuildContext context, String value, String label) {
+    final active = _vpnMode == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() => _vpnMode = value);
+          SettingsService.setVpnMode(value);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: active ? AppColors.accent.withOpacity(0.15) : AppColors.elevated(context),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: active ? AppColors.accent : AppColors.border(context)),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: active ? AppColors.accent : AppColors.muted(context),
+              fontSize: 12,
+            ),
+          ),
         ),
       ),
     );
