@@ -250,6 +250,7 @@ class _RootTabsState extends State<RootTabs> {
     final pages = [
       HomeScreen(
         extraServers: widget.subServers,
+        subscriptions: widget.subs,
         onOpenSettings: _openSettings,
         language: widget.language,
       ),
