@@ -1,4 +1,3 @@
-/// یک پروفایل DNS مخصوص بازی (کاهش پینگ).
 class GameDns {
   final String name;
   final String primary;
@@ -17,7 +16,6 @@ class GameDns {
   bool get hasV6 => primaryV6 != null && secondaryV6 != null;
 }
 
-/// لیست DNS های تست شده برای بازی‌های آنلاین.
 final List<GameDns> kGameDnsList = const <GameDns>[
   // ---------- 🇮🇷 ایران ----------
   GameDns(name: '🇮🇷 ایران ۱', primary: '37.32.5.61', secondary: '37.32.5.60'),
@@ -31,7 +29,6 @@ final List<GameDns> kGameDnsList = const <GameDns>[
   GameDns(name: '🇮🇷 ایران ۹ (همراه اول)', primary: '178.22.122.100', secondary: '185.40.202.5'),
   GameDns(name: '🇮🇷 ایران ۱۰ (ایرانسل)', primary: '178.22.122.100', secondary: '185.51.200.2'),
   GameDns(name: '🇮🇷 ایران ۱۱ (مناطق خاص)', primary: '178.22.122.100', secondary: '48.83.124.16'),
-  GameDns(name: '🇮🇷 ایران ۱۲', primary: '178.22.122.100', secondary: '185.51.200.2'),
 
   // ---------- 🌐 عمومی ----------
   GameDns(name: '🌐 Shecan', primary: '78.157.42.100', secondary: '78.157.42.101'),
@@ -92,6 +89,11 @@ final List<GameDns> kGameDnsList = const <GameDns>[
   GameDns(name: '🎮 Game 50.0', primary: '78.157.42.101', secondary: '50.0.212.76'),
   GameDns(name: '🎮 Game 50.227', primary: '78.157.42.101', secondary: '50.227.104.49'),
 
+  // ---------- 🔒 DoH (DNS روی HTTPS) ----------
+  GameDns(name: '🔒 DoH zdn.ro', primary: 'https://zdn.ro/dns-query', secondary: 'https://dns.anon.no/dns-query'),
+  GameDns(name: '🔒 DoH ada', primary: 'https://ada.openbld.net/dns-query', secondary: 'https://dns.l337.site/dns-query'),
+  GameDns(name: '🔒 DoH Cloudflare GW', primary: 'https://frd4wvnobp.cloudflare-gateway.com/dns-query', secondary: 'https://dns.l337.site/dns-query'),
+
   // ---------- 🇩🇪 آلمان (Game) ----------
   GameDns(
     name: '🇩🇪 Germany v4+v6',
@@ -100,12 +102,6 @@ final List<GameDns> kGameDnsList = const <GameDns>[
     primaryV6: '2001:4fef:80ff::b2d1',
     secondaryV6: '2001:d534:3fa5::adfd',
   ),
-
-  // ---------- ⚡ متفرقه ----------
-  GameDns(name: '⚡ 1.92.36', primary: '1.92.36.131', secondary: '78.157.42.100'),
-  GameDns(name: '⚡ 65.21', primary: '65.21.242.77', secondary: '78.157.42.100'),
-  GameDns(name: '⚡ 78.157.42.100', primary: '78.157.42.100', secondary: '8.119.51.48'),
-  GameDns(name: '⚡ 1.1.1.1 + 10.183', primary: '1.1.1.1', secondary: '10.183.213.29'),
 
   // ---------- 🔵 IPv6 مخصوص ----------
   GameDns(
@@ -123,8 +119,21 @@ final List<GameDns> kGameDnsList = const <GameDns>[
     secondaryV6: '2001:d534:3fa5::adfd',
   ),
 
-  // ---------- 🔒 DoH (DNS روی HTTPS) ----------
-  GameDns(name: '🔒 DoH zdn.ro', primary: 'https://zdn.ro/dns-query', secondary: 'https://dns.anon.no/dns-query'),
-  GameDns(name: '🔒 DoH ada', primary: 'https://ada.openbld.net/dns-query', secondary: 'https://dns.l337.site/dns-query'),
-  GameDns(name: '🔒 DoH Cloudflare GW', primary: 'https://frd4wvnobp.cloudflare-gateway.com/dns-query', secondary: 'https://dns.l337.site/dns-query'),
+  // ---------- 🔐 DNSCrypt (منتخب از لیست رسمی) ----------
+  GameDns(name: '🔐 AdGuard DNSCrypt', primary: '94.140.14.14', secondary: '94.140.15.15'),
+  GameDns(name: '🔐 AdGuard Family', primary: '94.140.14.15', secondary: '94.140.15.16'),
+  GameDns(name: '🔐 AdGuard Unfiltered', primary: '94.140.14.140', secondary: '94.140.14.141'),
+  GameDns(name: '🔐 Quad9 DNSCrypt', primary: '9.9.9.9', secondary: '149.112.112.112'),
+  GameDns(name: '🔐 Cloudflare DNSCrypt', primary: '1.1.1.1', secondary: '1.0.0.1'),
+  GameDns(name: '🔐 ADFilter Adelaide', primary: '103.249.238.124', secondary: '203.29.241.76'),
+  GameDns(name: '🔐 ADFilter Perth', primary: '203.29.241.76', secondary: '112.213.32.219'),
+  GameDns(name: '🔐 ADFilter Sydney', primary: '112.213.32.219', secondary: '103.249.238.124'),
+  GameDns(name: '🔐 dnscry.pt Geneva', primary: '194.135.119.158', secondary: '194.135.119.158'),
+  GameDns(name: '🔐 Cryptostorm Bulgaria', primary: '37.120.152.235', secondary: '37.120.152.235'),
+
+  // ---------- ⚡ متفرقه ----------
+  GameDns(name: '⚡ 1.92.36', primary: '1.92.36.131', secondary: '78.157.42.100'),
+  GameDns(name: '⚡ 65.21', primary: '65.21.242.77', secondary: '78.157.42.100'),
+  GameDns(name: '⚡ 78.157.42.100', primary: '78.157.42.100', secondary: '8.119.51.48'),
+  GameDns(name: '⚡ 1.1.1.1 + 10.183', primary: '1.1.1.1', secondary: '10.183.213.29'),
 ];
