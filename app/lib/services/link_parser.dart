@@ -2,9 +2,8 @@ import 'dart:convert';
 
 import '../models/server.dart';
 
-/// تجزیه‌ی لینک‌های اشتراک‌گذاری (vless / vmess / trojan / ss / hysteria2 / aether)
-/// به [VpnServer]. هم صفحه‌ی افزودن کانفیگ و هم اشتراک‌ها از همین‌جا استفاده می‌کنند
-/// تا host و port همیشه درست استخراج شوند (پینگ روی همین مقدارها ساخته می‌شود).
+/// تجزیه‌ی لینک‌های اشتراک‌گذاری (vless / vmess / trojan / ss / hysteria2 / custom / aether)
+/// به [VpnServer].
 class LinkParser {
   LinkParser._();
 
@@ -16,10 +15,11 @@ class LinkParser {
     'hysteria2',
     'hy2',
     'aether',
+    'custom',
   ];
 
   static final RegExp linkRegex = RegExp(
-    r'(?:vless|vmess|trojan|ss|hysteria2|hy2|aether)://[^\s"<>\\]+',
+    r'(?:vless|vmess|trojan|ss|hysteria2|hy2|aether|custom)://[^\s"<>\\]+',
     caseSensitive: false,
   );
 
@@ -40,8 +40,7 @@ class LinkParser {
     return result;
   }
 
-  /// شناسه‌ی پایدار بر اساس خود لینک؛ با تغییر ترتیب اشتراک، پین/حذف‌ها به
-  /// سرور اشتباه نمی‌چسبند (قبلاً شناسه بر اساس شماره‌ی ردیف بود).
+  /// شناسه‌ی پایدار بر اساس خود لینک.
   static String stableId(String prefix, String link) {
     var hash = 0x811c9dc5;
     for (final unit in link.trim().codeUnits) {
@@ -66,6 +65,8 @@ class LinkParser {
           return _parseShadowsocks(link, id);
         case 'aether':
           return _parseAether(link, id);
+        case 'custom':
+          return _parseCustom(link, id);
         case 'vless':
           return _parseUri(link, id, VpnProtocol.vless);
         case 'trojan':
@@ -104,8 +105,6 @@ class LinkParser {
         query = uri.queryParameters;
       } catch (_) {}
     } else {
-      // Uri.parse با بعضی لینک‌ها (مثل لیست پورت hysteria2) مشکل دارد؛
-      // آدرس و پورت را دستی بیرون می‌کشیم.
       final match = _authorityRegex.firstMatch(link);
       if (match == null) return null;
       host = (match.group(1) ?? '').replaceAll(RegExp(r'^\[|\]$'), '');
@@ -142,12 +141,10 @@ class LinkParser {
     final body = link.substring(link.indexOf('://') + 3);
     final main = body.split('#').first.trim();
 
-    // فرم URI: vmess://uuid@host:port?...
     if (main.contains('@')) {
       return _parseUri(link, id, VpnProtocol.vmess);
     }
 
-    // فرم رایج: vmess://base64(json)
     final decoded = utf8.decode(_b64(main), allowMalformed: true);
     final json = jsonDecode(decoded);
     if (json is! Map) return null;
@@ -196,10 +193,8 @@ class LinkParser {
     String hostPort;
     final at = main.lastIndexOf('@');
     if (at >= 0) {
-      // SIP002: base64(method:pass)@host:port
       hostPort = main.substring(at + 1);
     } else {
-      // فرم قدیمی: base64(method:pass@host:port)
       final decoded = utf8.decode(_b64(main), allowMalformed: true);
       final innerAt = decoded.lastIndexOf('@');
       if (innerAt < 0) return null;
@@ -242,6 +237,61 @@ class LinkParser {
     );
   }
 
+  // ------------------------------------------------------------------ custom
+
+  static VpnServer? _parseCustom(String link, String id) {
+    try {
+      final uri = Uri.tryParse(link);
+      if (uri == null) return null;
+
+      final params = uri.queryParameters;
+      final host = uri.host.isNotEmpty
+          ? uri.host
+          : (params['address'] ?? params['host'] ?? '');
+      final port = uri.hasPort
+          ? uri.port
+          : (int.tryParse(params['port'] ?? '') ?? 443);
+
+      if (host.isEmpty) return null;
+
+      final rawName = uri.fragment.isNotEmpty
+          ? _decode(uri.fragment)
+          : (params['remarks'] ?? params['name'] ?? 'Custom');
+
+      final name = _cleanName(rawName, fallback: 'custom://$host');
+      final protocol =
+          (params['type'] ?? params['protocol'] ?? '').toLowerCase();
+
+      VpnProtocol vp = VpnProtocol.custom;
+      if (protocol.contains('vless')) {
+        vp = VpnProtocol.vless;
+      } else if (protocol.contains('vmess')) {
+        vp = VpnProtocol.vmess;
+      } else if (protocol.contains('trojan')) {
+        vp = VpnProtocol.trojan;
+      } else if (protocol.contains('ss') ||
+          protocol.contains('shadowsocks')) {
+        vp = VpnProtocol.shadowsocks;
+      } else if (protocol.contains('hysteria') ||
+          protocol.contains('hy2')) {
+        vp = VpnProtocol.hysteria2;
+      }
+
+      return VpnServer(
+        id: id,
+        name: name,
+        flag: guessFlag(name),
+        shareLink: link,
+        protocol: vp,
+        host: host,
+        port: (port > 0 && port <= 65535) ? port : 443,
+        sniOrHost: params['sni'] ?? params['host'] ?? host,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ---------------------------------------------------------------- helpers
 
   static (String, int)? _parseHostPort(String value) {
@@ -267,7 +317,8 @@ class LinkParser {
     return (host, port!);
   }
 
-  static bool _validPort(int? port) => port != null && port > 0 && port <= 65535;
+  static bool _validPort(int? port) =>
+      port != null && port > 0 && port <= 65535;
 
   /// Base64 استاندارد و URL-safe، با یا بدون padding.
   static List<int> _b64(String input) {
@@ -318,8 +369,6 @@ class LinkParser {
     MapEntry('🇦🇺', RegExp(r'australia|\bau\b|استرالیا', caseSensitive: false)),
   ];
 
-  /// اگر خود نام یک پرچم (Regional Indicator) داشته باشد همان را برمی‌دارد،
-  /// وگرنه با کلیدواژه حدس می‌زند.
   static String guessFlag(String name) {
     final runes = name.runes.toList();
     for (var i = 0; i + 1 < runes.length; i++) {
