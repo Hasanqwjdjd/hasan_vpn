@@ -5,6 +5,7 @@ class SettingsService {
   static String currentVersion = '10.0.0';
   static const String _themeKey = 'settings_theme_mode_v2';
   static const String _langKey = 'settings_language_v2';
+  static const String _vpnModeKey = 'settings_vpn_mode_v2';
 
   static Future<void> loadVersion() async {
     try {
@@ -31,5 +32,16 @@ class SettingsService {
   static Future<void> setLanguage(String lang) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_langKey, lang);
+  }
+
+  /// 'vpn' (پیش‌فرض) | 'proxy'
+  static Future<String> getVpnMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_vpnModeKey) ?? 'vpn';
+  }
+
+  static Future<void> setVpnMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_vpnModeKey, mode);
   }
 }
