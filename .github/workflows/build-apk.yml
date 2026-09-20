@@ -29,6 +29,9 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Install p7zip
+        run: sudo apt-get update && sudo apt-get install -y p7zip-full
+
       - name: Ensure keystore exists
         run: |
           if [ ! -f hasan.keystore ]; then
@@ -53,7 +56,6 @@ jobs:
           cp -r app/lib/. build_src/lib/
           cp hasan.keystore build_src/android/app/hasan.keystore
 
-      # --- کدهای بومی Aether: MainActivity.kt (پل Flutter) + AetherService.kt (اجرای هسته) ---
       - name: Install Aether native (Kotlin) sources
         run: |
           set -e
@@ -61,13 +63,9 @@ jobs:
           mkdir -p "$KT_DIR"
           cp -f android-extra/kotlin/MainActivity.kt "$KT_DIR/MainActivity.kt"
           cp -f android-extra/kotlin/AetherService.kt "$KT_DIR/AetherService.kt"
-          # اگر flutter create نسخه‌ی java ساخته بود، حذفش کن تا تداخل نکند
           rm -f build_src/android/app/src/main/java/com/hasan/hasan_vpn/MainActivity.java 2>/dev/null || true
           ls -la "$KT_DIR"
 
-      # --- باینری‌های بومی: android-extra/jniLibs/<abi>/libaether.so ---
-      # libaether.so در واقع یک فایل اجرایی (ELF) است که با نام lib*.so بسته‌بندی
-      # می‌شود تا اندروید آن را در nativeLibraryDir استخراج کند.
       - name: Install Aether native binaries (jniLibs)
         run: |
           set -e
@@ -86,7 +84,6 @@ jobs:
       - name: Force Kotlin 2.1.0 (fix for flutter_vless)
         run: |
           set -e
-          echo "=== Fixing Kotlin version ==="
           if [ -f build_src/android/settings.gradle ]; then
             sed -i -E 's/(id\s+"org\.jetbrains\.kotlin\.android"\s+version\s+")[^"]+(")/\12.1.0\2/' build_src/android/settings.gradle
             cat build_src/android/settings.gradle
@@ -204,7 +201,6 @@ jobs:
           if "android.net.VpnService" not in text:
               text = text.replace("</manifest>", queries + "</manifest>")
 
-          # --- ثبت AetherService (Foreground Service برای اجرای هسته‌ی Aether) ---
           aether_service = """        <service
                   android:name=".AetherService"
                   android:exported="false"
@@ -239,41 +235,107 @@ jobs:
           set -euo pipefail
           BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools/" | sort -V | tail -n 1)
           APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner"
-          echo "Using $APKSIGNER"
           FAIL=0
           for f in build_src/build/app/outputs/flutter-apk/*.apk; do
             echo "=== $f ==="
             ls -lh "$f"
             OUT=$("$APKSIGNER" verify --verbose "$f" 2>&1) || {
-              echo "$OUT"
-              echo "apksigner verify FAILED: $f"
-              FAIL=1
-              continue
+              echo "$OUT"; FAIL=1; continue
             }
             echo "$OUT"
             if ! echo "$OUT" | grep -q "Verified using v2 scheme"; then
-              echo "MISSING v2 signature: $f"
-              FAIL=1
+              echo "MISSING v2 signature: $f"; FAIL=1
             fi
           done
           exit "$FAIL"
 
-      - name: Name installer APKs
+      - name: Name APKs
         run: |
           mkdir -p dist
           VER="10.0.${{ github.run_number }}"
-          cp build_src/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/Hasan-VPN-v${VER}-arm64.apk"
           cp build_src/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/Hasan-VPN-v${VER}.apk"
           if [ -f build_src/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk ]; then
             cp build_src/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/Hasan-VPN-v${VER}-32bit.apk"
           fi
           ls -lh dist
 
+      - name: Compute SHA256 checksums
+        run: |
+          cd dist
+          sha256sum *.apk | tee SHA256SUMS.txt
+
+      - name: Split into 4MB chunks (for ISP proxy bypass)
+        run: |
+          mkdir -p chunks
+          cd dist
+          for f in *.apk; do
+            base=$(basename "$f" .apk)
+            split -b 4M -d -a 3 "$f" "../chunks/${base}.part"
+          done
+          cd ..
+          echo "=== Chunks created: ==="
+          ls -lh chunks/
+          echo "=== Total chunks: ==="
+          ls chunks/ | wc -l
+
+      - name: Create merge script (for ZArchiver / Termux)
+        run: |
+          cat > dist/README.txt << 'EOF'
+          ========================================
+          حسن VPN - راهنمای نصب
+          ========================================
+
+          فایل APK به تکه‌های 4 مگابایتی تقسیم شده تا از پروکسی شفاف ISP
+          رد بشه. برای نصب، یکی از این راه‌ها رو انتخاب کن:
+
+          ─────────────────────────────────────
+          راه ۱: با ZArchiver (ساده‌ترین)
+          ─────────────────────────────────────
+          1. اپلیکیشن ZArchiver رو از Play Store نصب کن
+          2. تمام فایل‌های .part000 تا .partNNN رو دانلود کن
+          3. همه رو توی یه پوشه بذار
+          4. ZArchiver رو باز کن و برو به اون پوشه
+          5. روی فایل اول (.part000) بزن و "استخراج" رو انتخاب کن
+          6. APK ساخته می‌شه — نصبش کن
+
+          ─────────────────────────────────────
+          راه ۲: با Termux
+          ─────────────────────────────────────
+          Termux رو از F-Droid نصب کن، بعد این دستور رو بزن:
+              cd /sdcard/Download/hasan_vpn/
+              cat Hasan-VPN-*.part* > Hasan-VPN.apk
+
+          ─────────────────────────────────────
+          راه ۳: با PC
+          ─────────────────────────────────────
+          در Windows:
+              copy /b Hasan-VPN-v10.0.XXX.part* Hasan-VPN.apk
+
+          در Linux/Mac:
+              cat Hasan-VPN-*.part* > Hasan-VPN.apk
+
+          ─────────────────────────────────────
+          بررسی صحت فایل نهایی
+          ─────────────────────────────────────
+          با استفاده از فایل SHA256SUMS.txt مطمئن شو فایل کامل و
+          بدون خرابی دانلود شده.
+          EOF
+          ls -lh dist/
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: hasan-vpn-apk
           path: dist/*.apk
+
+      - name: Upload chunks artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hasan-vpn-chunks
+          path: |
+            chunks/
+            dist/SHA256SUMS.txt
+            dist/README.txt
 
       - name: Create GitHub Release
         if: github.ref == 'refs/heads/main'
@@ -282,16 +344,34 @@ jobs:
           tag_name: v10.0.${{ github.run_number }}
           name: حسن VPN v10.0.${{ github.run_number }}
           body: |
-            ## نصب روی گوشی اندروید
+            ## 📥 نصب روی گوشی اندروید
 
-            **همین فایل را دانلود کنید:** `Hasan-VPN-v10.0.${{ github.run_number }}.apk`
+            ⚠️ **مهم:** فایل APK به تکه‌های 4MB تقسیم شده چون ISP
+            ایرانی فایل‌های بزرگ رو مخدوش می‌کنه.
 
-            1. نسخه قبلی برنامه را پاک کنید
-            2. فایل را از Downloads باز کنید
-            3. اگر پرسید، «نصب از منابع ناشناس» را روشن کنید
-            4. اجازه VPN را بدهید
+            ### ✅ راه سریع (فقط APK):
+            فایل `Hasan-VPN-v10.0.${{ github.run_number }}.apk` رو دانلود کن.
+            اگه ارور داد، راه زیر رو برو.
 
-            گوشی‌های خیلی قدیمی ۳۲بیتی: `Hasan-VPN-v10.0.${{ github.run_number }}-32bit.apk`
-          files: dist/*.apk
+            ### 🛡 راه مطمئن (تکه‌تکه):
+            1. **ZArchiver** رو از Play Store نصب کن
+            2. تمام فایل‌های زیر رو دانلود کن:
+               - `Hasan-VPN-v10.0.${{ github.run_number }}.part000`
+               - `Hasan-VPN-v10.0.${{ github.run_number }}.part001`
+               - `...` (همه‌ی partها)
+            3. همه رو توی یه پوشه بذار
+            4. ZArchiver رو باز کن → روی `.part000` بزن → Extract
+            5. فایل APK ساخته میشه → نصبش کن
+
+            ### 🔐 بررسی صحت:
+            ```
+            sha256sum Hasan-VPN-v10.0.${{ github.run_number }}.apk
+            ```
+            باید با `SHA256SUMS.txt` مطابقت داشته باشه.
+          files: |
+            dist/*.apk
+            dist/SHA256SUMS.txt
+            dist/README.txt
+            chunks/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
