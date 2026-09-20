@@ -57,6 +57,28 @@ class ServerTile extends StatelessWidget {
   }
 
   Widget _buildPing(BuildContext context) {
+    final ping = server.ping;
+    final isTcp = server.pingKind == PingKind.tcp;
+
+    // اگر پینگ داریم، حتی حین تست هم نشونش بده (فقط رنگش کم‌رنگ‌تر بشه).
+    if (ping != null) {
+      final testing = server.status == ServerStatus.testing;
+      return Tooltip(
+        message: testing
+            ? (isTcp ? 'TCP (testing)' : 'Real (testing)')
+            : (isTcp ? 'TCP' : 'Real'),
+        child: Text(
+          '${isTcp ? '~' : ''}$ping ms',
+          style: TextStyle(
+            color: testing ? AppColors.muted2(context) : _pingColor(context),
+            fontSize: 12,
+            fontWeight: isTcp ? FontWeight.w500 : FontWeight.w700,
+          ),
+        ),
+      );
+    }
+
+    // هنوز پینگی نداریم؛ فقط اسپینر یا علامت.
     if (server.status == ServerStatus.testing) {
       return const SizedBox(
         width: 14,
@@ -64,24 +86,6 @@ class ServerTile extends StatelessWidget {
         child: CircularProgressIndicator(
           strokeWidth: 2,
           color: AppColors.accent,
-        ),
-      );
-    }
-
-    final ping = server.ping;
-    final isTcp = server.pingKind == PingKind.tcp;
-
-    if (ping != null) {
-      // «~» یعنی فقط زمان رسیدن TCP به سرور (تقریبی)؛ بدون آن = پینگ واقعی.
-      return Tooltip(
-        message: isTcp ? 'TCP' : 'Real',
-        child: Text(
-          '${isTcp ? '~' : ''}$ping ms',
-          style: TextStyle(
-            color: _pingColor(context),
-            fontSize: 12,
-            fontWeight: isTcp ? FontWeight.w500 : FontWeight.w700,
-          ),
         ),
       );
     }
