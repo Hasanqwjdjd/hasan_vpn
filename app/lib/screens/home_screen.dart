@@ -39,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const String _deletedKey = 'deleted_server_ids_v1';
   static const String _pinnedKey = 'pinned_server_ids_v1';
   static const String _customKey = 'custom_servers_v1';
+  static const String _pingsKey = 'server_pings_v1';
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -47,9 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Set<String> _deletedIds = <String>{};
   Set<String> _pinnedIds = <String>{};
 
-  /// null = «همه»، در غیر این صورت شناسه‌ی اشتراک انتخاب‌شده.
   String? _selectedSubId;
-
   VpnServer? _selected;
   VpnServer? _active;
 
@@ -57,7 +56,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _pollTimer;
 
   bool _testing = false;
-  bool _autoMode = true;
   bool _connecting = false;
   bool _connected = false;
   bool _sortAscending = true;
@@ -89,6 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadCustomServers();
     if (!mounted) return;
     _rebuildServerList();
+    await _loadPings();
     await V2RayEngine.init();
     if (!mounted) return;
     _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _poll());
@@ -104,6 +103,52 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ------------------------------------------------------------------ Pings
+
+  Future<void> _loadPings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_pingsKey);
+    if (raw == null) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      final pings = Map<String, dynamic>.from(decoded);
+      for (final server in _servers) {
+        final entry = pings[server.id];
+        if (entry is Map) {
+          final ping = entry['ping'];
+          final kind = entry['kind']?.toString();
+          if (ping is int && ping > 0) {
+            server.ping = ping;
+            if (kind == 'real') {
+              server.pingKind = PingKind.real;
+            } else if (kind == 'tcp') {
+              server.pingKind = PingKind.tcp;
+            }
+            server.status = ServerStatus.online;
+          }
+        }
+      }
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
+  Future<void> _savePings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final map = <String, dynamic>{};
+    for (final server in _servers) {
+      if (server.ping != null && server.ping! > 0) {
+        map[server.id] = {
+          'ping': server.ping,
+          'kind': server.pingKind == PingKind.real ? 'real' : 'tcp',
+        };
+      }
+    }
+    await prefs.setString(_pingsKey, jsonEncode(map));
+  }
+
+  // ------------------------------------------------------------- loading
+
   Future<void> _loadDeletedAndPinned() async {
     final prefs = await SharedPreferences.getInstance();
     final deletedRaw = prefs.getString(_deletedKey);
@@ -113,9 +158,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (decoded is List) {
           _deletedIds = decoded.map((e) => e.toString()).toSet();
         }
-      } catch (_) {
-        _deletedIds = <String>{};
-      }
+      } catch (_) {}
     }
     final pinnedRaw = prefs.getString(_pinnedKey);
     if (pinnedRaw != null) {
@@ -124,9 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (decoded is List) {
           _pinnedIds = decoded.map((e) => e.toString()).toSet();
         }
-      } catch (_) {
-        _pinnedIds = <String>{};
-      }
+      } catch (_) {}
     }
   }
 
@@ -200,6 +241,8 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.setString(_pinnedKey, jsonEncode(_pinnedIds.toList()));
   }
 
+  // ------------------------------------------------------------- list
+
   void _rebuildServerList() {
     if (!mounted) return;
 
@@ -271,6 +314,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
     });
+    _savePings();
   }
 
   Future<void> _testAll() async {
@@ -316,13 +360,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted || session.cancelled) return;
     _sortCurrentServers();
+    await _savePings();
 
     setState(() {
       _servers = List<VpnServer>.from(_servers);
       _testing = false;
       final fastest = ServerTester.fastest(_servers);
       final counts = '${summary.online}/${summary.total}';
-      if (_autoMode && fastest != null && !_connected) {
+      if (fastest != null && !_connected) {
         _selected = fastest;
         _status = _t('بهترین سرور انتخاب شد ($counts آنلاین)',
             'Best server ($counts online)');
@@ -358,6 +403,7 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
     if (!mounted) return;
+    await _savePings();
     setState(() {});
   }
 
@@ -368,6 +414,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _rebuildServerList();
     _saveDeleted();
     _saveCustomServers();
+    _savePings();
   }
 
   void _deleteInvalid() {
@@ -453,6 +500,7 @@ class _HomeScreenState extends State<HomeScreen> {
         active.status = ServerStatus.online;
       }
     });
+    await _savePings();
   }
 
   Future<void> _toggleConnection() async {
@@ -664,24 +712,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   Navigator.pop(sheetContext);
                   _copyAll();
                 },
-              ),
-              ListTile(
-                leading: Icon(
-                  _autoMode ? Icons.auto_mode : Icons.auto_mode_outlined,
-                  color: _autoMode
-                      ? AppColors.accent
-                      : AppColors.muted(context),
-                ),
-                title: Text(_t('حالت خودکار', 'Auto Mode'),
-                    style: TextStyle(color: AppColors.fg(context))),
-                trailing: Switch(
-                  value: _autoMode,
-                  activeColor: AppColors.accent,
-                  onChanged: (value) {
-                    setState(() => _autoMode = value);
-                    Navigator.pop(sheetContext);
-                  },
-                ),
               ),
               const SizedBox(height: 12),
             ],
