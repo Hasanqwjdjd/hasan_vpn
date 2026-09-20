@@ -43,6 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const String _pingsKey = 'server_pings_v1';
 
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _listScrollController = ScrollController();
 
   List<VpnServer> _servers = [];
   List<VpnServer> _customServers = [];
@@ -90,6 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     _rebuildServerList();
     await _loadPings();
+    await _loadLastServer();
     await V2RayEngine.init();
     if (!mounted) return;
     _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _poll());
@@ -207,6 +209,39 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       server.nameOverride = newName;
     });
+  }
+
+  // ----------------------------------------------------- last server
+
+  Future<void> _loadLastServer() async {
+    final id = await SettingsService.getLastServer();
+    if (id == null) return;
+    final idx = _servers.indexWhere((s) => s.id == id);
+    if (idx >= 0 && mounted) {
+      setState(() => _selected = _servers[idx]);
+    }
+  }
+
+  void _jumpToSelected() {
+    final selected = _selected;
+    if (selected == null) {
+      _showMsg(_t('هیچ سروری انتخاب نشده', 'No server selected'));
+      return;
+    }
+    final idx = _servers.indexWhere((s) => s.id == selected.id);
+    if (idx == -1) {
+      _showMsg(
+          _t('سرور انتخاب‌شده در لیست نیست', 'Selected server is not in list'));
+      return;
+    }
+    if (!_listScrollController.hasClients) return;
+    final target = (idx * 76.0)
+        .clamp(0.0, _listScrollController.position.maxScrollExtent);
+    _listScrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOut,
+    );
   }
 
   // ------------------------------------------------------------- loading
@@ -637,6 +672,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       });
       if (connected) {
+        await SettingsService.setLastServer(selected.id);
         await Future<void>.delayed(const Duration(milliseconds: 800));
         await _measureLive();
       }
@@ -871,6 +907,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               IconButton(
+                icon: Icon(Icons.my_location,
+                    color: AppColors.accent, size: 22),
+                onPressed: _jumpToSelected,
+                tooltip: _t('یافتن انتخاب‌شده', 'Find selected'),
+              ),
+              IconButton(
                 icon: Icon(
                   _sortAscending ? Icons.sort : Icons.sort_by_alpha,
                   color: AppColors.accent,
@@ -1040,6 +1082,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildServerList() {
     return Expanded(
       child: ListView.builder(
+        controller: _listScrollController,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: _servers.length + 1,
         itemBuilder: (context, index) {
@@ -1073,7 +1116,10 @@ class _HomeScreenState extends State<HomeScreen> {
             server: server,
             selected: _selected?.id == server.id,
             active: _connected && _active?.id == server.id,
-            onTap: () => setState(() => _selected = server),
+            onTap: () async {
+              setState(() => _selected = server);
+              await SettingsService.setLastServer(server.id);
+            },
             onDelete: () => _deleteServer(server),
             onPin: () => _togglePin(server),
             onShare: () => _shareServer(server),
@@ -1115,6 +1161,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _pollTimer?.cancel();
     _session?.cancel();
     _searchController.dispose();
+    _listScrollController.dispose();
     super.dispose();
   }
 }
