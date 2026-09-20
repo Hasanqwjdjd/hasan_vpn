@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import '../models/aether_profile.dart';
 import '../models/server.dart';
 import '../services/app_colors.dart';
 
 class ServerTile extends StatelessWidget {
   final VpnServer server;
   final bool selected;
+
+  /// true اگر همین سرور الان متصل است (تیک سبز کنار نام).
+  final bool active;
   final VoidCallback onTap;
   final VoidCallback? onDelete;
   final VoidCallback? onPin;
@@ -18,6 +23,7 @@ class ServerTile extends StatelessWidget {
     required this.server,
     required this.selected,
     required this.onTap,
+    this.active = false,
     this.onDelete,
     this.onPin,
     this.onShare,
@@ -25,21 +31,104 @@ class ServerTile extends StatelessWidget {
     this.onTest,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    Color pingColor;
+  String get _caption {
+    if (server.isAether) {
+      return 'AETHER · ${AetherProfile.fromLink(server.shareLink).summary}';
+    }
+    final name = server.protocol.name.toUpperCase();
+    final host = server.host.trim();
+    if (host.isEmpty || host == 'unknown') return name;
+    return '$name · $host';
+  }
+
+  /// پینگ واقعی (HTTP از داخل تونل) بزرگ‌تر از TCP است چون شامل دست‌دادن
+  /// TLS/WS و یک رفت‌وبرگشت کامل می‌شود؛ آستانه‌ها جدا هستند.
+  Color _pingColor(BuildContext context) {
+    final ping = server.ping;
+    if (ping == null) return AppColors.muted2(context);
+
+    final real = server.pingKind == PingKind.real;
+    final good = real ? 700 : 150;
+    final fair = real ? 1400 : 350;
+
+    if (ping < good) return AppColors.accent;
+    if (ping < fair) return AppColors.warn;
+    return AppColors.danger;
+  }
+
+  Widget _buildPing(BuildContext context) {
     if (server.status == ServerStatus.testing) {
-      pingColor = AppColors.muted2(context);
-    } else if (server.ping == null) {
-      pingColor = AppColors.danger;
-    } else if (server.ping! < 200) {
-      pingColor = AppColors.accent;
-    } else if (server.ping! < 500) {
-      pingColor = AppColors.warn;
-    } else {
-      pingColor = AppColors.danger;
+      return const SizedBox(
+        width: 14,
+        height: 14,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: AppColors.accent,
+        ),
+      );
     }
 
+    final ping = server.ping;
+    final isTcp = server.pingKind == PingKind.tcp;
+
+    if (ping != null) {
+      // «~» یعنی فقط زمان رسیدن TCP به سرور (تقریبی)؛ بدون آن = پینگ واقعی.
+      return Tooltip(
+        message: isTcp ? 'TCP' : 'Real',
+        child: Text(
+          '${isTcp ? '~' : ''}$ping ms',
+          style: TextStyle(
+            color: _pingColor(context),
+            fontSize: 12,
+            fontWeight: isTcp ? FontWeight.w500 : FontWeight.w700,
+          ),
+        ),
+      );
+    }
+
+    final String text;
+    final Color color;
+    switch (server.status) {
+      case ServerStatus.offline:
+        text = '✕';
+        color = AppColors.danger;
+        break;
+      case ServerStatus.unknown:
+        text = '?';
+        color = AppColors.muted(context);
+        break;
+      default:
+        text = '---';
+        color = AppColors.muted2(context);
+    }
+
+    return Text(
+      text,
+      style: TextStyle(
+        color: color,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+
+  Widget _iconButton({
+    required IconData icon,
+    required Color color,
+    required VoidCallback? onPressed,
+    double size = 16,
+  }) {
+    return IconButton(
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 28),
+      iconSize: size,
+      icon: Icon(icon, color: color, size: size),
+      onPressed: onPressed,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -61,66 +150,70 @@ class ServerTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             child: Row(
               children: [
-                // Pin
                 if (onPin != null)
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 28),
-                    iconSize: 18,
-                    icon: Icon(
-                      server.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-                      color: server.isPinned
-                          ? AppColors.accent
-                          : AppColors.muted2(context),
-                      size: 18,
-                    ),
+                  _iconButton(
+                    icon: server.isPinned
+                        ? Icons.push_pin
+                        : Icons.push_pin_outlined,
+                    color: server.isPinned
+                        ? AppColors.accent
+                        : AppColors.muted2(context),
                     onPressed: onPin,
+                    size: 18,
                   ),
 
-                // Flag
                 Text(server.flag, style: const TextStyle(fontSize: 18)),
                 const SizedBox(width: 6),
 
-                // Name
                 Expanded(
-                  child: Text(
-                    server.name,
-                    style: TextStyle(
-                      color: AppColors.fg(context),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              server.name,
+                              style: TextStyle(
+                                color: AppColors.fg(context),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (active) ...[
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.check_circle,
+                              color: AppColors.accent,
+                              size: 14,
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        _caption,
+                        style: TextStyle(
+                          color: AppColors.muted2(context),
+                          fontSize: 10,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
 
-                // Ping
-                if (server.status == ServerStatus.testing)
-                  const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.accent,
-                    ),
-                  )
-                else
-                  Text(
-                    server.ping != null ? '${server.ping} ms' : '---',
-                    style: TextStyle(
-                      color: pingColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                const SizedBox(width: 6),
+                _buildPing(context),
 
-                // Copy
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 28),
-                  iconSize: 16,
-                  icon: const Icon(Icons.copy, color: AppColors.accent, size: 16),
+                _iconButton(
+                  icon: Icons.copy,
+                  color: AppColors.accent,
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: server.shareLink));
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -132,46 +225,33 @@ class ServerTile extends StatelessWidget {
                   },
                 ),
 
-                // Bolt / Test one server (صاعقه) - طبق درخواست کاربر نگه داشته شد
+                // صاعقه: تست تکی
                 if (onTest != null)
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 28),
-                    iconSize: 16,
-                    icon: const Icon(Icons.bolt, color: AppColors.warn, size: 16),
-                    onPressed: server.status == ServerStatus.testing ? null : onTest,
+                  _iconButton(
+                    icon: Icons.bolt,
+                    color: AppColors.warn,
+                    onPressed:
+                        server.status == ServerStatus.testing ? null : onTest,
                   ),
 
-                // Share
                 if (onShare != null)
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 28),
-                    iconSize: 16,
-                    icon: Icon(Icons.share_outlined,
-                        color: AppColors.muted(context), size: 16),
+                  _iconButton(
+                    icon: Icons.share_outlined,
+                    color: AppColors.muted(context),
                     onPressed: onShare,
                   ),
 
-                // Edit (optional)
                 if (onEdit != null)
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 28),
-                    iconSize: 16,
-                    icon: Icon(Icons.edit_outlined,
-                        color: AppColors.muted(context), size: 16),
+                  _iconButton(
+                    icon: Icons.edit_outlined,
+                    color: AppColors.muted(context),
                     onPressed: onEdit,
                   ),
 
-                // Delete
                 if (onDelete != null)
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 28),
-                    iconSize: 16,
-                    icon: const Icon(Icons.delete_outline,
-                        color: AppColors.danger, size: 16),
+                  _iconButton(
+                    icon: Icons.delete_outline,
+                    color: AppColors.danger,
                     onPressed: onDelete,
                   )
                 else
