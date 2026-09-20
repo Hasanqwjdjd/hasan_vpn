@@ -96,38 +96,4 @@ class _QrScanScreenState extends State<QrScanScreen> {
               );
             },
           ),
-          // فریم راهنما وسط صفحه
-          Center(
-            child: Container(
-              width: 240,
-              height: 240,
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColors.accent, width: 2.5),
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 40,
-            left: 24,
-            right: 24,
-            child: Text(
-              _t(
-                'کد QR کانفیگ (VLESS / Trojan / VMess / Aether و ...) را داخل کادر بگیرید',
-                'Point the frame at a config QR code (VLESS / Trojan / VMess / Aether ...)',
-              ),
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white70, fontSize: 13),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-}
+          // فریم راه
