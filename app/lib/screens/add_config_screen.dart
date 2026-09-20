@@ -1,10 +1,9 @@
-# مسیر مقصد در ریپو: app/lib/screens/add_config_screen.dart
-# ------------------------------------------------------------
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../models/aether_profile.dart';
 import '../models/server.dart';
 import '../services/app_colors.dart';
-import '../services/aether_service.dart';
+import '../services/link_parser.dart';
 import 'qr_scan_screen.dart';
 
 class AddConfigScreen extends StatefulWidget {
@@ -27,9 +26,20 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   bool _isFa = true;
   String _selectedType = 'manual'; // manual | aether | oblivion | siphon | tor
 
-  // تنظیمات Aether
-  String _aetherScan = 'balanced'; // fast | balanced | full
-  String _aetherProtocol = 'auto'; // auto | masque_h3 | masque_h2 | wireguard | gool
+  // تنظیمات Aether (مقدارهای پیش‌فرض همان پیش‌فرض AetherProfile هستند)
+  String _aetherProtocol = 'auto';
+  String _aetherScan = 'smart';
+  String _aetherNoize = 'auto';
+  String _aetherIp = 'v4';
+  String _aetherPerf = 'auto';
+  bool _aetherQuickReconnect = true;
+  bool _aetherBlockQuic = true;
+  bool _aetherAdvanced = false;
+
+  final TextEditingController _aetherDnsController = TextEditingController();
+  final TextEditingController _aetherPeerController = TextEditingController();
+  final TextEditingController _aetherUpstreamController =
+      TextEditingController();
 
   @override
   void initState() {
@@ -45,84 +55,70 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
-  VpnProtocol _detectProtocol(String link) {
-    final l = link.trim().toLowerCase();
-    if (l.startsWith('vless://')) return VpnProtocol.vless;
-    if (l.startsWith('vmess://')) return VpnProtocol.vmess;
-    if (l.startsWith('trojan://')) return VpnProtocol.trojan;
-    if (l.startsWith('ss://') || l.startsWith('shadowsocks://')) {
-      return VpnProtocol.shadowsocks;
-    }
-    if (l.startsWith('hysteria2://') || l.startsWith('hy2://')) {
-      return VpnProtocol.hysteria2;
-    }
-    if (l.startsWith('aether://')) return VpnProtocol.aether;
-    return VpnProtocol.custom;
-  }
-
-  String _extractName(String link) {
-    try {
-      final uri = Uri.parse(link);
-      if (uri.fragment.isNotEmpty) {
-        return Uri.decodeComponent(uri.fragment);
-      }
-    } catch (_) {}
-    return 'Custom Server';
-  }
-
-  String _extractHost(String link) {
-    try {
-      final uri = Uri.parse(link);
-      return uri.host.isNotEmpty ? uri.host : 'unknown';
-    } catch (_) {
-      return 'unknown';
-    }
-  }
-
-  int _extractPort(String link) {
-    try {
-      final uri = Uri.parse(link);
-      return uri.hasPort ? uri.port : 443;
-    } catch (_) {
-      return 443;
-    }
-  }
-
   void _addFromLink() {
-    final link = _linkController.text.trim();
-    if (link.isEmpty) {
+    final text = _linkController.text.trim();
+    if (text.isEmpty) {
       _showMsg(_t('لینک را وارد کنید', 'Enter a link'));
       return;
     }
 
-    final protocol = _detectProtocol(link);
-    final name = _nameController.text.trim().isNotEmpty
-        ? _nameController.text.trim()
-        : _extractName(link);
+    // ممکن است چند لینک (هر کدام در یک خط) پیست شده باشد.
+    final links = LinkParser.extractLinks(text);
+    if (links.isEmpty) {
+      _showMsg(
+        _t(
+          'لینک معتبری پیدا نشد (vless / vmess / trojan / ss / hysteria2 / aether)',
+          'No valid link found (vless / vmess / trojan / ss / hysteria2 / aether)',
+        ),
+      );
+      return;
+    }
 
-    final server = VpnServer(
-      id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
-      name: name,
-      flag: protocol == VpnProtocol.aether ? '🟣' : '🔧',
-      shareLink: link,
-      protocol: protocol,
-      host: _extractHost(link),
-      port: _extractPort(link),
-      isDeletable: true,
-    );
+    final customName = _nameController.text.trim();
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    var added = 0;
 
-    widget.onServerAdded(server);
+    for (var i = 0; i < links.length; i++) {
+      var server = LinkParser.parse(links[i], id: 'custom_${stamp}_$i');
+      if (server == null) continue;
+
+      // نام دلخواه فقط وقتی معنا دارد که یک لینک وارد شده باشد.
+      if (customName.isNotEmpty && links.length == 1) {
+        server = server.copyWith(name: customName);
+      }
+
+      widget.onServerAdded(server);
+      added++;
+    }
+
+    if (added == 0) {
+      _showMsg(_t('لینک قابل خواندن نبود', 'Could not read the link'));
+      return;
+    }
+
     Navigator.pop(context);
-    _showMsg(_t('سرور اضافه شد', 'Server added'));
+    _showMsg(
+      added == 1
+          ? _t('سرور اضافه شد', 'Server added')
+          : _t('$added سرور اضافه شد', '$added servers added'),
+    );
+  }
+
+  String _firstLinkName(String text) {
+    final links = LinkParser.extractLinks(text);
+    if (links.length != 1) return '';
+    final parsed = LinkParser.parse(links.first, id: 'preview');
+    return parsed?.name ?? '';
   }
 
   Future<void> _pasteFromClipboard() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
-    if (data?.text != null && data!.text!.trim().isNotEmpty) {
+    final text = data?.text?.trim() ?? '';
+    if (text.isNotEmpty) {
       setState(() {
-        _linkController.text = data.text!.trim();
+        _linkController.text = text;
         if (_nameController.text.isEmpty) {
-          _nameController.text = _extractName(data.text!.trim());
+          _nameController.text = _firstLinkName(text);
         }
       });
       _showMsg(_t('از کلیپ‌بورد پیست شد', 'Pasted from clipboard'));
@@ -136,34 +132,67 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       context,
       MaterialPageRoute(builder: (_) => QrScanScreen(language: widget.language)),
     );
+    if (!mounted) return;
     if (result != null && result.trim().isNotEmpty) {
       setState(() {
         _linkController.text = result.trim();
         if (_nameController.text.isEmpty) {
-          _nameController.text = _extractName(result.trim());
+          _nameController.text = _firstLinkName(result.trim());
         }
       });
       _showMsg(_t('کانفیگ از QR خوانده شد', 'Config read from QR'));
     }
   }
 
+  static final RegExp _peerRegex = RegExp(r'^(\[[0-9a-fA-F:.]+\]|[0-9.]+):\d{1,5}$');
+
   void _addAetherServer() {
-    final link = AetherService.buildConfigLink(
-      scanMode: _aetherScan,
-      protocolMode: _aetherProtocol,
+    final peer = _aetherPeerController.text.trim();
+    final upstream = _aetherUpstreamController.text.trim();
+    final dns = _aetherDnsController.text
+        .split(RegExp(r'[\s,]+'))
+        .where((e) => e.isNotEmpty)
+        .join(',');
+
+    if (peer.isNotEmpty && !_peerRegex.hasMatch(peer)) {
+      _showMsg(_t('آدرس Peer باید به شکل ip:port باشد', 'Peer must look like ip:port'));
+      return;
+    }
+    if (upstream.isNotEmpty && !upstream.contains('://')) {
+      _showMsg(
+        _t(
+          'پراکسی بالادستی باید مثل socks5://127.0.0.1:1080 باشد',
+          'Upstream must look like socks5://127.0.0.1:1080',
+        ),
+      );
+      return;
+    }
+
+    final profile = AetherProfile(
+      protocol: _aetherProtocol,
+      scan: _aetherScan,
+      noize: _aetherNoize,
+      ip: _aetherIp,
+      dns: dns,
+      peer: peer,
+      upstream: upstream,
+      quickReconnect: _aetherQuickReconnect,
+      blockQuic: _aetherBlockQuic,
+      perf: _aetherPerf,
     );
+
     final name = _nameController.text.trim().isNotEmpty
         ? _nameController.text.trim()
-        : (_isFa ? 'Aether - دور زدن فیلترینگ' : 'Aether - Auto Discover');
+        : 'Aether · ${profile.summary}';
 
     final server = VpnServer(
       id: 'aether_${DateTime.now().millisecondsSinceEpoch}',
       name: name,
       flag: '🟣',
-      shareLink: link,
+      shareLink: profile.toLink(),
       protocol: VpnProtocol.aether,
       host: 'auto-discover',
-      port: 1819,
+      port: 0,
       isDeletable: true,
     );
 
@@ -316,8 +345,50 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required Color color,
+  }) {
+    OutlineInputBorder border(Color c, [double w = 1]) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: c, width: w),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: AppColors.muted(context),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: AppColors.muted2(context)),
+            filled: true,
+            fillColor: AppColors.surface(context),
+            border: border(AppColors.border(context)),
+            enabledBorder: border(AppColors.border(context)),
+            focusedBorder: border(color, 1.5),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildAetherForm() {
     const color = Color(0xFF7C4DFF);
+    const gap = SizedBox(height: 18);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -336,56 +407,206 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               Expanded(
                 child: Text(
                   _t(
-                    'Aether یک سیستم دور زدن فیلترینگ است که خودش مسیر آزاد را پیدا و به آن وصل می‌شود؛ نیازی به لینک سرور نیست.',
-                    'Aether automatically discovers a working route and connects; no server link is needed.',
+                    'Aether خودش مسیر آزاد را پیدا می‌کند و به شبکه‌ی WARP وصل می‌شود؛ نیازی به لینک سرور نیست. در حالت «هوشمند» ابتدا سریع‌ترین روش امتحان می‌شود و اگر نشد، خودکار به روش‌های قوی‌تر می‌رود.',
+                    'Aether finds a working route and connects to WARP by itself; no server link is needed. In Smart mode it tries the fastest method first and escalates automatically.',
                   ),
-                  style: TextStyle(color: AppColors.muted(context), fontSize: 12.5, height: 1.5),
+                  style: TextStyle(
+                    color: AppColors.muted(context),
+                    fontSize: 12.5,
+                    height: 1.5,
+                  ),
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 18),
-        _buildChoiceRow(
-          label: _t('سرعت اسکن', 'Scan speed'),
-          values: AetherService.scanModes,
-          valueLabelsFa: const {
-            'fast': 'سریع',
-            'balanced': 'متعادل',
-            'full': 'کامل (دقیق‌تر)',
-          },
-          valueLabelsEn: const {
-            'fast': 'Fast',
-            'balanced': 'Balanced',
-            'full': 'Full (thorough)',
-          },
-          selected: _aetherScan,
-          onSelected: (v) => setState(() => _aetherScan = v),
-          color: color,
-        ),
-        const SizedBox(height: 18),
+        gap,
         _buildChoiceRow(
           label: _t('پروتکل انتقال', 'Transport protocol'),
-          values: AetherService.protocolModes,
+          values: AetherProfile.protocols,
           valueLabelsFa: const {
-            'auto': 'خودکار',
-            'masque_h3': 'MASQUE (HTTP/3)',
+            'auto': 'خودکار (پیشنهادی)',
+            'masque': 'MASQUE (HTTP/3)',
             'masque_h2': 'MASQUE (HTTP/2)',
-            'wireguard': 'WireGuard',
-            'gool': 'Nested WireGuard (gool)',
+            'wg': 'WireGuard',
+            'gool': 'Gool (WARP در WARP)',
+            'mim': 'MIM (MASQUE در MASQUE)',
           },
           valueLabelsEn: const {
-            'auto': 'Auto',
-            'masque_h3': 'MASQUE (HTTP/3)',
+            'auto': 'Auto (recommended)',
+            'masque': 'MASQUE (HTTP/3)',
             'masque_h2': 'MASQUE (HTTP/2)',
-            'wireguard': 'WireGuard',
-            'gool': 'Nested WireGuard (gool)',
+            'wg': 'WireGuard',
+            'gool': 'Gool (WARP-in-WARP)',
+            'mim': 'MIM (MASQUE-in-MASQUE)',
           },
           selected: _aetherProtocol,
           onSelected: (v) => setState(() => _aetherProtocol = v),
           color: color,
         ),
-        const SizedBox(height: 18),
+        gap,
+        _buildChoiceRow(
+          label: _t('حالت اسکن', 'Scan mode'),
+          values: AetherProfile.scans,
+          valueLabelsFa: const {
+            'smart': 'هوشمند',
+            'turbo': 'توربو (سریع‌ترین اتصال)',
+            'balanced': 'متعادل (پینگ بهتر)',
+            'thorough': 'کامل',
+            'stealth': 'مخفی',
+            'ironclad': 'آهنین (مطمئن‌ترین)',
+          },
+          valueLabelsEn: const {
+            'smart': 'Smart',
+            'turbo': 'Turbo (fastest connect)',
+            'balanced': 'Balanced (better ping)',
+            'thorough': 'Thorough',
+            'stealth': 'Stealth',
+            'ironclad': 'Ironclad (most reliable)',
+          },
+          selected: _aetherScan,
+          onSelected: (v) => setState(() => _aetherScan = v),
+          color: color,
+        ),
+        gap,
+        _buildChoiceRow(
+          label: _t('نسخه‌ی IP', 'IP version'),
+          values: AetherProfile.ips,
+          valueLabelsFa: const {'v4': 'IPv4', 'v6': 'IPv6', 'both': 'هر دو'},
+          valueLabelsEn: const {'v4': 'IPv4', 'v6': 'IPv6', 'both': 'Both'},
+          selected: _aetherIp,
+          onSelected: (v) => setState(() => _aetherIp = v),
+          color: color,
+        ),
+        gap,
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          activeColor: color,
+          title: Text(
+            _t('اتصال مجدد سریع', 'Quick reconnect'),
+            style: TextStyle(color: AppColors.fg(context), fontSize: 14),
+          ),
+          subtitle: Text(
+            _t(
+              'از آخرین مسیر سالم دوباره استفاده می‌کند (بدون اسکن تازه)',
+              'Reuses the last working gateway (no fresh scan)',
+            ),
+            style: TextStyle(color: AppColors.muted2(context), fontSize: 11.5),
+          ),
+          value: _aetherQuickReconnect,
+          onChanged: (v) => setState(() => _aetherQuickReconnect = v),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          activeColor: color,
+          title: Text(
+            _t('مسدود کردن QUIC', 'Block QUIC'),
+            style: TextStyle(color: AppColors.fg(context), fontSize: 14),
+          ),
+          subtitle: Text(
+            _t(
+              'مرورگر و برنامه‌ها فوراً به TCP برمی‌گردند (بارگذاری صفحات سریع‌تر)',
+              'Browsers/apps fall back to TCP immediately (faster page loads)',
+            ),
+            style: TextStyle(color: AppColors.muted2(context), fontSize: 11.5),
+          ),
+          value: _aetherBlockQuic,
+          onChanged: (v) => setState(() => _aetherBlockQuic = v),
+        ),
+        const SizedBox(height: 4),
+        InkWell(
+          onTap: () => setState(() => _aetherAdvanced = !_aetherAdvanced),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Icon(
+                  _aetherAdvanced ? Icons.expand_less : Icons.expand_more,
+                  color: color,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _t('تنظیمات پیشرفته', 'Advanced'),
+                  style: const TextStyle(
+                    color: color,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_aetherAdvanced) ...[
+          const SizedBox(height: 8),
+          _buildChoiceRow(
+            label: _t('پروفایل نویز (مقابله با DPI)', 'Noize profile (anti-DPI)'),
+            values: AetherProfile.noizes,
+            valueLabelsFa: const {
+              'auto': 'خودکار',
+              'off': 'خاموش',
+              'light': 'سبک',
+              'firewall': 'فایروال',
+              'balanced': 'متعادل',
+              'gfw': 'GFW',
+              'aggressive': 'شدید',
+            },
+            valueLabelsEn: const {
+              'auto': 'Auto',
+              'off': 'Off',
+              'light': 'Light',
+              'firewall': 'Firewall',
+              'balanced': 'Balanced',
+              'gfw': 'GFW',
+              'aggressive': 'Aggressive',
+            },
+            selected: _aetherNoize,
+            onSelected: (v) => setState(() => _aetherNoize = v),
+            color: color,
+          ),
+          gap,
+          _buildChoiceRow(
+            label: _t('مصرف منابع', 'Performance profile'),
+            values: AetherProfile.perfs,
+            valueLabelsFa: const {
+              'auto': 'خودکار',
+              'low': 'کم',
+              'medium': 'متوسط',
+              'high': 'بالا (سرعت بیشتر)',
+            },
+            valueLabelsEn: const {
+              'auto': 'Auto',
+              'low': 'Low',
+              'medium': 'Medium',
+              'high': 'High (more speed)',
+            },
+            selected: _aetherPerf,
+            onSelected: (v) => setState(() => _aetherPerf = v),
+            color: color,
+          ),
+          gap,
+          _buildTextField(
+            controller: _aetherDnsController,
+            label: _t('DNS داخل تونل (اختیاری)', 'DNS inside tunnel (optional)'),
+            hint: '1.1.1.1, 1.0.0.1',
+            color: color,
+          ),
+          gap,
+          _buildTextField(
+            controller: _aetherPeerController,
+            label: _t('Peer دستی ip:port (اختیاری)', 'Manual peer ip:port (optional)'),
+            hint: '162.159.192.1:2408',
+            color: color,
+          ),
+          gap,
+          _buildTextField(
+            controller: _aetherUpstreamController,
+            label: _t('پراکسی بالادستی (اختیاری)', 'Upstream proxy (optional)'),
+            hint: 'socks5://127.0.0.1:1080',
+            color: color,
+          ),
+        ],
+        gap,
         Text(
           _t('نام (اختیاری)', 'Name (optional)'),
           style: TextStyle(
@@ -681,6 +902,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   void dispose() {
     _linkController.dispose();
     _nameController.dispose();
+    _aetherDnsController.dispose();
+    _aetherPeerController.dispose();
+    _aetherUpstreamController.dispose();
     super.dispose();
   }
 }
