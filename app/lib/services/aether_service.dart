@@ -1,19 +1,8 @@
-# مسیر مقصد در ریپو: app/lib/services/aether_service.dart  --  NEW FILE
-# ------------------------------------------------------------
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
 import '../models/server.dart';
 
-/// سرویس اتصال از طریق هسته‌ی Aether (پروژه CluvexStudio/Aether).
-///
-/// Aether یک ابزار دور زدن فیلترینگ است که شبکه را برای مسیرهای قابل دسترس
-/// اسکن می‌کند و یک تونل رمزنگاری‌شده می‌سازد، سپس یک پراکسی SOCKS5 محلی
-/// (پیش‌فرض 127.0.0.1:1819) و یک پراکسی HTTP CONNECT محلی (پیش‌فرض
-/// 127.0.0.1:1820) باز می‌کند.
-///
-/// سمت Dart فقط پیام‌رسانی با کد Kotlin بومی (AetherVpnService) را انجام
-/// می‌دهد؛ خودِ اجرای باینری aether و بالا آوردن VpnService در اندروید
-/// انجام می‌شود (پوشه android-extra/kotlin را ببینید).
 class AetherService {
   static const MethodChannel _channel =
       MethodChannel('com.hasan.hasan_vpn/aether');
@@ -25,11 +14,13 @@ class AetherService {
   static bool get isConnected => _connected;
   static VpnServer? get current => _current;
 
-  /// مقادیر مجاز: fast | balanced | full
-  static const List<String> scanModes = ['fast', 'balanced', 'full'];
+  static const List<String> scanModes = <String>[
+    'fast',
+    'balanced',
+    'full',
+  ];
 
-  /// مقادیر مجاز: auto | masque_h3 | masque_h2 | wireguard | gool
-  static const List<String> protocolModes = [
+  static const List<String> protocolModes = <String>[
     'auto',
     'masque_h3',
     'masque_h2',
@@ -37,75 +28,136 @@ class AetherService {
     'gool',
   ];
 
-  /// یک لینک/شناسه‌ی قابل‌ذخیره برای کانفیگ Aether می‌سازد تا در مدل
-  /// VpnServer.shareLink ذخیره شود (خودِ Aether هاست/پورت سرور نمی‌خواهد،
-  /// چون به‌صورت خودکار مسیر را پیدا می‌کند).
   static String buildConfigLink({
     required String scanMode,
     required String protocolMode,
     String upstreamProxy = '',
   }) {
-    final uri = Uri(
+    final safeScanMode = scanModes.contains(scanMode) ? scanMode : 'balanced';
+    final safeProtocolMode =
+        protocolModes.contains(protocolMode) ? protocolMode : 'auto';
+
+    final query = <String, String>{
+      'scan': safeScanMode,
+      'protocol': safeProtocolMode,
+    };
+
+    if (upstreamProxy.trim().isNotEmpty) {
+      query['upstream'] = upstreamProxy.trim();
+    }
+
+    return Uri(
       scheme: 'aether',
       host: 'config',
-      queryParameters: {
-        'scan': scanMode,
-        'protocol': protocolMode,
-        if (upstreamProxy.isNotEmpty) 'upstream': upstreamProxy,
-      },
-    );
-    return uri.toString();
+      queryParameters: query,
+    ).toString();
   }
 
   static Map<String, String> parseConfigLink(String link) {
     try {
       final uri = Uri.parse(link);
-      return uri.queryParameters;
+
+      if (uri.scheme.toLowerCase() != 'aether') {
+        return const <String, String>{};
+      }
+
+      return Map<String, String>.from(uri.queryParameters);
     } catch (_) {
-      return const {};
+      return const <String, String>{};
     }
+  }
+
+  static Future<bool> _waitUntilReady({
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+
+    while (DateTime.now().isBefore(deadline)) {
+      final status = await nativeStatus();
+
+      if (status['connected'] == true) {
+        return true;
+      }
+
+      final nativeError = status['error']?.toString();
+      if (nativeError != null && nativeError.isNotEmpty) {
+        lastError = nativeError;
+        return false;
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+    }
+
+    return false;
   }
 
   static Future<bool> connect(VpnServer server) async {
     lastError = null;
-    try {
-      final cfg = parseConfigLink(server.shareLink);
+    _connected = false;
+    _current = null;
 
-      // مجوز VpnService را (مثل بقیه‌ی اتصال‌ها) از کاربر می‌گیرد.
-      final bool allowed =
-          (await _channel.invokeMethod<bool>('prepare')) ?? false;
+    if (!server.isAether) {
+      lastError = 'Selected server is not an Aether configuration';
+      return false;
+    }
+
+    try {
+      final config = parseConfigLink(server.shareLink);
+
+      final scanMode = scanModes.contains(config['scan'])
+          ? config['scan']!
+          : 'balanced';
+
+      final protocolMode = protocolModes.contains(config['protocol'])
+          ? config['protocol']!
+          : 'auto';
+
+      final upstreamProxy = config['upstream'] ?? '';
+
+      final allowed =
+          await _channel.invokeMethod<bool>('prepare') ?? false;
+
       if (!allowed) {
         lastError = 'VPN permission denied';
         return false;
       }
 
-      final bool started = (await _channel.invokeMethod<bool>('start', {
-            'scanMode': cfg['scan'] ?? 'balanced',
-            'protocolMode': cfg['protocol'] ?? 'auto',
-            'upstreamProxy': cfg['upstream'] ?? '',
-            'remark': server.name,
-          })) ??
+      final started = await _channel.invokeMethod<bool>(
+            'start',
+            <String, dynamic>{
+              'scanMode': scanMode,
+              'protocolMode': protocolMode,
+              'upstreamProxy': upstreamProxy,
+              'remark': server.name,
+            },
+          ) ??
           false;
 
       if (!started) {
-        lastError = 'Aether core failed to start';
-        _connected = false;
-        _current = null;
+        lastError = 'Aether service could not be started';
+        return false;
+      }
+
+      final ready = await _waitUntilReady();
+
+      if (!ready) {
+        await disconnect();
+        lastError ??= 'Aether did not become ready';
         return false;
       }
 
       _connected = true;
       _current = server;
       return true;
-    } on PlatformException catch (e) {
-      lastError = '${e.code}: ${e.message}';
-      debugPrint('Aether connect error: $lastError');
+    } on PlatformException catch (error) {
+      lastError = '${error.code}: ${error.message ?? 'Native error'}';
+      debugPrint('Aether PlatformException: $lastError');
       _connected = false;
       _current = null;
       return false;
-    } catch (e) {
-      lastError = e.toString();
-      debugPrint('Aether connect error: $e');
+    } catch (error) {
+      lastError = error.toString();
+      debugPrint('Aether connection error: $lastError');
       _connected = false;
       _current = null;
       return false;
@@ -114,22 +166,39 @@ class AetherService {
 
   static Future<void> disconnect() async {
     try {
-      await _channel.invokeMethod('stop');
-    } catch (e) {
-      debugPrint('Aether disconnect error: $e');
+      await _channel.invokeMethod<void>('stop');
+    } catch (error) {
+      debugPrint('Aether disconnect error: $error');
+    } finally {
+      _connected = false;
+      _current = null;
     }
-    _connected = false;
-    _current = null;
   }
 
-  /// وضعیت زنده از سرویس بومی (اختیاری، برای نمایش جزئیات بیشتر مثل
-  /// پروتکل فعال یا پینگ گیت‌وی پیدا‌شده).
   static Future<Map<String, dynamic>> nativeStatus() async {
     try {
-      final res = await _channel.invokeMapMethod<String, dynamic>('status');
-      return res ?? const {};
+      final result =
+          await _channel.invokeMapMethod<String, dynamic>('status');
+
+      return result ?? const <String, dynamic>{};
+    } on PlatformException catch (error) {
+      debugPrint('Aether status error: ${error.message}');
+      return const <String, dynamic>{};
     } catch (_) {
-      return const {};
+      return const <String, dynamic>{};
     }
+  }
+
+  static Future<bool> syncStatus() async {
+    final status = await nativeStatus();
+    final connected = status['connected'] == true;
+
+    _connected = connected;
+
+    if (!connected) {
+      _current = null;
+    }
+
+    return connected;
   }
 }
