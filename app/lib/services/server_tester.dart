@@ -5,6 +5,7 @@ import 'dart:io';
 import '../models/server.dart';
 import 'v2ray_engine.dart';
 
+/// توکن لغو برای یک دور تست.
 class TestSession {
   bool _cancelled = false;
   bool get cancelled => _cancelled;
@@ -16,12 +17,13 @@ class TestSummary {
   int online = 0;
   int offline = 0;
   int unknown = 0;
+
+  /// true اگر هسته‌ی برنامه «پینگ واقعی» را پشتیبانی نکرد.
   bool realUnavailable = false;
 }
 
 class _Semaphore {
   _Semaphore(this.max);
-
   final int max;
   int _current = 0;
   final Queue<Completer<void>> _waiters = Queue<Completer<void>>();
@@ -45,46 +47,36 @@ class _Semaphore {
   }
 }
 
-class _TcpResult {
-  final int ms;
-  final int jitter;
-  const _TcpResult(this.ms, this.jitter);
-}
-
+/// تست واقعی: یک درخواست HTTP از داخل پروکسی (Xray) فرستاده می‌شود.
+/// این دقیقاً همان چیزی است که کاربر در عمل تجربه می‌کند.
+///
+/// سرورهای Aether اینجا تست نمی‌شوند (آدرس ثابت ندارند و پینگشان فقط وقتی
+/// تونل بالاست معنا دارد).
 class ServerTester {
   ServerTester._();
 
-  static const int _tcpConcurrency = 32;
+  /// اگر تلاش اول زودتر از این شکست خورد، احتمالاً خطای گذراست و یک‌بار
+  /// دیگر امتحان می‌شود.
   static const int _fastFailMs = 2500;
 
-  static int get _realConcurrency {
+  /// تعداد تست هم‌زمان؛ هر تست یک نمونه‌ی موقت از هسته می‌سازد، پس بر اساس
+  /// تعداد هسته‌های گوشی تنظیم می‌شود (۴ تا ۱۰).
+  static int get _concurrency {
     final cores = Platform.numberOfProcessors;
-    return (cores ~/ 2 + 1).clamp(3, 8).toInt();
+    return (cores ~/ 2 + 2).clamp(4, 10).toInt();
   }
 
-  static final Map<String, Future<InternetAddress?>> _dnsCache =
-      <String, Future<InternetAddress?>>{};
-  static final Map<String, Future<_TcpResult?>> _tcpCache =
-      <String, Future<_TcpResult?>>{};
-
-  static void _resetCaches() {
-    _dnsCache.clear();
-    _tcpCache.clear();
-  }
+  // ------------------------------------------------------------------- API
 
   static Future<TestSummary> testAll(
     List<VpnServer> servers, {
     required TestSession session,
-    bool real = true,
     void Function(VpnServer server)? onServerDone,
     void Function()? onChanged,
   }) async {
-    _resetCaches();
-
     final targets = servers.where((s) => !s.isAether).toList();
     final summary = TestSummary()..total = targets.length;
-    final tcpGate = _Semaphore(_tcpConcurrency);
-    final realGate = _Semaphore(_realConcurrency);
+    final gate = _Semaphore(_concurrency);
 
     Timer? throttle;
     var dirty = false;
@@ -107,10 +99,8 @@ class ServerTester {
         (server) => _testServer(
           server,
           session: session,
-          real: real,
           retries: 1,
-          tcpGate: tcpGate,
-          realGate: realGate,
+          gate: gate,
           summary: summary,
           notify: notify,
         ).then((_) {
@@ -124,221 +114,90 @@ class ServerTester {
     return summary;
   }
 
+  /// تست یک سرور (دکمه‌ی رعد): با تلاش مجدد بیشتر.
   static Future<TestSummary> testOne(
     VpnServer server, {
     required TestSession session,
-    bool real = true,
     void Function()? onChanged,
   }) async {
-    _resetCaches();
     final summary = TestSummary()..total = 1;
 
     await _testServer(
       server,
       session: session,
-      real: real,
       retries: 2,
-      tcpGate: _Semaphore(1),
-      realGate: _Semaphore(1),
+      gate: _Semaphore(1),
       summary: summary,
       notify: () => onChanged?.call(),
     );
     return summary;
   }
 
+  // ---------------------------------------------------------------- engine
+
   static Future<void> _testServer(
     VpnServer server, {
     required TestSession session,
-    required bool real,
     required int retries,
-    required _Semaphore tcpGate,
-    required _Semaphore realGate,
+    required _Semaphore gate,
     required TestSummary summary,
     required void Function() notify,
   }) async {
     if (session.cancelled) return;
     if (server.isAether) return;
 
-    _TcpResult? tcp;
-    final needsTcp = !server.usesUdpTransport;
+    await gate.acquire();
+    try {
+      if (session.cancelled) return;
+      server.status = ServerStatus.testing;
+      notify();
 
-    // ---- مرحله ۱: TCP
-    if (needsTcp) {
-      await tcpGate.acquire();
-      try {
-        if (session.cancelled) return;
-        server.status = ServerStatus.testing;
-        notify();
-        tcp = await _tcpProbeCached(server);
-      } finally {
-        tcpGate.release();
+      // فقط تست واقعی.
+      var attempt = 0;
+      var result = -1;
+      while (true) {
+        final watch = Stopwatch()..start();
+        result = await V2RayEngine.realDelay(server);
+        if (result != -1 || session.cancelled) break;
+        if (attempt >= retries || watch.elapsedMilliseconds >= _fastFailMs) {
+          break;
+        }
+        attempt++;
       }
 
       if (session.cancelled) return;
 
-      if (tcp == null) {
+      if (result > 0) {
+        server.ping = result;
+        server.jitter = null;
+        server.pingKind = PingKind.real;
+        server.status = ServerStatus.online;
+        summary.online++;
+      } else if (result == -2) {
+        summary.realUnavailable = true;
+        server.ping = null;
+        server.jitter = null;
+        server.pingKind = PingKind.none;
+        server.status = ServerStatus.unknown;
+        summary.unknown++;
+      } else {
+        // اتصال واقعی برقرار نشد.
         server.ping = null;
         server.jitter = null;
         server.pingKind = PingKind.none;
         server.status = ServerStatus.offline;
         summary.offline++;
-        notify();
-        return;
       }
-
-      server.ping = tcp.ms;
-      server.jitter = tcp.jitter;
-      server.pingKind = PingKind.tcp;
-      notify();
-    }
-
-    // ---- مرحله ۲: پینگ واقعی
-    if (real) {
-      await realGate.acquire();
-      try {
-        if (session.cancelled) return;
-        server.status = ServerStatus.testing;
-        notify();
-
-        var attempt = 0;
-        var result = -1;
-        while (true) {
-          final watch = Stopwatch()..start();
-          result = await V2RayEngine.realDelay(server);
-          if (result != -1 || session.cancelled) break;
-          if (attempt >= retries || watch.elapsedMilliseconds >= _fastFailMs) {
-            break;
-          }
-          attempt++;
-        }
-
-        if (session.cancelled) return;
-
-        if (result > 0) {
-          server.ping = result;
-          server.jitter = null;
-          server.pingKind = PingKind.real;
-          server.status = ServerStatus.online;
-          summary.online++;
-        } else if (result == -2) {
-          summary.realUnavailable = true;
-          if (tcp != null) {
-            server.status = ServerStatus.online;
-            summary.online++;
-          } else {
-            server.ping = null;
-            server.pingKind = PingKind.none;
-            server.status = ServerStatus.unknown;
-            summary.unknown++;
-          }
-        } else {
-          // پینگ واقعی شکست خورد (-1). اگر TCP جواب داده بود، همون رو نگه دار.
-          if (tcp != null) {
-            server.ping = tcp.ms;
-            server.jitter = tcp.jitter;
-            server.pingKind = PingKind.tcp;
-            server.status = ServerStatus.online;
-            summary.online++;
-          } else {
-            server.ping = null;
-            server.jitter = null;
-            server.pingKind = PingKind.none;
-            server.status = ServerStatus.offline;
-            summary.offline++;
-          }
-        }
-      } finally {
-        realGate.release();
-      }
-    } else {
-      if (tcp != null) {
-        server.status = ServerStatus.online;
-        summary.online++;
-      } else {
-        server.status = ServerStatus.unknown;
-        summary.unknown++;
-      }
+    } finally {
+      gate.release();
     }
 
     notify();
   }
 
-  static Future<_TcpResult?> _tcpProbeCached(VpnServer server) {
-    final key = '${server.host.trim().toLowerCase()}:${server.port}';
-    return _tcpCache.putIfAbsent(key, () => _tcpProbe(server));
-  }
+  // --------------------------------------------------------------- sorting
 
-  static Future<_TcpResult?> _tcpProbe(VpnServer server) async {
-    final address = await _resolve(server.host);
-    if (address == null) return null;
-
-    var first = await _connectOnce(
-      address,
-      server.port,
-      const Duration(milliseconds: 2500),
-    );
-    first ??= await _connectOnce(
-      address,
-      server.port,
-      const Duration(milliseconds: 1500),
-    );
-    if (first == null) return null;
-
-    final extra = await Future.wait<int?>(<Future<int?>>[
-      _connectOnce(address, server.port, const Duration(milliseconds: 1500)),
-      _connectOnce(address, server.port, const Duration(milliseconds: 1500)),
-    ]);
-
-    final samples = <int>[first, ...extra.whereType<int>()]..sort();
-    return _TcpResult(
-      samples[samples.length ~/ 2],
-      samples.last - samples.first,
-    );
-  }
-
-  static Future<int?> _connectOnce(
-    InternetAddress address,
-    int port,
-    Duration timeout,
-  ) async {
-    final watch = Stopwatch()..start();
-    Socket? socket;
-    try {
-      socket = await Socket.connect(address, port, timeout: timeout);
-      watch.stop();
-      final ms = watch.elapsedMilliseconds;
-      return ms < 1 ? 1 : ms;
-    } catch (_) {
-      return null;
-    } finally {
-      socket?.destroy();
-    }
-  }
-
-  static Future<InternetAddress?> _resolve(String host) {
-    final name = host.trim();
-    if (name.isEmpty || name == 'unknown' || name == 'auto-discover') {
-      return Future<InternetAddress?>.value(null);
-    }
-
-    final literal = InternetAddress.tryParse(name);
-    if (literal != null) return Future<InternetAddress?>.value(literal);
-
-    return _dnsCache.putIfAbsent(name, () async {
-      try {
-        final list = await InternetAddress.lookup(name)
-            .timeout(const Duration(seconds: 3));
-        if (list.isEmpty) return null;
-        return list.firstWhere(
-          (a) => a.type == InternetAddressType.IPv4,
-          orElse: () => list.first,
-        );
-      } catch (_) {
-        return null;
-      }
-    });
-  }
-
+  /// مرتب‌سازی پایدار: پین‌شده‌ها ← دارای پینگ ← بدون پینگ.
   static void sortServers(List<VpnServer> servers, {bool descending = false}) {
     final order = <VpnServer, int>{
       for (var i = 0; i < servers.length; i++) servers[i]: i,
@@ -352,9 +211,6 @@ class ServerTester {
       if (aHas != bHas) return aHas ? -1 : 1;
 
       if (aHas && bHas) {
-        if (a.pingKind != b.pingKind) {
-          return a.pingKind == PingKind.real ? -1 : 1;
-        }
         final cmp = a.ping!.compareTo(b.ping!);
         if (cmp != 0) return descending ? -cmp : cmp;
       }
@@ -363,24 +219,15 @@ class ServerTester {
     });
   }
 
+  /// بهترین سرور (کم‌ترین پینگ واقعی).
   static VpnServer? fastest(List<VpnServer> servers) {
     VpnServer? best;
     for (final server in servers) {
       if (server.ping == null || server.status != ServerStatus.online) continue;
       if (server.isAether) continue;
-
-      if (best == null) {
+      if (best == null || server.ping! < best.ping!) {
         best = server;
-        continue;
       }
-
-      final bestReal = best.pingKind == PingKind.real;
-      final serverReal = server.pingKind == PingKind.real;
-      if (serverReal != bestReal) {
-        if (serverReal) best = server;
-        continue;
-      }
-      if (server.ping! < best.ping!) best = server;
     }
     return best;
   }
