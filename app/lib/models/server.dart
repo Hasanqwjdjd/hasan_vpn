@@ -22,6 +22,9 @@ class VpnServer {
   bool isDeletable;
   bool isPinned;
 
+  /// نام سفارشی که کاربر جایگزین نام اصلی کرده. null = نام اصلی.
+  String? nameOverride;
+
   int? ping;
   int? jitter;
   PingKind pingKind;
@@ -39,6 +42,7 @@ class VpnServer {
     this.sniOrHost,
     this.isDeletable = true,
     this.isPinned = false,
+    this.nameOverride,
     this.ping,
     this.jitter,
     this.pingKind = PingKind.none,
@@ -52,6 +56,11 @@ class VpnServer {
   /// پروتکل‌هایی که روی UDP/QUIC کار می‌کنند؛ TCP-connect روی آن‌ها بی‌معناست.
   bool get usesUdpTransport => protocol == VpnProtocol.hysteria2;
 
+  /// نام نهایی برای نمایش (شامل override کاربر).
+  String get displayName => (nameOverride == null || nameOverride!.isEmpty)
+      ? name
+      : nameOverride!;
+
   /// کپی با نام/پرچم جدید (فیلدهای final را نمی‌شود مستقیم عوض کرد).
   VpnServer copyWith({String? name, String? flag}) => VpnServer(
         id: id,
@@ -64,6 +73,7 @@ class VpnServer {
         sniOrHost: sniOrHost,
         isDeletable: isDeletable,
         isPinned: isPinned,
+        nameOverride: nameOverride,
       );
 
   /// پاک‌کردن نتیجه‌ی تست قبلی.
