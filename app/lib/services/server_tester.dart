@@ -5,7 +5,6 @@ import 'dart:io';
 import '../models/server.dart';
 import 'v2ray_engine.dart';
 
-/// توکن لغو برای یک دور تست (لغو یک دور، دور بعدی را تحت تأثیر قرار نمی‌دهد).
 class TestSession {
   bool _cancelled = false;
   bool get cancelled => _cancelled;
@@ -17,8 +16,6 @@ class TestSummary {
   int online = 0;
   int offline = 0;
   int unknown = 0;
-
-  /// true اگر هسته‌ی برنامه «پینگ واقعی» را پشتیبانی نکرد و فقط TCP نشان داده شد.
   bool realUnavailable = false;
 }
 
@@ -54,26 +51,12 @@ class _TcpResult {
   const _TcpResult(this.ms, this.jitter);
 }
 
-/// تست پینگ دو مرحله‌ای:
-///  ۱) TCP (سریع و موازی): سرورهای مرده در چند ثانیه حذف می‌شوند؛ نتیجه‌ی TCP
-///     برای هر host:port فقط یک‌بار گرفته می‌شود (اشتراک‌ها معمولاً ده‌ها کانفیگ
-///     روی یک IP دارند).
-///  ۲) پینگ واقعی: یک درخواست HTTP واقعی از داخل خود پروکسی (Xray)،
-///     که همان چیزی است که کاربر در عمل تجربه می‌کند.
-///
-/// سرورهای Aether اینجا تست نمی‌شوند: آن‌ها آدرس ثابت ندارند و پینگشان فقط
-/// وقتی معنا دارد که تونل واقعاً بالا باشد (پینگ زنده‌ی صفحه‌ی اصلی).
 class ServerTester {
   ServerTester._();
 
   static const int _tcpConcurrency = 32;
-
-  /// اگر اولین تلاش پینگ واقعی زودتر از این شکست بخورد، احتمالاً خطای گذراست
-  /// و یک‌بار دیگر امتحان می‌شود؛ اگر تا سقف زمان معطل شده باشد مسیر مرده است.
   static const int _fastFailMs = 2500;
 
-  /// تعداد تست واقعیِ هم‌زمان؛ هر تست یک نمونه‌ی موقت از هسته می‌سازد، پس
-  /// بر اساس تعداد هسته‌های گوشی تنظیم می‌شود (۳ تا ۸).
   static int get _realConcurrency {
     final cores = Platform.numberOfProcessors;
     return (cores ~/ 2 + 1).clamp(3, 8).toInt();
@@ -88,8 +71,6 @@ class ServerTester {
     _dnsCache.clear();
     _tcpCache.clear();
   }
-
-  // ------------------------------------------------------------------- API
 
   static Future<TestSummary> testAll(
     List<VpnServer> servers, {
@@ -143,7 +124,6 @@ class ServerTester {
     return summary;
   }
 
-  /// تست یک سرور (دکمه‌ی صاعقه): با تلاش مجدد بیشتر برای پینگ واقعی.
   static Future<TestSummary> testOne(
     VpnServer server, {
     required TestSession session,
@@ -165,8 +145,6 @@ class ServerTester {
     );
     return summary;
   }
-
-  // ---------------------------------------------------------------- engine
 
   static Future<void> _testServer(
     VpnServer server, {
@@ -208,7 +186,6 @@ class ServerTester {
         return;
       }
 
-      // نتیجه‌ی TCP را فوراً نشان بده (تقریبی)؛ بعداً با پینگ واقعی جایگزین می‌شود.
       server.ping = tcp.ms;
       server.jitter = tcp.jitter;
       server.pingKind = PingKind.tcp;
@@ -229,7 +206,6 @@ class ServerTester {
           final watch = Stopwatch()..start();
           result = await V2RayEngine.realDelay(server);
           if (result != -1 || session.cancelled) break;
-          // شکست سریع = احتمالاً گذرا؛ شکست با معطلی کامل = مسیر مرده.
           if (attempt >= retries || watch.elapsedMilliseconds >= _fastFailMs) {
             break;
           }
@@ -245,7 +221,6 @@ class ServerTester {
           server.status = ServerStatus.online;
           summary.online++;
         } else if (result == -2) {
-          // پینگ واقعی برای این سرور/این نسخه ممکن نیست.
           summary.realUnavailable = true;
           if (tcp != null) {
             server.status = ServerStatus.online;
@@ -257,8 +232,7 @@ class ServerTester {
             summary.unknown++;
           }
         } else {
-          // پینگ واقعی شکست خورد (-1). ممکنه خطای گذرای کتابخونه باشه نه سرور.
-          // اگر TCP جواب داده بود، همون رو با علامت «~» نگه دار.
+          // پینگ واقعی شکست خورد (-1). اگر TCP جواب داده بود، همون رو نگه دار.
           if (tcp != null) {
             server.ping = tcp.ms;
             server.jitter = tcp.jitter;
@@ -289,8 +263,6 @@ class ServerTester {
     notify();
   }
 
-  // ------------------------------------------------------------------- TCP
-
   static Future<_TcpResult?> _tcpProbeCached(VpnServer server) {
     final key = '${server.host.trim().toLowerCase()}:${server.port}';
     return _tcpCache.putIfAbsent(key, () => _tcpProbe(server));
@@ -305,7 +277,6 @@ class ServerTester {
       server.port,
       const Duration(milliseconds: 2500),
     );
-    // یک فرصت دوباره‌ی کوتاه؛ سرور مرده‌ی واقعی حداکثر ~۴ ثانیه معطل می‌کند.
     first ??= await _connectOnce(
       address,
       server.port,
@@ -313,7 +284,6 @@ class ServerTester {
     );
     if (first == null) return null;
 
-    // دو نمونه‌ی بعدی هم‌زمان گرفته می‌شود (سریع‌تر از پشت‌سرهم).
     final extra = await Future.wait<int?>(<Future<int?>>[
       _connectOnce(address, server.port, const Duration(milliseconds: 1500)),
       _connectOnce(address, server.port, const Duration(milliseconds: 1500)),
@@ -345,8 +315,6 @@ class ServerTester {
     }
   }
 
-  /// DNS فقط یک‌بار برای هر دامنه حل می‌شود و از پینگ کنار گذاشته می‌شود؛
-  /// قبلاً زمان DNS داخل عدد پینگ می‌رفت و هر نمونه دوباره DNS می‌زد.
   static Future<InternetAddress?> _resolve(String host) {
     final name = host.trim();
     if (name.isEmpty || name == 'unknown' || name == 'auto-discover') {
@@ -371,11 +339,6 @@ class ServerTester {
     });
   }
 
-  // --------------------------------------------------------------- sorting
-
-  /// مرتب‌سازی پایدار: پین‌شده‌ها ← دارای پینگ (واقعی قبل از TCP) ← بدون پینگ.
-  /// ترتیب اولیه‌ی لیست برای مقدارهای مساوی حفظ می‌شود (sort خود Dart پایدار
-  /// نیست، برای همین ترتیب اولیه جداگانه نگه داشته می‌شود).
   static void sortServers(List<VpnServer> servers, {bool descending = false}) {
     final order = <VpnServer, int>{
       for (var i = 0; i < servers.length; i++) servers[i]: i,
@@ -400,7 +363,6 @@ class ServerTester {
     });
   }
 
-  /// بهترین سرور: اول پینگ‌های واقعی، بعد TCP.
   static VpnServer? fastest(List<VpnServer> servers) {
     VpnServer? best;
     for (final server in servers) {
