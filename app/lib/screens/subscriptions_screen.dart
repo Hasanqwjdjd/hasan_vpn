@@ -121,6 +121,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       await SubscriptionService.save(_subs);
       widget.onChanged(_subs);
       if (mounted) {
+        setState(() {});
         _showMsg('${servers.length} ${_t('سرور بارگیری شد از', 'servers loaded from')} ${sub.name}');
       }
     } catch (e) {
@@ -260,8 +261,14 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              s.name,
-                              style: TextStyle(color: AppColors.fg(context), fontSize: 14, fontWeight: FontWeight.w600),
+                              s.serverCount > 0
+                                  ? '${s.name} (${s.serverCount})'
+                                  : s.name,
+                              style: TextStyle(
+                                color: AppColors.fg(context),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                           if (loading)
@@ -287,7 +294,10 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          Text('${s.serverCount} ${_t('سرور', 'servers')}', style: const TextStyle(color: AppColors.accent, fontSize: 11)),
+                          Text(
+                            '${s.serverCount} ${_t('سرور', 'servers')}',
+                            style: const TextStyle(color: AppColors.accent, fontSize: 11),
+                          ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
