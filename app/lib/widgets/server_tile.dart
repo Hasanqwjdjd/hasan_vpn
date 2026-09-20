@@ -56,7 +56,6 @@ class ServerTile extends StatelessWidget {
     final ping = server.ping;
     final isTcp = server.pingKind == PingKind.tcp;
 
-    // اگر پینگ داریم، حتی حین تست هم نشونش بده (فقط رنگش کم‌رنگ‌تر بشه).
     if (ping != null) {
       final testing = server.status == ServerStatus.testing;
       return Tooltip(
@@ -74,7 +73,6 @@ class ServerTile extends StatelessWidget {
       );
     }
 
-    // هنوز پینگی نداریم؛ فقط اسپینر یا علامت.
     if (server.status == ServerStatus.testing) {
       return const SizedBox(
         width: 14,
@@ -120,7 +118,7 @@ class ServerTile extends StatelessWidget {
   }) {
     return IconButton(
       padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 28),
+      constraints: const BoxConstraints(minWidth: 26),
       iconSize: size,
       icon: Icon(icon, color: color, size: size),
       onPressed: onPressed,
@@ -174,7 +172,7 @@ class ServerTile extends StatelessWidget {
                         children: [
                           Flexible(
                             child: Text(
-                              server.name,
+                              server.displayName,
                               style: TextStyle(
                                 color: AppColors.fg(context),
                                 fontSize: 13,
@@ -208,7 +206,7 @@ class ServerTile extends StatelessWidget {
                   ),
                 ),
 
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
                 _buildPing(context),
 
                 _iconButton(
@@ -254,7 +252,7 @@ class ServerTile extends StatelessWidget {
                     onPressed: onDelete,
                   )
                 else
-                  const SizedBox(width: 28),
+                  const SizedBox(width: 26),
               ],
             ),
           ),
