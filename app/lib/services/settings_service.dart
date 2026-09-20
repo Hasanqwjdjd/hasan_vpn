@@ -17,6 +17,8 @@ class SettingsService {
   static const String _dnsPinnedKey = 'settings_dns_pinned_v1';
   static const String _serverNameOverridesKey =
       'settings_server_name_overrides_v1';
+  static const String _lastDnsKey = 'settings_last_dns_v1';
+  static const String _lastServerKey = 'settings_last_server_v1';
 
   static Future<void> loadVersion() async {
     try {
@@ -159,17 +161,17 @@ class SettingsService {
     return [];
   }
 
-  static Future<void> addHiddenDns(String primary) async {
+  static Future<void> addHiddenDns(String key) async {
     final prefs = await SharedPreferences.getInstance();
     final list = await getHiddenDns();
-    if (!list.contains(primary)) list.add(primary);
+    if (!list.contains(key)) list.add(key);
     await prefs.setString(_hiddenDnsKey, jsonEncode(list));
   }
 
-  static Future<void> removeHiddenDns(String primary) async {
+  static Future<void> removeHiddenDns(String key) async {
     final prefs = await SharedPreferences.getInstance();
     final list = await getHiddenDns();
-    list.remove(primary);
+    list.remove(key);
     await prefs.setString(_hiddenDnsKey, jsonEncode(list));
   }
 
@@ -227,13 +229,13 @@ class SettingsService {
     return [];
   }
 
-  static Future<void> togglePinnedDns(String primary) async {
+  static Future<void> togglePinnedDns(String key) async {
     final prefs = await SharedPreferences.getInstance();
     final list = await getPinnedDns();
-    if (list.contains(primary)) {
-      list.remove(primary);
+    if (list.contains(key)) {
+      list.remove(key);
     } else {
-      list.add(primary);
+      list.add(key);
     }
     await prefs.setString(_dnsPinnedKey, jsonEncode(list));
   }
@@ -254,10 +256,10 @@ class SettingsService {
     return {};
   }
 
-  static Future<void> saveDnsPingResult(String primary, int latency) async {
+  static Future<void> saveDnsPingResult(String key, int latency) async {
     final prefs = await SharedPreferences.getInstance();
     final map = await getDnsPingResults();
-    map[primary] = latency;
+    map[key] = latency;
     await prefs.setString(_dnsPingKey, jsonEncode(map));
   }
 
@@ -317,5 +319,40 @@ class SettingsService {
   static Future<void> clearServerPings() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('server_pings_v1');
+  }
+
+  // --------------------------------------------------------- Last DNS
+
+  /// کلید آخرین DNS فعال: "primary|secondary"
+  static Future<String?> getLastDns() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_lastDnsKey);
+  }
+
+  static Future<void> setLastDns(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastDnsKey, key);
+  }
+
+  static Future<void> clearLastDns() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_lastDnsKey);
+  }
+
+  // --------------------------------------------------------- Last Server
+
+  static Future<String?> getLastServer() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_lastServerKey);
+  }
+
+  static Future<void> setLastServer(String serverId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastServerKey, serverId);
+  }
+
+  static Future<void> clearLastServer() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_lastServerKey);
   }
 }
