@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'models/subscription.dart';
 import 'models/server.dart';
@@ -35,30 +37,80 @@ class _HasanAppState extends State<HasanApp> {
     await SettingsService.loadVersion();
     _themeMode = await SettingsService.getThemeMode();
     _language = await SettingsService.getLanguage();
+
     final subs = await SubscriptionService.load();
-    setState(() => _subs = subs);
-    await _refreshSubscriptions();
+    _subs = subs;
+
+    // سرورهای ذخیره‌شده فوراً نشان داده می‌شوند؛ به‌روزرسانی از شبکه در پس‌زمینه
+    // انجام می‌شود (قبلاً برنامه تا پایان دانلود همه‌ی اشتراک‌ها روی «در حال
+    // بارگذاری» می‌ماند و با شبکه‌ی کند تا چند دقیقه طول می‌کشید).
+    _subServers = _merge(subs.map(SubscriptionService.fromCache).toList());
+
+    if (!mounted) return;
     setState(() => _loading = false);
+
+    unawaited(_refreshSubscriptions());
   }
 
-  Future<void> _refreshSubscriptions({bool force = false}) async {
-    final all = <VpnServer>[];
-    for (final s in _subs) {
-      if (force || s.needsUpdate()) {
-        try {
-          final servers = await SubscriptionService.fetch(s);
-          s.lastUpdated = DateTime.now();
-          s.serverCount = servers.length;
-          all.addAll(servers);
-        } catch (_) {
-          all.addAll(SubscriptionService.fromCache(s));
+  Future<void>? _refreshing;
+
+  Future<void> _refreshSubscriptions({bool force = false}) {
+    final running = _refreshing;
+    if (running != null && !force) {
+      // یک به‌روزرسانی در جریان است؛ بعد از آن یک دور دیگر (ارزان، از کش) تا
+      // تغییرات تازه‌ی لیست اشتراک‌ها هم اعمال شود.
+      return running.then((_) => _refreshSubscriptions());
+    }
+
+    final future = _doRefresh(force);
+    _refreshing = future;
+    future.whenComplete(() {
+      if (identical(_refreshing, future)) _refreshing = null;
+    });
+    return future;
+  }
+
+  Future<void> _doRefresh(bool force) async {
+    final subs = List<Subscription>.from(_subs);
+
+    // همه‌ی اشتراک‌ها هم‌زمان دریافت می‌شوند (نه پشت‌سرهم).
+    final results = await Future.wait(
+      subs.map((s) async {
+        if (force || s.needsUpdate()) {
+          try {
+            final servers = await SubscriptionService.fetch(s);
+            s.lastUpdated = DateTime.now();
+            s.serverCount = servers.length;
+            return servers;
+          } catch (_) {
+            return SubscriptionService.fromCache(s);
+          }
         }
-      } else {
-        all.addAll(SubscriptionService.fromCache(s));
+        return SubscriptionService.fromCache(s);
+      }),
+    );
+
+    await SubscriptionService.save(_subs);
+    if (mounted) setState(() => _subServers = _merge(results));
+  }
+
+  /// ادغام لیست‌ها: تکراری‌ها (همان لینک در چند اشتراک) حذف می‌شوند و برای
+  /// سرورهای قبلاً دیده‌شده همان شیء قبلی نگه داشته می‌شود تا نتیجه‌ی تست
+  /// پینگ با هر به‌روزرسانی اشتراک پاک نشود.
+  List<VpnServer> _merge(List<List<VpnServer>> lists) {
+    final previous = <String, VpnServer>{
+      for (final server in _subServers) server.id: server,
+    };
+    final seen = <String>{};
+    final merged = <VpnServer>[];
+
+    for (final list in lists) {
+      for (final server in list) {
+        if (!seen.add(server.id)) continue;
+        merged.add(previous[server.id] ?? server);
       }
     }
-    await SubscriptionService.save(_subs);
-    if (mounted) setState(() => _subServers = all);
+    return merged;
   }
 
   Future<void> _onSubsChanged(List<Subscription> subs) async {
@@ -210,7 +262,7 @@ class _RootTabsState extends State<RootTabs> {
 
     return Scaffold(
       backgroundColor: AppColors.bg(context),
-      body: pages[_index],
+      body: IndexedStack(index: _index, children: pages),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: AppColors.navBar(context),
