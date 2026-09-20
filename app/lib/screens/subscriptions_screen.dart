@@ -40,7 +40,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.elevated(ctx),
-        title: Text(_t('اشتراک جدید', 'New Subscription'), style: TextStyle(color: AppColors.fg(ctx))),
+        title: Text(_t('اشتراک جدید', 'New Subscription'),
+            style: TextStyle(color: AppColors.fg(ctx))),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -50,7 +51,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               decoration: InputDecoration(
                 labelText: _t('نام', 'Name'),
                 labelStyle: TextStyle(color: AppColors.muted(ctx)),
-                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.border(ctx))),
+                enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: AppColors.border(ctx))),
               ),
             ),
             const SizedBox(height: 12),
@@ -60,7 +62,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               decoration: InputDecoration(
                 labelText: _t('لینک اشتراک', 'Subscription URL'),
                 labelStyle: TextStyle(color: AppColors.muted(ctx)),
-                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.border(ctx))),
+                enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: AppColors.border(ctx))),
               ),
             ),
           ],
@@ -68,11 +71,13 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text(_t('لغو', 'Cancel'), style: TextStyle(color: AppColors.muted(ctx))),
+            child: Text(_t('لغو', 'Cancel'),
+                style: TextStyle(color: AppColors.muted(ctx))),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(_t('افزودن', 'Add'), style: const TextStyle(color: AppColors.accent)),
+            child: Text(_t('افزودن', 'Add'),
+                style: const TextStyle(color: AppColors.accent)),
           ),
         ],
       ),
@@ -96,7 +101,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     }
 
     if (_subs.any((s) => s.url == url)) {
-      _showMsg(_t('این اشتراک قبلاً اضافه شده', 'This subscription already exists'));
+      _showMsg(_t('این اشتراک قبلاً اضافه شده',
+          'This subscription already exists'));
       return;
     }
 
@@ -122,7 +128,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       widget.onChanged(_subs);
       if (mounted) {
         setState(() {});
-        _showMsg('${servers.length} ${_t('سرور بارگیری شد از', 'servers loaded from')} ${sub.name}');
+        _showMsg(
+            '${servers.length} ${_t('سرور بارگیری شد از', 'servers loaded from')} ${sub.name}');
       }
     } catch (e) {
       _showMsg('${_t('خطا', 'Error')}: $e');
@@ -136,16 +143,19 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.elevated(ctx),
-        title: Text(_t('حذف اشتراک؟', 'Delete subscription?'), style: TextStyle(color: AppColors.fg(ctx))),
+        title: Text(_t('حذف اشتراک؟', 'Delete subscription?'),
+            style: TextStyle(color: AppColors.fg(ctx))),
         content: Text(sub.name, style: TextStyle(color: AppColors.muted(ctx))),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text(_t('لغو', 'Cancel'), style: TextStyle(color: AppColors.muted(ctx))),
+            child: Text(_t('لغو', 'Cancel'),
+                style: TextStyle(color: AppColors.muted(ctx))),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(_t('حذف', 'Delete'), style: const TextStyle(color: AppColors.danger)),
+            child: Text(_t('حذف', 'Delete'),
+                style: const TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -167,7 +177,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.elevated(ctx),
-        title: Text(_t('تایم بروزرسانی خودکار', 'Auto-update interval'), style: TextStyle(color: AppColors.fg(ctx))),
+        title: Text(_t('تایم بروزرسانی خودکار', 'Auto-update interval'),
+            style: TextStyle(color: AppColors.fg(ctx))),
         content: SizedBox(
           width: double.maxFinite,
           child: Column(
@@ -175,10 +186,15 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             children: options
                 .map((h) => ListTile(
                       title: Text(
-                        h < 24 ? '$h ${_t('ساعت', 'hours')}' : '${h ~/ 24} ${_t('روز', 'days')}',
+                        h < 24
+                            ? '$h ${_t('ساعت', 'hours')}'
+                            : '${h ~/ 24} ${_t('روز', 'days')}',
                         style: TextStyle(color: AppColors.fg(ctx)),
                       ),
-                      trailing: sub.intervalHours == h ? const Icon(Icons.check, color: AppColors.accent, size: 18) : null,
+                      trailing: sub.intervalHours == h
+                          ? const Icon(Icons.check,
+                              color: AppColors.accent, size: 18)
+                          : null,
                       onTap: () => Navigator.pop(ctx, h),
                     ))
                 .toList(),
@@ -197,8 +213,12 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     if (dt == null) return _t('هرگز', 'never');
     final diff = DateTime.now().difference(dt);
     if (diff.inMinutes < 1) return _t('همین الان', 'just now');
-    if (diff.inHours < 1) return '${diff.inMinutes} ${_t('دقیقه پیش', 'min ago')}';
-    if (diff.inDays < 1) return '${diff.inHours} ${_t('ساعت پیش', 'h ago')}';
+    if (diff.inHours < 1) {
+      return '${diff.inMinutes} ${_t('دقیقه پیش', 'min ago')}';
+    }
+    if (diff.inDays < 1) {
+      return '${diff.inHours} ${_t('ساعت پیش', 'h ago')}';
+    }
     return '${diff.inDays} ${_t('روز پیش', 'd ago')}';
   }
 
@@ -209,7 +229,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
   void _showMsg(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
   }
 
   @override
@@ -220,11 +241,16 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         backgroundColor: AppColors.bg(context),
         elevation: 0,
         iconTheme: IconThemeData(color: AppColors.fg(context)),
-        title: Text(_t('اشتراک‌ها', 'Subscriptions'), style: TextStyle(color: AppColors.fg(context))),
+        title: Text(_t('اشتراک‌ها', 'Subscriptions'),
+            style: TextStyle(color: AppColors.fg(context))),
         centerTitle: true,
         actions: [
-          IconButton(onPressed: _subs.isEmpty ? null : _refreshAll, icon: Icon(Icons.refresh, color: AppColors.fg(context))),
-          IconButton(onPressed: _addSub, icon: Icon(Icons.add, color: AppColors.fg(context))),
+          IconButton(
+              onPressed: _subs.isEmpty ? null : _refreshAll,
+              icon: Icon(Icons.refresh, color: AppColors.fg(context))),
+          IconButton(
+              onPressed: _addSub,
+              icon: Icon(Icons.add, color: AppColors.fg(context))),
         ],
       ),
       body: _subs.isEmpty
@@ -232,11 +258,16 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.rss_feed, color: AppColors.muted2(context), size: 64),
+                  Icon(Icons.rss_feed,
+                      color: AppColors.muted2(context), size: 64),
                   const SizedBox(height: 16),
-                  Text(_t('هیچ اشتراکی نداری', 'No subscriptions'), style: TextStyle(color: AppColors.muted(context), fontSize: 16)),
+                  Text(_t('هیچ اشتراکی نداری', 'No subscriptions'),
+                      style: TextStyle(
+                          color: AppColors.muted(context), fontSize: 16)),
                   const SizedBox(height: 8),
-                  Text(_t('با دکمه + اضافه کن', 'Add with + button'), style: TextStyle(color: AppColors.muted2(context), fontSize: 12)),
+                  Text(_t('با دکمه + اضافه کن', 'Add with + button'),
+                      style: TextStyle(
+                          color: AppColors.muted2(context), fontSize: 12)),
                 ],
               ),
             )
@@ -272,37 +303,49 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                             ),
                           ),
                           if (loading)
-                            const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent))
+                            const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.accent))
                           else
                             IconButton(
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
-                              icon: Icon(Icons.refresh, color: AppColors.muted(context), size: 18),
+                              icon: Icon(Icons.refresh,
+                                  color: AppColors.muted(context), size: 18),
                               onPressed: () => _refresh(s),
                             ),
                           const SizedBox(width: 6),
                           IconButton(
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
-                            icon: const Icon(Icons.delete_outline, color: AppColors.danger, size: 18),
+                            icon: const Icon(Icons.delete_outline,
+                                color: AppColors.danger, size: 18),
                             onPressed: () => _delete(s),
                           ),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text(s.url, style: TextStyle(color: AppColors.muted2(context), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(s.url,
+                          style: TextStyle(
+                              color: AppColors.muted2(context), fontSize: 10),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          Text(
-                            '${s.serverCount} ${_t('سرور', 'servers')}',
-                            style: const TextStyle(color: AppColors.accent, fontSize: 11),
-                          ),
+                          Text('${s.serverCount} ${_t('سرور', 'servers')}',
+                              style: const TextStyle(
+                                  color: AppColors.accent, fontSize: 11)),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               '${_t('آخرین', 'last')}: ${_timeAgo(s.lastUpdated)}',
-                              style: TextStyle(color: AppColors.muted2(context), fontSize: 11),
+                              style: TextStyle(
+                                  color: AppColors.muted2(context),
+                                  fontSize: 11),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -323,19 +366,28 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                               activeColor: AppColors.accent,
                             ),
                           ),
-                          Text(_t('بروزرسانی خودکار', 'Auto update'), style: TextStyle(color: AppColors.muted(context), fontSize: 11)),
+                          Text(_t('بروزرسانی خودکار', 'Auto update'),
+                              style: TextStyle(
+                                  color: AppColors.muted(context),
+                                  fontSize: 11)),
                           const Spacer(),
                           if (s.autoUpdate)
                             GestureDetector(
                               onTap: () => _setInterval(s),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
                                   color: AppColors.elevated(context),
                                   borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: AppColors.border(context)),
+                                  border: Border.all(
+                                      color: AppColors.border(context)),
                                 ),
-                                child: Text(_intervalLabel(s.intervalHours), style: TextStyle(color: AppColors.muted(context), fontSize: 10)),
+                                child: Text(
+                                    _intervalLabel(s.intervalHours),
+                                    style: TextStyle(
+                                        color: AppColors.muted(context),
+                                        fontSize: 10)),
                               ),
                             ),
                         ],
