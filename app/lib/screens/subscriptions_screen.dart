@@ -78,13 +78,32 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       ),
     );
 
+    final typedName = nameCtrl.text.trim();
+    final typedUrl = urlCtrl.text.trim();
+
     if (ok != true) return;
-    if (nameCtrl.text.trim().isEmpty || urlCtrl.text.trim().isEmpty) return;
+
+    final url = typedUrl;
+    final uri = Uri.tryParse(url);
+    final validUrl = uri != null &&
+        (uri.scheme == 'http' || uri.scheme == 'https') &&
+        uri.host.isNotEmpty;
+
+    if (typedName.isEmpty || !validUrl) {
+      _showMsg(_t('نام و یک لینک http/https معتبر لازم است',
+          'A name and a valid http/https URL are required'));
+      return;
+    }
+
+    if (_subs.any((s) => s.url == url)) {
+      _showMsg(_t('این اشتراک قبلاً اضافه شده', 'This subscription already exists'));
+      return;
+    }
 
     final newSub = Subscription(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: nameCtrl.text.trim(),
-      url: urlCtrl.text.trim(),
+      name: typedName,
+      url: url,
     );
 
     setState(() => _subs.add(newSub));
@@ -131,15 +150,14 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       ),
     );
     if (ok != true) return;
+    await SubscriptionService.markRemoved(sub);
     setState(() => _subs.removeWhere((s) => s.id == sub.id));
     await SubscriptionService.save(_subs);
     widget.onChanged(_subs);
   }
 
   Future<void> _refreshAll() async {
-    for (final s in _subs) {
-      await _refresh(s);
-    }
+    await Future.wait(List<Subscription>.from(_subs).map(_refresh));
   }
 
   Future<void> _setInterval(Subscription sub) async {
