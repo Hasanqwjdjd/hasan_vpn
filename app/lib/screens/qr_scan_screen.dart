@@ -1,8 +1,7 @@
-# مسیر مقصد در ریپو: app/lib/screens/qr_scan_screen.dart  --  NEW FILE
-# ------------------------------------------------------------
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/app_colors.dart';
+import '../services/link_parser.dart';
 
 /// صفحه اسکن QR برای افزودن سریع یک کانفیگ.
 /// اگر کد QR معتبر (شامل یکی از پروتکل‌های شناخته‌شده) پیدا شود، متن آن
@@ -29,22 +28,9 @@ class _QrScanScreenState extends State<QrScanScreen> {
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
 
-  // پیشوندهای معتبر برای کانفیگ‌های VPN / Aether
-  static const _validPrefixes = [
-    'vless://',
-    'vmess://',
-    'trojan://',
-    'ss://',
-    'shadowsocks://',
-    'hysteria2://',
-    'hy2://',
-    'aether://',
-  ];
-
-  bool _looksValid(String raw) {
-    final v = raw.trim().toLowerCase();
-    return _validPrefixes.any((p) => v.startsWith(p));
-  }
+  /// QR معتبر = حداقل یک لینک پشتیبانی‌شده (vless / vmess / trojan / ss /
+  /// hysteria2 / aether) داخل متن داشته باشد.
+  bool _looksValid(String raw) => LinkParser.extractLinks(raw).isNotEmpty;
 
   void _onDetect(BarcodeCapture capture) {
     if (_handled) return;
@@ -90,19 +76,25 @@ class _QrScanScreenState extends State<QrScanScreen> {
           MobileScanner(
             controller: _controller,
             onDetect: _onDetect,
-            errorBuilder: (context, error) => Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  _t(
-                    'دسترسی به دوربین ممکن نشد.\nاز تنظیمات گوشی مجوز دوربین را فعال کنید.\n\n${error.errorDetails?.message ?? ''}',
-                    'Could not access camera.\nEnable camera permission from phone settings.\n\n${error.errorDetails?.message ?? ''}',
+            errorBuilder: (BuildContext context, dynamic error, [Widget? child]) {
+              String details = '';
+              try {
+                details = (error.errorDetails?.message ?? '').toString();
+              } catch (_) {}
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    _t(
+                      'دسترسی به دوربین ممکن نشد.\nاز تنظیمات گوشی مجوز دوربین را فعال کنید.\n\n$details',
+                      'Could not access camera.\nEnable camera permission from phone settings.\n\n$details',
+                    ),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white),
                   ),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white),
                 ),
-              ),
-            ),
+              );
+            },
           ),
           // فریم راهنما وسط صفحه
           Center(
@@ -139,4 +131,3 @@ class _QrScanScreenState extends State<QrScanScreen> {
     super.dispose();
   }
 }
-
