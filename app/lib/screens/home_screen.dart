@@ -124,12 +124,17 @@ class _HomeScreenState extends State<HomeScreen> {
           final kind = entry['kind']?.toString();
           if (ping is int && ping > 0) {
             server.ping = ping;
+            // از الان همه‌ی پینگ‌ها real هستن؛ اما اگه کش قدیمی از نسخه‌ی
+            // قبل با tcp ذخیره شده باشه، اون رو نادیده می‌گیریم.
             if (kind == 'real') {
               server.pingKind = PingKind.real;
-            } else if (kind == 'tcp') {
-              server.pingKind = PingKind.tcp;
+              server.status = ServerStatus.online;
+            } else {
+              // کش قدیمی TCP رو نادیده بگیر.
+              server.ping = null;
+              server.pingKind = PingKind.none;
+              server.status = ServerStatus.idle;
             }
-            server.status = ServerStatus.online;
           }
         }
       }
@@ -141,10 +146,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     final map = <String, dynamic>{};
     for (final server in _servers) {
-      if (server.ping != null && server.ping! > 0) {
+      if (server.ping != null &&
+          server.ping! > 0 &&
+          server.pingKind == PingKind.real) {
         map[server.id] = {
           'ping': server.ping,
-          'kind': server.pingKind == PingKind.real ? 'real' : 'tcp',
+          'kind': 'real',
         };
       }
     }
@@ -435,7 +442,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _testing = true;
       _tested = 0;
       _total = targets.length;
-      _status = _t('در حال تست...', 'Testing...');
+      _status = _t('در حال تست واقعی...', 'Real testing...');
       for (final server in targets) {
         server.resetPing();
       }
@@ -471,6 +478,13 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         _status = _t(
             'تست تمام شد ($counts آنلاین)', 'Test finished ($counts online)');
+      }
+
+      if (summary.realUnavailable) {
+        _status += _t(
+          ' · پینگ واقعی پشتیبانی نشد',
+          ' · real ping unsupported',
+        );
       }
     });
   }
