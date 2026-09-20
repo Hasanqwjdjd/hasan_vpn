@@ -39,27 +39,24 @@ class ServerTile extends StatelessWidget {
     return '$proto · $host';
   }
 
+  /// پینگ واقعی (HTTP از داخل تونل).
+  /// good = زیر ۷۰۰ms، fair = زیر ۱۴۰۰ms، بدتر = قرمز.
   Color _pingColor(BuildContext context) {
     final ping = server.ping;
     if (ping == null) return AppColors.muted2(context);
 
-    final real = server.pingKind == PingKind.real;
-    final good = real ? 700 : 150;
-    final fair = real ? 1400 : 350;
-
-    if (ping < good) return AppColors.accent;
-    if (ping < fair) return AppColors.warn;
+    if (ping < 700) return AppColors.accent;
+    if (ping < 1400) return AppColors.warn;
     return AppColors.danger;
   }
 
   Widget _buildPing(BuildContext context) {
     final ping = server.ping;
-    final isTcp = server.pingKind == PingKind.tcp;
 
     if (ping != null) {
       final testing = server.status == ServerStatus.testing;
       return Text(
-        '${isTcp ? '~' : ''}$ping',
+        '$ping',
         style: TextStyle(
           color: testing ? AppColors.muted2(context) : _pingColor(context),
           fontSize: 12,
@@ -143,7 +140,6 @@ class ServerTile extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(4, 6, 8, 6),
             child: Row(
               children: [
-                // Pin
                 if (onPin != null)
                   InkWell(
                     onTap: onPin,
@@ -162,11 +158,9 @@ class ServerTile extends StatelessWidget {
                     ),
                   ),
 
-                // Flag
                 Text(server.flag, style: const TextStyle(fontSize: 16)),
                 const SizedBox(width: 6),
 
-                // Name + caption
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -212,7 +206,6 @@ class ServerTile extends StatelessWidget {
 
                 const SizedBox(width: 6),
 
-                // Ping
                 SizedBox(
                   width: 38,
                   child: Align(
@@ -223,7 +216,6 @@ class ServerTile extends StatelessWidget {
 
                 const SizedBox(width: 2),
 
-                // Actions (کمتر و فشرده‌تر)
                 if (onTest != null)
                   _smallIcon(
                     icon: Icons.bolt,
