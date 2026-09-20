@@ -147,9 +147,6 @@ jobs:
                   targetSdk = 34
                   versionCode = flutter.versionCode
                   versionName = flutter.versionName
-                  ndk {
-                      abiFilters "armeabi-v7a", "arm64-v8a", "x86_64"
-                  }
               }
 
               buildTypes {
@@ -277,13 +274,11 @@ jobs:
           body: |
             ## نصب روی گوشی اندروید
 
-            **انتخاب فایل بر اساس نوع گوشی:**
-
             | نوع گوشی | فایل |
             |----------|------|
             | گوشی‌های جدید (۹۹٪) | `Hasan-VPN-v10.0.${{ github.run_number }}.apk` |
             | گوشی‌های خیلی قدیمی ۳۲بیتی | `Hasan-VPN-v10.0.${{ github.run_number }}-32bit.apk` |
-            | شبیه‌ساز / بعضی تبلت‌ها | `Hasan-VPN-v10.0.${{ github.run_number }}-x86_64.apk` |
+            | شبیه‌ساز / تبلت‌های Intel | `Hasan-VPN-v10.0.${{ github.run_number }}-x86_64.apk` |
 
             **مراحل نصب:**
             1. نسخه قبلی برنامه را پاک کنید
