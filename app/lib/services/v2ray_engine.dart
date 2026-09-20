@@ -11,8 +11,6 @@ import 'socks_probe.dart';
 class V2RayEngine {
   V2RayEngine._();
 
-  /// آدرس تست «پینگ واقعی». HTTP ساده (بدون TLS) تا عدد نهایی فقط شامل
-  /// مسیر پروکسی + یک رفت‌وبرگشت باشد و با دست‌دادن TLS بادکنکی نشود.
   static const String delayUrl = 'http://cp.cloudflare.com/generate_204';
 
   static bool _initialized = false;
@@ -23,10 +21,7 @@ class V2RayEngine {
 
   static String? lastError;
 
-  /// پورت SOCKS محلیِ هسته‌ی در حال اجرا (برای اندازه‌گیری پینگ زنده).
   static int localSocksPort = 10808;
-
-  /// false اگر نسخه‌ی افزونه پارامتر blockedApps را پشتیبانی نکند.
   static bool blockedAppsSupported = true;
 
   static String _stateOf(dynamic status) {
@@ -52,7 +47,6 @@ class V2RayEngine {
             state.contains('stop') ||
             state.contains('closed') ||
             state.contains('idle')) {
-          // ابتدای شروع ممکن است یک «قطع» قدیمی برسد؛ نادیده‌اش می‌گیریم.
           final started = _startedAt;
           final inGrace = started != null &&
               DateTime.now().difference(started) < const Duration(seconds: 4);
@@ -92,6 +86,55 @@ class V2RayEngine {
     }
   }
 
+  // ------------------------------------------------------- DNS injection
+
+  /// کانفیگ را با DNS انتخابی و queryStrategy مبتنی بر IPv4/IPv6 بازنویسی
+  /// می‌کند. فقط وقتی حالت «فقط پروکسی» باشد و DNS انتخاب شده باشد اعمال
+  /// می‌شود.
+  static Future<String> _applyGameDns(String config) async {
+    try {
+      final mode = await SettingsService.getVpnMode();
+      if (mode != 'proxy') return config;
+
+      final dns = await SettingsService.getGameDns();
+      if (dns == null || dns.length < 2) return config;
+
+      final pref = await SettingsService.getDnsIpPreference();
+
+      final dynamic json = jsonDecode(config);
+      if (json is! Map) return config;
+
+      final map = Map<String, dynamic>.from(json);
+
+      // انتخاب DNS servers بر اساس ترجیح کاربر.
+      final servers = <String>[];
+      if (pref == 'ipv4') {
+        servers.addAll(<String>[dns[0], dns[1]]);
+      } else if (pref == 'ipv6') {
+        servers.addAll(<String>[
+          'https://dns.google/dns-query',
+          'https://cloudflare-dns.com/dns-query',
+        ]);
+      } else {
+        servers.addAll(<String>[dns[0], dns[1]]);
+      }
+
+      final queryStrategy = pref == 'ipv6'
+          ? 'UseIPv6'
+          : (pref == 'both' ? 'UseIP' : 'UseIPv4');
+
+      map['dns'] = <String, dynamic>{
+        'servers': servers,
+        'queryStrategy': queryStrategy,
+      };
+
+      return jsonEncode(map);
+    } catch (e) {
+      debugPrint('applyGameDns error: $e');
+      return config;
+    }
+  }
+
   // ---------------------------------------------------------------- connect
 
   static Future<bool> connect(VpnServer server) async {
@@ -100,11 +143,14 @@ class V2RayEngine {
       await init();
 
       final FlutterVlessURL parser = FlutterVless.parse(server.shareLink);
-      final String config = parser.getFullConfiguration();
+      String config = parser.getFullConfiguration();
       if (config.trim().isEmpty) {
         lastError = 'empty config';
         return false;
       }
+
+      // در حالت فقط-پروکسی، DNS بازی رو تزریق می‌کنیم.
+      config = await _applyGameDns(config);
 
       return await startConfig(
         remark: parser.remark.isNotEmpty ? parser.remark : server.name,
@@ -120,14 +166,6 @@ class V2RayEngine {
     }
   }
 
-  /// شروع هسته با یک کانفیگ کامل Xray (JSON). Aether هم از همین مسیر استفاده
-  /// می‌کند: کانفیگ یک outbound از نوع SOCKS به Aether دارد و VPN سیستم‌عامل
-  /// (tun2socks داخل افزونه) همه‌ی ترافیک را به آن می‌رساند.
-  ///
-  /// [requireBlockedApps]: برای Aether لازم است (اگر خود برنامه از VPN مستثنا
-  /// نشود، ترافیک خود Aether دوباره داخل تونل می‌افتد و حلقه می‌شود). در این
-  /// حالت اگر افزونه blockedApps را پشتیبانی نکند، به‌جای اتصال معیوب، خطای
-  /// روشن برگردانده می‌شود.
   static Future<bool> startConfig({
     required String remark,
     required String config,
@@ -140,7 +178,6 @@ class V2RayEngine {
     try {
       await init();
 
-      // حالت فقط-پروکسی از تنظیمات خونده می‌شه (اگه forceProxyOnly داده شده باشه اولویت داره).
       bool proxyOnly = forceProxyOnly ?? false;
       if (forceProxyOnly == null) {
         try {
@@ -149,7 +186,6 @@ class V2RayEngine {
         } catch (_) {}
       }
 
-      // در حالت فقط-پروکسی نیازی به اجازه‌ی VPN نیست.
       if (!proxyOnly) {
         final allowed = await _engine.requestPermission();
         if (!allowed) {
@@ -176,8 +212,7 @@ class V2RayEngine {
           blockedAppsSupported = false;
           if (requireBlockedApps) {
             lastError = 'This flutter_vless version does not support '
-                'blockedApps, which Aether needs to avoid a routing loop. '
-                'Update the flutter_vless dependency.';
+                'blockedApps, which Aether needs to avoid a routing loop.';
             _connected = false;
             _current = null;
             return false;
@@ -230,16 +265,17 @@ class V2RayEngine {
 
   // ------------------------------------------------------------------- ping
 
-  /// پینگ واقعی یک سرور بدون اتصال: هسته یک نمونه‌ی موقت با همان outbound
-  /// می‌سازد و یک درخواست HTTP از داخلش می‌فرستد.
-  ///
-  /// مقدار برگشتی: میلی‌ثانیه (>0) | -1 ناموفق | -2 پشتیبانی نمی‌شود.
   static Future<int> realDelay(
     VpnServer server, {
     Duration timeout = const Duration(seconds: 12),
   }) async {
-    final config = _fullConfigOf(server);
+    String? config = _fullConfigOf(server);
     if (config == null || config.trim().isEmpty) return -2;
+
+    // DNS بازی رو تزریق کن تا پینگ از همون DNS رد بشه.
+    try {
+      config = await _applyGameDns(config);
+    } catch (_) {}
 
     try {
       await init();
@@ -274,7 +310,6 @@ class V2RayEngine {
     }
   }
 
-  /// پینگ زنده‌ی اتصال فعلی (کل مسیر: اپ ← تونل ← اینترنت).
   static Future<ProbeResult> probeConnected() {
     return SocksProbe.measure(
       port: localSocksPort,
