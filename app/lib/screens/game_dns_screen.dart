@@ -21,7 +21,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   // ترتیب نمایش: 0 = بر اساس نام، 1 = بر اساس پینگ
   int _sortMode = 0;
 
-  int? _activeIndex;
   String? _activePrimary;
   String _ipPref = 'ipv4';
 
@@ -72,7 +71,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     });
   }
 
-  /// لیست نهایی DNS‌ها با اعمال مخفی‌ها، ویرایش‌ها و سفارشی‌ها.
   List<GameDns> get _visibleDns {
     final list = <GameDns>[];
 
@@ -125,8 +123,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     return filtered;
   }
 
-  // -------------------------------------------------------- activation
-
   Future<void> _select(GameDns dns) async {
     await SettingsService.setGameDns(dns.primary, dns.secondary);
     if (!mounted) return;
@@ -145,7 +141,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     if (_activePrimary != null) {
       await _clear();
     } else {
-      // اگر DNS انتخاب نشده باشد، اولین DNS مرتبط با پینگ را انتخاب کن.
       final list = _visibleDns;
       if (list.isNotEmpty) {
         final sorted = List<GameDns>.from(list);
@@ -160,8 +155,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       }
     }
   }
-
-  // -------------------------------------------------------- ping
 
   Future<int> _pingDns(String host, {int port = 53}) async {
     final watch = Stopwatch()..start();
@@ -213,7 +206,8 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       _showMsg(_t('تست لغو شد', 'Test cancelled'));
     } else {
       final ok = results.values.where((v) => v > 0).length;
-      _showMsg(_t('$ok از $_total دی‌ان‌اس پاسخ داد', '$ok of $_total DNS responded'));
+      _showMsg(_t('$ok از $_total دی‌ان‌اس پاسخ داد',
+          '$ok of $_total DNS responded'));
     }
   }
 
@@ -237,7 +231,9 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
         : _t('پاسخی نیامد', 'No response'));
   }
 
-  // -------------------------------------------------------- add / edit / delete
+  String _lastDialogName = '';
+  String _lastDialogPrimary = '';
+  String _lastDialogSecondary = '';
 
   Future<bool> _showDnsDialog({
     required String title,
@@ -323,11 +319,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     return true;
   }
 
-  String _lastDialogName = '';
-  String _lastDialogPrimary = '';
-  String _lastDialogSecondary = '';
-
-  /// پیدا کردن index سفارشی بودن یک DNS.
   int? _customIndexOf(GameDns dns) {
     for (var i = 0; i < _customDns.length; i++) {
       if (_customDns[i]['primary'] == dns.primary) return i;
@@ -361,7 +352,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
 
     final customIndex = _customIndexOf(dns);
     if (customIndex != null) {
-      // ویرایش DNS سفارشی
       await SettingsService.updateCustomDns(
         customIndex,
         _lastDialogName,
@@ -369,7 +359,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
         _lastDialogSecondary,
       );
     } else {
-      // ویرایش DNS پیش‌فرض → ذخیره به‌صورت override
       await SettingsService.setDnsOverride(
         dns.primary,
         _lastDialogName,
@@ -389,8 +378,8 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
         backgroundColor: AppColors.elevated(ctx),
         title: Text(_t('حذف DNS؟', 'Delete DNS?'),
             style: TextStyle(color: AppColors.fg(ctx))),
-        content: Text(dns.name,
-            style: TextStyle(color: AppColors.muted(ctx))),
+        content:
+            Text(dns.name, style: TextStyle(color: AppColors.muted(ctx))),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -423,8 +412,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     if (!mounted) return;
     _showMsg(_t('حذف شد', 'Deleted'));
   }
-
-  // -------------------------------------------------------- share / copy
 
   void _shareDns(GameDns dns) {
     final text = 'DNS: ${dns.name}\n'
@@ -468,8 +455,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
         ? _t('مرتب بر اساس نام', 'Sorted by name')
         : _t('مرتب بر اساس پینگ', 'Sorted by ping'));
   }
-
-  // -------------------------------------------------------- widgets
 
   Widget _ipChip(String value, String label) {
     final active = _ipPref == value;
@@ -551,7 +536,8 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               Icon(
                 active ? Icons.dns : Icons.power_settings_new,
                 size: 42,
-                color: active ? AppColors.accent : AppColors.muted2(context),
+                color:
+                    active ? AppColors.accent : AppColors.muted2(context),
               ),
               const SizedBox(height: 6),
               Text(
@@ -559,7 +545,8 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                     ? _t('قطع DNS', 'Disable DNS')
                     : _t('فعال‌سازی DNS', 'Enable DNS'),
                 style: TextStyle(
-                  color: active ? AppColors.accent : AppColors.muted2(context),
+                  color:
+                      active ? AppColors.accent : AppColors.muted2(context),
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -630,7 +617,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       ),
       body: Column(
         children: [
-          // سرچ
           if (_showSearch)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -658,7 +644,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               ),
             ),
 
-          // انتخاب IP
           Container(
             margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
             padding: const EdgeInsets.all(12),
@@ -689,12 +674,10 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
             ),
           ),
 
-          // دکمه اتصال
           const SizedBox(height: 12),
           _buildConnectButton(),
           const SizedBox(height: 12),
 
-          // نوار پیشرفت تست
           if (_testing)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -707,7 +690,8 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _t('$_tested از $_total تست شد · ${_total - _tested} باقی‌مانده',
+                    _t(
+                        '$_tested از $_total تست شد · ${_total - _tested} باقی‌مانده',
                         '$_tested of $_total tested · ${_total - _tested} remaining'),
                     style: TextStyle(
                         color: AppColors.muted2(context), fontSize: 11),
@@ -716,7 +700,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               ),
             ),
 
-          // لیست DNS
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -799,16 +782,16 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                         IconButton(
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(minWidth: 26),
-                          icon: const Icon(Icons.edit_outlined,
-                              color: AppColors.muted, size: 17),
+                          icon: Icon(Icons.edit_outlined,
+                              color: AppColors.muted(context), size: 17),
                           onPressed: () => _editDns(dns),
                           tooltip: _t('ویرایش', 'Edit'),
                         ),
                         IconButton(
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(minWidth: 26),
-                          icon: const Icon(Icons.share_outlined,
-                              color: AppColors.muted, size: 17),
+                          icon: Icon(Icons.share_outlined,
+                              color: AppColors.muted(context), size: 17),
                           onPressed: () => _shareDns(dns),
                           tooltip: _t('اشتراک‌گذاری', 'Share'),
                         ),
