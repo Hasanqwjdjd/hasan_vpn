@@ -154,7 +154,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     if (mounted) {
       setState(() => _testing = false);
       final ok = results.values.where((v) => v > 0).length;
-      _showMsg(_t('$ok از $total دی‌ان‌اس پاسخ داد', '$ok of $total DNS responded'));
+      _showMsg(_t('$ok از $_total دی‌ان‌اس پاسخ داد', '$ok of $_total DNS responded'));
     }
   }
 
@@ -358,7 +358,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       ),
       body: Column(
         children: [
-          // انتخاب IP
           Container(
             margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
             padding: const EdgeInsets.all(12),
@@ -388,8 +387,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               ],
             ),
           ),
-
-          // راهنما
           Container(
             padding: const EdgeInsets.all(12),
             margin: const EdgeInsets.all(12),
@@ -418,8 +415,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               ],
             ),
           ),
-
-          // نوار پیشرفت تست
           if (_testing)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -429,7 +424,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                 backgroundColor: AppColors.border(context),
               ),
             ),
-
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 12),
