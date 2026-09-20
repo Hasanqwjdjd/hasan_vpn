@@ -1,5 +1,3 @@
-# مسیر مقصد در ریپو: .github/workflows/build-apk.yml
-# ------------------------------------------------------------
 name: Build APK
 
 on:
@@ -7,9 +5,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: write
     steps:
@@ -50,35 +53,34 @@ jobs:
           cp -r app/lib/. build_src/lib/
           cp hasan.keystore build_src/android/app/hasan.keystore
 
-      # --- اضافه شد: کدهای بومی Aether (MainActivity.kt + AetherVpnService.kt) ---
+      # --- کدهای بومی Aether: MainActivity.kt (پل Flutter) + AetherService.kt (اجرای هسته) ---
       - name: Install Aether native (Kotlin) sources
         run: |
           set -e
           KT_DIR="build_src/android/app/src/main/kotlin/com/hasan/hasan_vpn"
           mkdir -p "$KT_DIR"
           cp -f android-extra/kotlin/MainActivity.kt "$KT_DIR/MainActivity.kt"
-          cp -f android-extra/kotlin/AetherVpnService.kt "$KT_DIR/AetherVpnService.kt"
+          cp -f android-extra/kotlin/AetherService.kt "$KT_DIR/AetherService.kt"
           # اگر flutter create نسخه‌ی java ساخته بود، حذفش کن تا تداخل نکند
           rm -f build_src/android/app/src/main/java/com/hasan/hasan_vpn/MainActivity.java 2>/dev/null || true
           ls -la "$KT_DIR"
 
-      # --- اضافه شد: باینری‌های بومی aether (و در صورت وجود tun2socks) ---
-      # این باینری‌ها را خودتان باید در android-extra/jniLibs/<abi>/libaether.so
-      # قرار دهید (توضیح کامل در android-extra/README.md). اگر پوشه خالی باشد
-      # این مرحله چیزی کپی نمی‌کند و فقط هشدار می‌دهد.
+      # --- باینری‌های بومی: android-extra/jniLibs/<abi>/libaether.so ---
+      # libaether.so در واقع یک فایل اجرایی (ELF) است که با نام lib*.so بسته‌بندی
+      # می‌شود تا اندروید آن را در nativeLibraryDir استخراج کند.
       - name: Install Aether native binaries (jniLibs)
         run: |
           set -e
           SRC="android-extra/jniLibs"
           DST="build_src/android/app/src/main/jniLibs"
-          if [ -d "$SRC" ] && [ "$(find "$SRC" -type f | wc -l)" -gt 0 ]; then
+          if [ -d "$SRC" ] && [ "$(find "$SRC" -type f -name '*.so' | wc -l)" -gt 0 ]; then
             mkdir -p "$DST"
             cp -r "$SRC"/. "$DST"/
             find "$DST" -type f -name "*.so" -exec chmod 755 {} \;
             echo "Copied native libs:"
-            find "$DST" -type f
+            find "$DST" -type f -name "*.so" -exec ls -lh {} \;
           else
-            echo "::warning::android-extra/jniLibs is empty - Aether will build but libaether.so must be added before the Aether feature works on a device. See android-extra/README.md"
+            echo "::warning::android-extra/jniLibs has no .so files - the Aether feature will not work on device."
           fi
 
       - name: Force Kotlin 2.1.0 (fix for flutter_vless)
@@ -202,18 +204,17 @@ jobs:
           if "android.net.VpnService" not in text:
               text = text.replace("</manifest>", queries + "</manifest>")
 
-          # --- اضافه شد: ثبت AetherVpnService ---
+          # --- ثبت AetherService (Foreground Service برای اجرای هسته‌ی Aether) ---
           aether_service = """        <service
-                  android:name=".AetherVpnService"
-                  android:permission="android.permission.BIND_VPN_SERVICE"
-                  android:foregroundServiceType="specialUse"
-                  android:exported="false">
-                  <intent-filter>
-                      <action android:name="android.net.VpnService"/>
-                  </intent-filter>
+                  android:name=".AetherService"
+                  android:exported="false"
+                  android:foregroundServiceType="specialUse">
+                  <property
+                      android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                      android:value="local_socks_proxy_for_vpn"/>
               </service>
           """
-          if 'name=".AetherVpnService"' not in text:
+          if 'name=".AetherService"' not in text:
               text = text.replace("</application>", aether_service + "    </application>")
 
           p.write_text(text)
