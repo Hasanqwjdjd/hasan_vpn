@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_vless/flutter_vless.dart';
 
 import '../models/server.dart';
+import 'settings_service.dart';
 import 'socks_probe.dart';
 
 class V2RayEngine {
@@ -133,15 +134,28 @@ class V2RayEngine {
     VpnServer? server,
     List<String>? blockedApps,
     bool requireBlockedApps = false,
+    bool? forceProxyOnly,
   }) async {
     lastError = null;
     try {
       await init();
 
-      final allowed = await _engine.requestPermission();
-      if (!allowed) {
-        lastError = 'VPN permission denied';
-        return false;
+      // حالت فقط-پروکسی از تنظیمات خونده می‌شه (اگه forceProxyOnly داده شده باشه اولویت داره).
+      bool proxyOnly = forceProxyOnly ?? false;
+      if (forceProxyOnly == null) {
+        try {
+          final vpnMode = await SettingsService.getVpnMode();
+          proxyOnly = vpnMode == 'proxy';
+        } catch (_) {}
+      }
+
+      // در حالت فقط-پروکسی نیازی به اجازه‌ی VPN نیست.
+      if (!proxyOnly) {
+        final allowed = await _engine.requestPermission();
+        if (!allowed) {
+          lastError = 'VPN permission denied';
+          return false;
+        }
       }
 
       localSocksPort = _socksPortOf(config);
@@ -154,7 +168,7 @@ class V2RayEngine {
           await engine.startVless(
             remark: remark,
             config: config,
-            proxyOnly: false,
+            proxyOnly: proxyOnly,
             blockedApps: blockedApps,
           );
         } on NoSuchMethodError {
@@ -171,14 +185,14 @@ class V2RayEngine {
           await _engine.startVless(
             remark: remark,
             config: config,
-            proxyOnly: false,
+            proxyOnly: proxyOnly,
           );
         }
       } else {
         await _engine.startVless(
           remark: remark,
           config: config,
-          proxyOnly: false,
+          proxyOnly: proxyOnly,
         );
       }
 
@@ -222,7 +236,7 @@ class V2RayEngine {
   /// مقدار برگشتی: میلی‌ثانیه (>0) | -1 ناموفق | -2 پشتیبانی نمی‌شود.
   static Future<int> realDelay(
     VpnServer server, {
-    Duration timeout = const Duration(seconds: 6),
+    Duration timeout = const Duration(seconds: 12),
   }) async {
     final config = _fullConfigOf(server);
     if (config == null || config.trim().isEmpty) return -2;
