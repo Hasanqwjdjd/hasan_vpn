@@ -18,16 +18,16 @@ class GameDnsScreen extends StatefulWidget {
 }
 
 class _GameDnsScreenState extends State<GameDnsScreen> {
-  int _sortMode = 0; // 0=name, 1=ping
+  int _sortMode = 0;
 
-  String? _activePrimary;
+  String? _activeKey; // کلید ترکیبی: "primary|secondary"
   String _ipPref = 'ipv4';
 
   List<Map<String, String>> _customDns = [];
   List<String> _hiddenDns = [];
-  List<String> _pinnedDns = [];
+  List<String> _pinnedKeys = [];
   Map<String, Map<String, String>> _overrides = {};
-  Map<String, int> _pingResults = {};
+  Map<String, int> _pingResults = {}; // کلید ترکیبی
 
   bool _testing = false;
   bool _cancelTest = false;
@@ -38,8 +38,14 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _listKey = GlobalKey();
+
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
+
+  /// کلید یکتا برای هر DNS (چون چند DNS ممکنه primary یکسان داشته باشن).
+  static String _keyOf(GameDns d) => '${d.primary}|${d.secondary}';
 
   @override
   void initState() {
@@ -50,11 +56,13 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
-    final primary = await SettingsService.getGameDnsPrimary();
+    final activePrimary = await SettingsService.getGameDnsPrimary();
+    final activeSecondary = await SettingsService.getGameDnsSecondary();
     final pref = await SettingsService.getDnsIpPreference();
     final custom = await SettingsService.getCustomDnsList();
     final hidden = await SettingsService.getHiddenDns();
@@ -66,10 +74,14 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       _ipPref = pref;
       _customDns = custom;
       _hiddenDns = hidden;
-      _pinnedDns = pinned;
+      _pinnedKeys = pinned;
       _overrides = overrides;
       _pingResults = pings;
-      _activePrimary = primary;
+      if (activePrimary != null && activeSecondary != null) {
+        _activeKey = '$activePrimary|$activeSecondary';
+      } else {
+        _activeKey = null;
+      }
     });
   }
 
@@ -77,27 +89,28 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     final list = <GameDns>[];
 
     for (final d in kGameDnsList) {
-      if (_hiddenDns.contains(d.primary)) continue;
       final ov = _overrides[d.primary];
-      if (ov != null) {
-        list.add(GameDns(
-          name: ov['name'] ?? d.name,
-          primary: ov['primary'] ?? d.primary,
-          secondary: ov['secondary'] ?? d.secondary,
-          primaryV6: d.primaryV6,
-          secondaryV6: d.secondaryV6,
-        ));
-      } else {
-        list.add(d);
-      }
+      final effective = ov != null
+          ? GameDns(
+              name: ov['name'] ?? d.name,
+              primary: ov['primary'] ?? d.primary,
+              secondary: ov['secondary'] ?? d.secondary,
+              primaryV6: d.primaryV6,
+              secondaryV6: d.secondaryV6,
+            )
+          : d;
+      if (_hiddenDns.contains(_keyOf(effective))) continue;
+      list.add(effective);
     }
 
     for (final m in _customDns) {
-      list.add(GameDns(
+      final d = GameDns(
         name: '✏️ ${m['name'] ?? 'Custom'}',
         primary: m['primary'] ?? '',
         secondary: m['secondary'] ?? '',
-      ));
+      );
+      if (_hiddenDns.contains(_keyOf(d))) continue;
+      list.add(d);
     }
 
     var filtered = list;
@@ -110,15 +123,14 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       }).toList();
     }
 
-    // پین‌شده‌ها همیشه اول.
     filtered.sort((a, b) {
-      final pa = _pinnedDns.contains(a.primary);
-      final pb = _pinnedDns.contains(b.primary);
+      final pa = _pinnedKeys.contains(_keyOf(a));
+      final pb = _pinnedKeys.contains(_keyOf(b));
       if (pa != pb) return pa ? -1 : 1;
 
       if (_sortMode == 1) {
-        final pingA = _pingResults[a.primary];
-        final pingB = _pingResults[b.primary];
+        final pingA = _pingResults[_keyOf(a)];
+        final pingB = _pingResults[_keyOf(b)];
         final validA = pingA != null && pingA > 0;
         final validB = pingB != null && pingB > 0;
         if (validA != validB) return validA ? -1 : 1;
@@ -135,28 +147,30 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
 
   Future<void> _select(GameDns dns) async {
     await SettingsService.setGameDns(dns.primary, dns.secondary);
+    await SettingsService.setLastDns(_keyOf(dns));
     if (!mounted) return;
-    setState(() => _activePrimary = dns.primary);
+    setState(() => _activeKey = _keyOf(dns));
     _showMsg(_t('DNS فعال شد', 'DNS activated'));
   }
 
   Future<void> _clear() async {
     await SettingsService.clearGameDns();
+    await SettingsService.clearLastDns();
     if (!mounted) return;
-    setState(() => _activePrimary = null);
+    setState(() => _activeKey = null);
     _showMsg(_t('DNS پیش‌فرض فعال شد', 'Default DNS restored'));
   }
 
   Future<void> _toggleActive() async {
-    if (_activePrimary != null) {
+    if (_activeKey != null) {
       await _clear();
     } else {
       final list = _visibleDns;
       if (list.isNotEmpty) {
         final sorted = List<GameDns>.from(list);
         sorted.sort((a, b) {
-          final pa = _pingResults[a.primary] ?? 99999;
-          final pb = _pingResults[b.primary] ?? 99999;
+          final pa = _pingResults[_keyOf(a)] ?? 99999;
+          final pb = _pingResults[_keyOf(b)] ?? 99999;
           return pa.compareTo(pb);
         });
         await _select(sorted.first);
@@ -166,8 +180,32 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     }
   }
 
+  Future<void> _jumpToSelected() async {
+    final list = _visibleDns;
+    final idx = list.indexWhere((d) => _keyOf(d) == _activeKey);
+    if (idx == -1) {
+      _showMsg(_t('DNS انتخاب‌شده در لیست نیست',
+          'Selected DNS is not in the list'));
+      return;
+    }
+    final ctx = _listKey.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 400),
+        alignment: 0.3,
+      );
+    }
+    // با scrollController تقریبی تخمین می‌زنیم
+    _scrollController.animateTo(
+      (idx * 70.0).clamp(0.0, _scrollController.position.maxScrollExtent),
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOut,
+    );
+  }
+
   Future<void> _togglePin(GameDns dns) async {
-    await SettingsService.togglePinnedDns(dns.primary);
+    await SettingsService.togglePinnedDns(_keyOf(dns));
     await _load();
   }
 
@@ -206,12 +244,12 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       if (dns.primary.isNotEmpty && !dns.primary.startsWith('http')) {
         ping = await _pingDns(dns.primary);
       }
-      results[dns.primary] = ping;
-      await SettingsService.saveDnsPingResult(dns.primary, ping);
+      final key = _keyOf(dns);
+      results[key] = ping;
+      await SettingsService.saveDnsPingResult(key, ping);
       if (!mounted) return;
       setState(() {
-        _pingResults = Map<String, int>.from(_pingResults)
-          ..[dns.primary] = ping;
+        _pingResults = Map<String, int>.from(_pingResults)..[key] = ping;
         _tested = i + 1;
       });
     }
@@ -237,11 +275,11 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       return;
     }
     final ping = await _pingDns(dns.primary);
-    await SettingsService.saveDnsPingResult(dns.primary, ping);
+    final key = _keyOf(dns);
+    await SettingsService.saveDnsPingResult(key, ping);
     if (!mounted) return;
     setState(() {
-      _pingResults = Map<String, int>.from(_pingResults)
-        ..[dns.primary] = ping;
+      _pingResults = Map<String, int>.from(_pingResults)..[key] = ping;
     });
     _showMsg(ping > 0
         ? _t('پینگ: $ping ms', 'Ping: $ping ms')
@@ -338,7 +376,10 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
 
   int? _customIndexOf(GameDns dns) {
     for (var i = 0; i < _customDns.length; i++) {
-      if (_customDns[i]['primary'] == dns.primary) return i;
+      if (_customDns[i]['primary'] == dns.primary &&
+          _customDns[i]['secondary'] == dns.secondary) {
+        return i;
+      }
     }
     return null;
   }
@@ -407,13 +448,13 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     if (customIndex != null) {
       await SettingsService.removeCustomDns(customIndex);
     } else {
-      await SettingsService.addHiddenDns(dns.primary);
+      await SettingsService.addHiddenDns(_keyOf(dns));
       await SettingsService.removeDnsOverride(dns.primary);
     }
 
-    if (_activePrimary == dns.primary) {
+    if (_activeKey == _keyOf(dns)) {
       await SettingsService.clearGameDns();
-      _activePrimary = null;
+      _activeKey = null;
     }
     await _load();
     if (!mounted) return;
@@ -423,14 +464,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   void _copy(GameDns dns) {
     Clipboard.setData(ClipboardData(text: '${dns.primary}, ${dns.secondary}'));
     _showMsg(_t('کپی شد', 'Copied'));
-  }
-
-  void _shareDns(GameDns dns) {
-    final text = 'DNS: ${dns.name}\n'
-        'Primary: ${dns.primary}\n'
-        'Secondary: ${dns.secondary}';
-    Clipboard.setData(ClipboardData(text: text));
-    _showMsg(_t('متن اشتراک‌گذاری کپی شد', 'Share text copied'));
   }
 
   void _showMsg(String msg) {
@@ -516,9 +549,10 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   }
 
   Widget _buildDnsTile(GameDns dns) {
-    final active = dns.primary == _activePrimary;
-    final ping = _pingResults[dns.primary];
-    final pinned = _pinnedDns.contains(dns.primary);
+    final key = _keyOf(dns);
+    final active = key == _activeKey;
+    final ping = _pingResults[key];
+    final pinned = _pinnedKeys.contains(key);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -542,7 +576,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Pin
                 InkWell(
                   onTap: () => _togglePin(dns),
                   borderRadius: BorderRadius.circular(20),
@@ -558,18 +591,14 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                   ),
                 ),
 
-                // Radio / check
                 Icon(
-                  active
-                      ? Icons.check_circle
-                      : Icons.radio_button_unchecked,
+                  active ? Icons.check_circle : Icons.radio_button_unchecked,
                   size: 20,
                   color:
                       active ? AppColors.accent : AppColors.muted2(context),
                 ),
                 const SizedBox(width: 8),
 
-                // Name + IPs
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -599,31 +628,16 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (dns.primaryV6 != null)
-                        Directionality(
-                          textDirection: TextDirection.ltr,
-                          child: Text(
-                            dns.primaryV6!,
-                            style: TextStyle(
-                              color: AppColors.muted2(context),
-                              fontSize: 9.5,
-                              fontFamily: 'monospace',
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
                     ],
                   ),
                 ),
 
                 const SizedBox(width: 4),
 
-                // Ping
                 if (ping != null && ping > 0)
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                     decoration: BoxDecoration(
                       color: _pingColor(ping).withOpacity(0.15),
                       borderRadius: BorderRadius.circular(6),
@@ -649,7 +663,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
 
                 const SizedBox(width: 4),
 
-                // Actions
                 _smallIcon(
                   icon: Icons.bolt,
                   color: AppColors.warn,
@@ -674,11 +687,11 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   }
 
   Widget _buildConnectButton() {
-    final active = _activePrimary != null;
+    final active = _activeKey != null;
     GameDns? activeDns;
     if (active) {
       for (final d in _visibleDns) {
-        if (d.primary == _activePrimary) {
+        if (_keyOf(d) == _activeKey) {
           activeDns = d;
           break;
         }
@@ -790,6 +803,11 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
             onPressed: _testing ? _cancelTestAll : _testAllDns,
           ),
           IconButton(
+            icon: const Icon(Icons.my_location, color: AppColors.accent),
+            tooltip: _t('یافتن انتخاب‌شده', 'Find selected'),
+            onPressed: _jumpToSelected,
+          ),
+          IconButton(
             icon: const Icon(Icons.add, color: AppColors.accent),
             tooltip: _t('افزودن DNS', 'Add DNS'),
             onPressed: _addCustomDns,
@@ -825,7 +843,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               ),
             ),
 
-          // IP version
           Container(
             margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
             padding: const EdgeInsets.all(10),
@@ -890,7 +907,9 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
             ),
 
           Expanded(
+            key: _listKey,
             child: ListView.builder(
+              controller: _scrollController,
               padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
               itemCount: all.length,
               itemBuilder: (_, i) => _buildDnsTile(all[i]),
