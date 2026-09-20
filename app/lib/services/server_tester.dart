@@ -257,12 +257,21 @@ class ServerTester {
             summary.unknown++;
           }
         } else {
-          // TCP باز بود ولی از داخل پروکسی چیزی رد نشد: سرور عملاً کار نمی‌کند.
-          server.ping = null;
-          server.jitter = null;
-          server.pingKind = PingKind.none;
-          server.status = ServerStatus.offline;
-          summary.offline++;
+          // پینگ واقعی شکست خورد (-1). ممکنه خطای گذرای کتابخونه باشه نه سرور.
+          // اگر TCP جواب داده بود، همون رو با علامت «~» نگه دار.
+          if (tcp != null) {
+            server.ping = tcp.ms;
+            server.jitter = tcp.jitter;
+            server.pingKind = PingKind.tcp;
+            server.status = ServerStatus.online;
+            summary.online++;
+          } else {
+            server.ping = null;
+            server.jitter = null;
+            server.pingKind = PingKind.none;
+            server.status = ServerStatus.offline;
+            summary.offline++;
+          }
         }
       } finally {
         realGate.release();
