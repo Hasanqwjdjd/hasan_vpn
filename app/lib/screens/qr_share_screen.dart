@@ -87,4 +87,18 @@ class QrShareScreen extends StatelessWidget {
                     );
                   },
                   icon: const Icon(Icons.copy, size: 18),
-                  label: Text(_t('کپی ل
+                  label: Text(_t('کپی لینک', 'Copy Link')),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.accent,
+                    side: const BorderSide(color: AppColors.accent),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
