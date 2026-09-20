@@ -1,100 +1,114 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/aether_profile.dart';
 import '../models/server.dart';
+import 'socks_probe.dart';
+import 'v2ray_engine.dart';
 
+typedef AetherProgress = void Function(String message);
+
+/// معماری اتصال Aether:
+///
+///   برنامه ⇢ VPN سیستم (tun2socks داخل افزونه‌ی Xray)
+///          ⇢ Xray (outbound از نوع SOCKS)
+///          ⇢ پردازه‌ی بومی Aether (SOCKS5 روی 127.0.0.1)
+///          ⇢ WARP (MASQUE / WireGuard / Gool ...)
+///
+/// پردازه‌ی Aether در یک Foreground Service بومی (AetherService.kt) اجرا می‌شود
+/// و خود برنامه از VPN مستثنا می‌شود تا ترافیک خود Aether به تونل برنگردد.
 class AetherService {
+  AetherService._();
+
   static const MethodChannel _channel =
       MethodChannel('com.hasan.hasan_vpn/aether');
 
+  static const String _appPackage = 'com.hasan.hasan_vpn';
+  static const String _lastGoodKey = 'aether_last_good_v1';
+
   static bool _connected = false;
   static VpnServer? _current;
+  static int _corePort = 0;
+
   static String? lastError;
 
   static bool get isConnected => _connected;
   static VpnServer? get current => _current;
 
-  static const List<String> scanModes = <String>[
-    'fast',
-    'balanced',
-    'full',
-  ];
+  // ---------------------------------------------------------------- native
 
-  static const List<String> protocolModes = <String>[
-    'auto',
-    'masque_h3',
-    'masque_h2',
-    'wireguard',
-    'gool',
-  ];
-
-  static String buildConfigLink({
-    required String scanMode,
-    required String protocolMode,
-    String upstreamProxy = '',
-  }) {
-    final safeScanMode = scanModes.contains(scanMode) ? scanMode : 'balanced';
-    final safeProtocolMode =
-        protocolModes.contains(protocolMode) ? protocolMode : 'auto';
-
-    final query = <String, String>{
-      'scan': safeScanMode,
-      'protocol': safeProtocolMode,
-    };
-
-    if (upstreamProxy.trim().isNotEmpty) {
-      query['upstream'] = upstreamProxy.trim();
-    }
-
-    return Uri(
-      scheme: 'aether',
-      host: 'config',
-      queryParameters: query,
-    ).toString();
-  }
-
-  static Map<String, String> parseConfigLink(String link) {
+  static Future<Map<String, dynamic>> _invoke(String method,
+      [Map<String, dynamic>? args]) async {
     try {
-      final uri = Uri.parse(link);
+      final result =
+          await _channel.invokeMapMethod<String, dynamic>(method, args);
+      return result ?? <String, dynamic>{};
+    } on PlatformException catch (error) {
+      debugPrint('Aether $method failed: ${error.code} ${error.message}');
+      return <String, dynamic>{'error': error.message ?? error.code};
+    } on MissingPluginException {
+      return <String, dynamic>{'error': 'native bridge is missing'};
+    } catch (error) {
+      return <String, dynamic>{'error': error.toString()};
+    }
+  }
 
-      if (uri.scheme.toLowerCase() != 'aether') {
-        return const <String, String>{};
-      }
+  static Future<Map<String, dynamic>> nativeInfo() => _invoke('info');
 
-      return Map<String, String>.from(uri.queryParameters);
+  static Future<Map<String, dynamic>> nativeStatus() => _invoke('status');
+
+  static Future<void> _stopNative() async {
+    try {
+      await _channel.invokeMethod<bool>('stop');
+    } catch (error) {
+      debugPrint('Aether stop error: $error');
+    }
+  }
+
+  static Future<int> _freePort() async {
+    final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final port = socket.port;
+    await socket.close();
+    return port;
+  }
+
+  // ------------------------------------------------------- last good profile
+
+  static Future<AetherAttempt?> _loadLastGood() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_lastGoodKey);
+      if (raw == null) return null;
+      return AetherAttempt.fromJson(jsonDecode(raw));
     } catch (_) {
-      return const <String, String>{};
+      return null;
     }
   }
 
-  static Future<bool> _waitUntilReady({
-    Duration timeout = const Duration(seconds: 20),
+  static Future<void> _saveLastGood(AetherAttempt attempt) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_lastGoodKey, jsonEncode(attempt.toJson()));
+    } catch (_) {}
+  }
+
+  // ---------------------------------------------------------------- connect
+
+  static Future<bool> connect(
+    VpnServer server, {
+    AetherProgress? onProgress,
+    bool Function()? isCancelled,
   }) async {
-    final deadline = DateTime.now().add(timeout);
-
-    while (DateTime.now().isBefore(deadline)) {
-      final status = await nativeStatus();
-
-      if (status['connected'] == true) {
-        return true;
-      }
-
-      final nativeError = status['error']?.toString();
-      if (nativeError != null && nativeError.isNotEmpty) {
-        lastError = nativeError;
-        return false;
-      }
-
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-    }
-
-    return false;
-  }
-
-  static Future<bool> connect(VpnServer server) async {
     lastError = null;
     _connected = false;
     _current = null;
+
+    bool cancelled() => isCancelled?.call() ?? false;
 
     if (!server.isAether) {
       lastError = 'Selected server is not an Aether configuration';
@@ -102,103 +116,354 @@ class AetherService {
     }
 
     try {
-      final config = parseConfigLink(server.shareLink);
+      // اگر پردازه‌ی نیمه‌کاره‌ای از تلاش قبلی مانده باشد، پورت را اشغال می‌کند.
+      await _stopNative();
 
-      final scanMode = scanModes.contains(config['scan'])
-          ? config['scan']!
-          : 'balanced';
+      final info = await nativeInfo();
+      if (info['binary'] != true) {
+        final abi = info['abi']?.toString() ?? 'unknown';
+        lastError = info['error']?.toString() ??
+            'Aether core (libaether.so) is not available for this device '
+                '(CPU: $abi). Use the arm64 build.';
+        return false;
+      }
 
-      final protocolMode = protocolModes.contains(config['protocol'])
-          ? config['protocol']!
-          : 'auto';
-
-      final upstreamProxy = config['upstream'] ?? '';
-
-      final allowed =
-          await _channel.invokeMethod<bool>('prepare') ?? false;
-
+      // مجوز VPN را همین اول بگیر تا کاربر بعد از ۳۰ ثانیه اسکن با دیالوگ غافلگیر نشود.
+      final allowed = await V2RayEngine.requestPermission();
       if (!allowed) {
         lastError = 'VPN permission denied';
         return false;
       }
 
-      final started = await _channel.invokeMethod<bool>(
-            'start',
-            <String, dynamic>{
-              'scanMode': scanMode,
-              'protocolMode': protocolMode,
-              'upstreamProxy': upstreamProxy,
-              'remark': server.name,
-            },
-          ) ??
-          false;
+      final profile = AetherProfile.fromLink(server.shareLink);
+      final plan = profile.plan(lastGood: await _loadLastGood());
+      final firstRun = info['hasIdentity'] != true;
 
-      if (!started) {
-        lastError = 'Aether service could not be started';
-        return false;
+      for (var i = 0; i < plan.length; i++) {
+        if (cancelled()) break;
+
+        var attempt = plan[i];
+        if (firstRun && i == 0) {
+          // بار اول Aether باید حساب WARP بسازد؛ زمان بیشتری بده.
+          attempt = AetherAttempt(
+            protocol: attempt.protocol,
+            h2: attempt.h2,
+            scan: attempt.scan,
+            noize: attempt.noize,
+            timeout: attempt.timeout + const Duration(seconds: 25),
+          );
+        }
+
+        final prefix = plan.length > 1 ? '${i + 1}/${plan.length} · ' : '';
+        onProgress?.call('Aether $prefix${attempt.label}');
+
+        final port = await _freePort();
+        final ready = await _runAttempt(
+          server: server,
+          profile: profile,
+          attempt: attempt,
+          port: port,
+          prefix: 'Aether $prefix',
+          onProgress: onProgress,
+          cancelled: cancelled,
+        );
+
+        if (!ready) {
+          await _stopNative();
+          continue;
+        }
+
+        await _saveLastGood(plan[i]);
+
+        onProgress?.call('Aether · VPN');
+        final xrayConfig = buildXrayConfig(
+          socksPort: port,
+          blockQuic: profile.blockQuic,
+        );
+
+        final started = await V2RayEngine.startConfig(
+          remark: server.name,
+          config: xrayConfig,
+          server: server,
+          blockedApps: const <String>[_appPackage],
+          requireBlockedApps: true,
+        );
+
+        if (!started) {
+          lastError = V2RayEngine.lastError ?? 'VPN service could not be started';
+          await _stopNative();
+          return false;
+        }
+
+        _corePort = port;
+        _connected = true;
+        _current = server;
+        return true;
       }
 
-      final ready = await _waitUntilReady();
-
-      if (!ready) {
-        await disconnect();
-        lastError ??= 'Aether did not become ready';
-        return false;
+      await _stopNative();
+      if (cancelled()) {
+        lastError = 'cancelled';
+      } else {
+        lastError ??= 'Aether could not find a working route';
       }
-
-      _connected = true;
-      _current = server;
-      return true;
-    } on PlatformException catch (error) {
-      lastError = '${error.code}: ${error.message ?? 'Native error'}';
-      debugPrint('Aether PlatformException: $lastError');
-      _connected = false;
-      _current = null;
       return false;
     } catch (error) {
       lastError = error.toString();
       debugPrint('Aether connection error: $lastError');
+      await _stopNative();
       _connected = false;
       _current = null;
       return false;
     }
   }
 
-  static Future<void> disconnect() async {
-    try {
-      await _channel.invokeMethod<void>('stop');
-    } catch (error) {
-      debugPrint('Aether disconnect error: $error');
-    } finally {
-      _connected = false;
-      _current = null;
+  /// یک تلاش: پردازه را با env مربوطه بالا می‌آورد و منتظر می‌ماند تا SOCKS
+  /// واقعاً ترافیک عبور دهد (نه فقط پورت باز باشد).
+  static Future<bool> _runAttempt({
+    required VpnServer server,
+    required AetherProfile profile,
+    required AetherAttempt attempt,
+    required int port,
+    required String prefix,
+    required AetherProgress? onProgress,
+    required bool Function() cancelled,
+  }) async {
+    final env = profile.buildEnv(attempt, port);
+
+    final started = await _channel.invokeMethod<bool>(
+          'start',
+          <String, dynamic>{
+            'env': jsonEncode(env),
+            'remark': server.name,
+          },
+        ) ??
+        false;
+
+    if (!started) {
+      final status = await nativeStatus();
+      lastError = status['error']?.toString() ??
+          'Aether service could not be started';
+      return false;
     }
+
+    final deadline = DateTime.now().add(attempt.timeout);
+    var lastShown = '';
+
+    while (DateTime.now().isBefore(deadline)) {
+      if (cancelled()) return false;
+
+      final status = await nativeStatus();
+
+      final line = _shorten(status['lastLine']?.toString() ?? '');
+      if (line.isNotEmpty && line != lastShown) {
+        lastShown = line;
+        onProgress?.call('$prefix${attempt.label}\n$line');
+      }
+
+      if (status['exited'] == true) {
+        final code = status['exitCode'];
+        lastError = 'Aether exited (code $code)'
+            '${line.isNotEmpty ? ': $line' : ''}';
+        return false;
+      }
+
+      final error = status['error']?.toString();
+      if (error != null && error.isNotEmpty) {
+        lastError = error;
+        return false;
+      }
+
+      if (await SocksProbe.isPortOpen(port)) {
+        final probe = await SocksProbe.measure(
+          port: port,
+          samples: 1,
+          timeout: const Duration(seconds: 5),
+        );
+        if (probe.ok) return true;
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    }
+
+    lastError = 'Timed out (${attempt.label})'
+        '${lastShown.isNotEmpty ? ': $lastShown' : ''}';
+    return false;
   }
 
-  static Future<Map<String, dynamic>> nativeStatus() async {
-    try {
-      final result =
-          await _channel.invokeMapMethod<String, dynamic>('status');
+  static String _shorten(String value) {
+    final text = value.trim();
+    return text.length <= 72 ? text : '${text.substring(0, 72)}…';
+  }
 
-      return result ?? const <String, dynamic>{};
-    } on PlatformException catch (error) {
-      debugPrint('Aether status error: ${error.message}');
-      return const <String, dynamic>{};
-    } catch (_) {
-      return const <String, dynamic>{};
-    }
+  // ------------------------------------------------------------- disconnect
+
+  static Future<void> disconnect() async {
+    try {
+      await V2RayEngine.disconnect();
+    } catch (_) {}
+    await _stopNative();
+    _connected = false;
+    _current = null;
+    _corePort = 0;
+  }
+
+  // ----------------------------------------------------------------- status
+
+  /// آیا پردازه‌ی Aether هنوز زنده است؟
+  static Future<bool> isAlive() async {
+    final status = await nativeStatus();
+    return status['running'] == true && status['exited'] != true;
   }
 
   static Future<bool> syncStatus() async {
-    final status = await nativeStatus();
-    final connected = status['connected'] == true;
-
-    _connected = connected;
-
-    if (!connected) {
+    final alive = _connected && await isAlive();
+    if (!alive) {
+      _connected = false;
       _current = null;
     }
+    return alive;
+  }
 
-    return connected;
+  /// پینگ واقعی Aether: مستقیم از خود پراکسی SOCKS پردازه‌ی Aether.
+  static Future<ProbeResult> probeCore() {
+    if (_corePort == 0) {
+      return Future<ProbeResult>.value(
+        const ProbeResult(error: 'aether is not running'),
+      );
+    }
+    return SocksProbe.measure(
+      port: _corePort,
+      samples: 3,
+      timeout: const Duration(seconds: 8),
+    );
+  }
+
+  // ------------------------------------------------------------ xray config
+
+  static const List<String> _privateRanges = <String>[
+    '10.0.0.0/8',
+    '100.64.0.0/10',
+    '127.0.0.0/8',
+    '169.254.0.0/16',
+    '172.16.0.0/12',
+    '192.168.0.0/16',
+    '224.0.0.0/4',
+  ];
+
+  /// کانفیگ Xray که همه‌ی ترافیک VPN را به SOCKS5 پردازه‌ی Aether می‌دهد.
+  ///
+  ///  - DNS سیستم (UDP/53) توسط خود Xray پاسخ داده می‌شود و پرس‌وجوها با DoH
+  ///    از داخل تونل می‌روند، پس به UDP در Aether نیازی نیست و نشتی هم ندارد.
+  ///  - sniffing باعث می‌شود «نام دامنه» (نه IP) به Aether برسد.
+  ///  - QUIC (UDP/443) در صورت فعال‌بودن مسدود می‌شود تا مرورگر بلافاصله به
+  ///    TCP برگردد (به‌جای چند ثانیه انتظار).
+  static String buildXrayConfig({
+    required int socksPort,
+    bool blockQuic = true,
+  }) {
+    final rules = <Map<String, dynamic>>[
+      <String, dynamic>{
+        'type': 'field',
+        'port': '53',
+        'network': 'udp',
+        'outboundTag': 'dns-out',
+      },
+      if (blockQuic)
+        <String, dynamic>{
+          'type': 'field',
+          'port': '443',
+          'network': 'udp',
+          'outboundTag': 'block',
+        },
+      <String, dynamic>{
+        'type': 'field',
+        'ip': _privateRanges,
+        'outboundTag': 'direct',
+      },
+    ];
+
+    final config = <String, dynamic>{
+      'log': <String, dynamic>{'loglevel': 'warning'},
+      'stats': <String, dynamic>{},
+      'policy': <String, dynamic>{
+        'levels': <String, dynamic>{
+          '8': <String, dynamic>{
+            'connIdle': 300,
+            'downlinkOnly': 1,
+            'handshake': 4,
+            'uplinkOnly': 1,
+            // بافر پیش‌فرض Xray روی ARM بسیار کوچک است و سرعت دانلود را
+            // محدود می‌کند؛ ۱۲۸ کیلوبایت برای هر اتصال تعادل خوبی است.
+            'bufferSize': 128,
+          },
+        },
+        'system': <String, dynamic>{
+          'statsOutboundUplink': true,
+          'statsOutboundDownlink': true,
+        },
+      },
+      'inbounds': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'tag': 'socks',
+          'port': 10808,
+          'listen': '127.0.0.1',
+          'protocol': 'socks',
+          'settings': <String, dynamic>{
+            'auth': 'noauth',
+            'udp': true,
+            'userLevel': 8,
+          },
+          'sniffing': <String, dynamic>{
+            'enabled': true,
+            'destOverride': <String>['http', 'tls'],
+          },
+        },
+        <String, dynamic>{
+          'tag': 'http',
+          'port': 10809,
+          'listen': '127.0.0.1',
+          'protocol': 'http',
+          'settings': <String, dynamic>{'userLevel': 8},
+        },
+      ],
+      'outbounds': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'tag': 'proxy',
+          'protocol': 'socks',
+          'settings': <String, dynamic>{
+            'servers': <Map<String, dynamic>>[
+              <String, dynamic>{'address': '127.0.0.1', 'port': socksPort},
+            ],
+          },
+        },
+        <String, dynamic>{
+          'tag': 'direct',
+          'protocol': 'freedom',
+          'settings': <String, dynamic>{},
+        },
+        <String, dynamic>{
+          'tag': 'block',
+          'protocol': 'blackhole',
+          'settings': <String, dynamic>{
+            'response': <String, dynamic>{'type': 'http'},
+          },
+        },
+        <String, dynamic>{'tag': 'dns-out', 'protocol': 'dns'},
+      ],
+      'dns': <String, dynamic>{
+        'servers': <String>[
+          'https://1.1.1.1/dns-query',
+          'https://8.8.8.8/dns-query',
+        ],
+        'queryStrategy': 'UseIPv4',
+      },
+      'routing': <String, dynamic>{
+        'domainStrategy': 'AsIs',
+        'rules': rules,
+      },
+    };
+
+    return jsonEncode(config);
   }
 }
