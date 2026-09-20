@@ -8,15 +8,13 @@ import '../services/app_colors.dart';
 class ServerTile extends StatelessWidget {
   final VpnServer server;
   final bool selected;
-
-  /// true اگر همین سرور الان متصل است (تیک سبز کنار نام).
   final bool active;
   final VoidCallback onTap;
   final VoidCallback? onDelete;
   final VoidCallback? onPin;
   final VoidCallback? onShare;
   final VoidCallback? onEdit;
-  final VoidCallback? onTest; // تست پینگ تکی (صاعقه)
+  final VoidCallback? onTest;
 
   const ServerTile({
     super.key,
@@ -41,8 +39,6 @@ class ServerTile extends StatelessWidget {
     return '$name · $host';
   }
 
-  /// پینگ واقعی (HTTP از داخل تونل) بزرگ‌تر از TCP است چون شامل دست‌دادن
-  /// TLS/WS و یک رفت‌وبرگشت کامل می‌شود؛ آستانه‌ها جدا هستند.
   Color _pingColor(BuildContext context) {
     final ping = server.ping;
     if (ping == null) return AppColors.muted2(context);
@@ -229,7 +225,6 @@ class ServerTile extends StatelessWidget {
                   },
                 ),
 
-                // صاعقه: تست تکی
                 if (onTest != null)
                   _iconButton(
                     icon: Icons.bolt,
