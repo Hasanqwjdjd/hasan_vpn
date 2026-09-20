@@ -45,6 +45,26 @@ class _QrScanScreenState extends State<QrScanScreen> {
     }
   }
 
+  Widget _errorView(BuildContext context, MobileScannerException error) {
+    String details = '';
+    try {
+      details = (error.errorDetails?.message ?? '').toString();
+    } catch (_) {}
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          _t(
+            'دسترسی به دوربین ممکن نشد.\nاز تنظیمات گوشی مجوز دوربین را فعال کنید.\n\n$details',
+            'Could not access camera.\nEnable camera permission from phone settings.\n\n$details',
+          ),
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -76,24 +96,39 @@ class _QrScanScreenState extends State<QrScanScreen> {
           MobileScanner(
             controller: _controller,
             onDetect: _onDetect,
-            errorBuilder: (BuildContext context, dynamic error, [Widget? child]) {
-              String details = '';
-              try {
-                details = (error.errorDetails?.message ?? '').toString();
-              } catch (_) {}
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    _t(
-                      'دسترسی به دوربین ممکن نشد.\nاز تنظیمات گوشی مجوز دوربین را فعال کنید.\n\n$details',
-                      'Could not access camera.\nEnable camera permission from phone settings.\n\n$details',
-                    ),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-              );
-            },
+            errorBuilder: (context, error, child) => _errorView(context, error),
           ),
-          // فریم راه
+          Center(
+            child: Container(
+              width: 240,
+              height: 240,
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.accent, width: 2.5),
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 40,
+            left: 24,
+            right: 24,
+            child: Text(
+              _t(
+                'کد QR کانفیگ (VLESS / Trojan / VMess / Aether و ...) را داخل کادر بگیرید',
+                'Point the frame at a config QR code (VLESS / Trojan / VMess / Aether ...)',
+              ),
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+}
