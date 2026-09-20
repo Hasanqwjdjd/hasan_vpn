@@ -1,6 +1,14 @@
-# مسیر مقصد در ریپو: app/lib/models/server.dart
-# ------------------------------------------------------------
 enum VpnProtocol { trojan, vless, vmess, hysteria2, aether, shadowsocks, custom }
+
+/// idle: تست نشده | testing: در حال تست | online: سالم | offline: از کار افتاده
+/// unknown: نتیجه قابل تشخیص نیست (مثلاً پروتکل UDP که TCP-ping روی آن معنا ندارد)
+enum ServerStatus { idle, testing, online, offline, unknown }
+
+/// نوع پینگ ثبت‌شده:
+///  - none: هنوز تست نشده
+///  - tcp:  فقط زمان دست‌دادن TCP تا سرور (تقریبی؛ برای سرورهای پشت CDN معمولاً خوش‌بینانه است)
+///  - real: زمان واقعی یک درخواست HTTP از داخل خود پروکسی/تونل (پینگ واقعی)
+enum PingKind { none, tcp, real }
 
 class VpnServer {
   final String id;
@@ -15,6 +23,8 @@ class VpnServer {
   bool isPinned;
 
   int? ping;
+  int? jitter;
+  PingKind pingKind;
   int? speedKbps;
   ServerStatus status;
 
@@ -30,15 +40,40 @@ class VpnServer {
     this.isDeletable = true,
     this.isPinned = false,
     this.ping,
+    this.jitter,
+    this.pingKind = PingKind.none,
     this.speedKbps,
     this.status = ServerStatus.idle,
   });
 
   /// true اگر این سرور از نوع Aether (سیستم دور زدن فیلترینگ با اسکن خودکار) باشد.
   bool get isAether => protocol == VpnProtocol.aether;
-}
 
-enum ServerStatus { idle, testing, online, offline }
+  /// پروتکل‌هایی که روی UDP/QUIC کار می‌کنند؛ TCP-connect روی آن‌ها بی‌معناست.
+  bool get usesUdpTransport => protocol == VpnProtocol.hysteria2;
+
+  /// کپی با نام/پرچم جدید (فیلدهای final را نمی‌شود مستقیم عوض کرد).
+  VpnServer copyWith({String? name, String? flag}) => VpnServer(
+        id: id,
+        name: name ?? this.name,
+        flag: flag ?? this.flag,
+        shareLink: shareLink,
+        protocol: protocol,
+        host: host,
+        port: port,
+        sniOrHost: sniOrHost,
+        isDeletable: isDeletable,
+        isPinned: isPinned,
+      );
+
+  /// پاک‌کردن نتیجه‌ی تست قبلی.
+  void resetPing() {
+    ping = null;
+    jitter = null;
+    pingKind = PingKind.none;
+    status = ServerStatus.idle;
+  }
+}
 
 final List<VpnServer> kServers = [
   VpnServer(
