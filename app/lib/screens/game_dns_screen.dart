@@ -18,14 +18,14 @@ class GameDnsScreen extends StatefulWidget {
 }
 
 class _GameDnsScreenState extends State<GameDnsScreen> {
-  // ترتیب نمایش: 0 = بر اساس نام، 1 = بر اساس پینگ
-  int _sortMode = 0;
+  int _sortMode = 0; // 0=name, 1=ping
 
   String? _activePrimary;
   String _ipPref = 'ipv4';
 
   List<Map<String, String>> _customDns = [];
   List<String> _hiddenDns = [];
+  List<String> _pinnedDns = [];
   Map<String, Map<String, String>> _overrides = {};
   Map<String, int> _pingResults = {};
 
@@ -58,6 +58,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     final pref = await SettingsService.getDnsIpPreference();
     final custom = await SettingsService.getCustomDnsList();
     final hidden = await SettingsService.getHiddenDns();
+    final pinned = await SettingsService.getPinnedDns();
     final overrides = await SettingsService.getDnsOverrides();
     final pings = await SettingsService.getDnsPingResults();
     if (!mounted) return;
@@ -65,6 +66,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       _ipPref = pref;
       _customDns = custom;
       _hiddenDns = hidden;
+      _pinnedDns = pinned;
       _overrides = overrides;
       _pingResults = pings;
       _activePrimary = primary;
@@ -108,17 +110,25 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       }).toList();
     }
 
-    if (_sortMode == 0) {
-      filtered.sort((a, b) => a.name.compareTo(b.name));
-    } else {
-      filtered.sort((a, b) {
-        final pa = _pingResults[a.primary] ?? 99999;
-        final pb = _pingResults[b.primary] ?? 99999;
-        if (pa <= 0) return 1;
-        if (pb <= 0) return -1;
-        return pa.compareTo(pb);
-      });
-    }
+    // پین‌شده‌ها همیشه اول.
+    filtered.sort((a, b) {
+      final pa = _pinnedDns.contains(a.primary);
+      final pb = _pinnedDns.contains(b.primary);
+      if (pa != pb) return pa ? -1 : 1;
+
+      if (_sortMode == 1) {
+        final pingA = _pingResults[a.primary];
+        final pingB = _pingResults[b.primary];
+        final validA = pingA != null && pingA > 0;
+        final validB = pingB != null && pingB > 0;
+        if (validA != validB) return validA ? -1 : 1;
+        if (validA && validB) {
+          final c = pingA.compareTo(pingB);
+          if (c != 0) return c;
+        }
+      }
+      return a.name.compareTo(b.name);
+    });
 
     return filtered;
   }
@@ -154,6 +164,11 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
         _showMsg(_t('هیچ DNS‌ای موجود نیست', 'No DNS available'));
       }
     }
+  }
+
+  Future<void> _togglePin(GameDns dns) async {
+    await SettingsService.togglePinnedDns(dns.primary);
+    await _load();
   }
 
   Future<int> _pingDns(String host, {int port = 53}) async {
@@ -195,7 +210,8 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       await SettingsService.saveDnsPingResult(dns.primary, ping);
       if (!mounted) return;
       setState(() {
-        _pingResults = Map<String, int>.from(_pingResults)..[dns.primary] = ping;
+        _pingResults = Map<String, int>.from(_pingResults)
+          ..[dns.primary] = ping;
         _tested = i + 1;
       });
     }
@@ -224,16 +240,17 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     await SettingsService.saveDnsPingResult(dns.primary, ping);
     if (!mounted) return;
     setState(() {
-      _pingResults = Map<String, int>.from(_pingResults)..[dns.primary] = ping;
+      _pingResults = Map<String, int>.from(_pingResults)
+        ..[dns.primary] = ping;
     });
     _showMsg(ping > 0
         ? _t('پینگ: $ping ms', 'Ping: $ping ms')
         : _t('پاسخی نیامد', 'No response'));
   }
 
-  String _lastDialogName = '';
-  String _lastDialogPrimary = '';
-  String _lastDialogSecondary = '';
+  String _lastName = '';
+  String _lastPrimary = '';
+  String _lastSecondary = '';
 
   Future<bool> _showDnsDialog({
     required String title,
@@ -313,9 +330,9 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       return false;
     }
 
-    _lastDialogName = name;
-    _lastDialogPrimary = primary;
-    _lastDialogSecondary = secondary;
+    _lastName = name;
+    _lastPrimary = primary;
+    _lastSecondary = secondary;
     return true;
   }
 
@@ -334,8 +351,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       secondaryInit: '',
     );
     if (!ok) return;
-    await SettingsService.addCustomDns(
-        _lastDialogName, _lastDialogPrimary, _lastDialogSecondary);
+    await SettingsService.addCustomDns(_lastName, _lastPrimary, _lastSecondary);
     await _load();
     if (!mounted) return;
     _showMsg(_t('DNS اضافه شد', 'DNS added'));
@@ -353,18 +369,10 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     final customIndex = _customIndexOf(dns);
     if (customIndex != null) {
       await SettingsService.updateCustomDns(
-        customIndex,
-        _lastDialogName,
-        _lastDialogPrimary,
-        _lastDialogSecondary,
-      );
+          customIndex, _lastName, _lastPrimary, _lastSecondary);
     } else {
       await SettingsService.setDnsOverride(
-        dns.primary,
-        _lastDialogName,
-        _lastDialogPrimary,
-        _lastDialogSecondary,
-      );
+          dns.primary, _lastName, _lastPrimary, _lastSecondary);
     }
     await _load();
     if (!mounted) return;
@@ -378,8 +386,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
         backgroundColor: AppColors.elevated(ctx),
         title: Text(_t('حذف DNS؟', 'Delete DNS?'),
             style: TextStyle(color: AppColors.fg(ctx))),
-        content:
-            Text(dns.name, style: TextStyle(color: AppColors.muted(ctx))),
+        content: Text(dns.name, style: TextStyle(color: AppColors.muted(ctx))),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -413,17 +420,17 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     _showMsg(_t('حذف شد', 'Deleted'));
   }
 
+  void _copy(GameDns dns) {
+    Clipboard.setData(ClipboardData(text: '${dns.primary}, ${dns.secondary}'));
+    _showMsg(_t('کپی شد', 'Copied'));
+  }
+
   void _shareDns(GameDns dns) {
     final text = 'DNS: ${dns.name}\n'
         'Primary: ${dns.primary}\n'
         'Secondary: ${dns.secondary}';
     Clipboard.setData(ClipboardData(text: text));
     _showMsg(_t('متن اشتراک‌گذاری کپی شد', 'Share text copied'));
-  }
-
-  void _copy(GameDns dns) {
-    Clipboard.setData(ClipboardData(text: '${dns.primary}, ${dns.secondary}'));
-    _showMsg(_t('کپی شد', 'Copied'));
   }
 
   void _showMsg(String msg) {
@@ -462,7 +469,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       child: GestureDetector(
         onTap: () => _setIpPref(value),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
             color: active
                 ? AppColors.accent.withOpacity(0.15)
@@ -477,7 +484,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: active ? AppColors.accent : AppColors.muted(context),
-              fontSize: 12.5,
+              fontSize: 12,
               fontWeight: active ? FontWeight.w700 : FontWeight.w500,
             ),
           ),
@@ -491,6 +498,179 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     if (ping < 50) return AppColors.accent;
     if (ping < 150) return AppColors.warn;
     return AppColors.danger;
+  }
+
+  Widget _smallIcon({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Icon(icon, color: color, size: 17),
+      ),
+    );
+  }
+
+  Widget _buildDnsTile(GameDns dns) {
+    final active = dns.primary == _activePrimary;
+    final ping = _pingResults[dns.primary];
+    final pinned = _pinnedDns.contains(dns.primary);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: active
+            ? AppColors.accent.withOpacity(0.08)
+            : AppColors.surface(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: active ? AppColors.accent : AppColors.border(context),
+          width: active ? 1.5 : 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => _select(dns),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(4, 8, 8, 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Pin
+                InkWell(
+                  onTap: () => _togglePin(dns),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(
+                      pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                      size: 17,
+                      color: pinned
+                          ? AppColors.accent
+                          : AppColors.muted2(context),
+                    ),
+                  ),
+                ),
+
+                // Radio / check
+                Icon(
+                  active
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  size: 20,
+                  color:
+                      active ? AppColors.accent : AppColors.muted2(context),
+                ),
+                const SizedBox(width: 8),
+
+                // Name + IPs
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        dns.name,
+                        style: TextStyle(
+                          color: AppColors.fg(context),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: Text(
+                          '${dns.primary} · ${dns.secondary}',
+                          style: TextStyle(
+                            color: AppColors.muted2(context),
+                            fontSize: 10.5,
+                            fontFamily: 'monospace',
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (dns.primaryV6 != null)
+                        Directionality(
+                          textDirection: TextDirection.ltr,
+                          child: Text(
+                            dns.primaryV6!,
+                            style: TextStyle(
+                              color: AppColors.muted2(context),
+                              fontSize: 9.5,
+                              fontFamily: 'monospace',
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(width: 4),
+
+                // Ping
+                if (ping != null && ping > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: _pingColor(ping).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '$ping',
+                      style: TextStyle(
+                        color: _pingColor(ping),
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  )
+                else if (ping != null && ping <= 0)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Text('✕',
+                        style: TextStyle(
+                            color: AppColors.danger,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                  ),
+
+                const SizedBox(width: 4),
+
+                // Actions
+                _smallIcon(
+                  icon: Icons.bolt,
+                  color: AppColors.warn,
+                  onTap: () => _testOneDns(dns),
+                ),
+                _smallIcon(
+                  icon: Icons.edit_outlined,
+                  color: AppColors.muted(context),
+                  onTap: () => _editDns(dns),
+                ),
+                _smallIcon(
+                  icon: Icons.delete_outline,
+                  color: AppColors.danger,
+                  onTap: () => _deleteDns(dns),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildConnectButton() {
@@ -532,10 +712,11 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 active ? Icons.dns : Icons.power_settings_new,
-                size: 42,
+                size: 38,
                 color:
                     active ? AppColors.accent : AppColors.muted2(context),
               ),
@@ -547,7 +728,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                 style: TextStyle(
                   color:
                       active ? AppColors.accent : AppColors.muted2(context),
-                  fontSize: 12,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -644,39 +825,47 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               ),
             ),
 
+          // IP version
           Container(
-            margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: AppColors.surface(context),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppColors.border(context)),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(_t('نسخه‌ی IP', 'IP version'),
+                Expanded(
+                  child: Text(
+                    _t('نسخه‌ی IP', 'IP version'),
                     style: TextStyle(
-                        color: AppColors.muted(context),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600)),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    _ipChip('ipv4', 'IPv4'),
-                    const SizedBox(width: 6),
-                    _ipChip('ipv6', 'IPv6'),
-                    const SizedBox(width: 6),
-                    _ipChip('both', _t('هر دو', 'Both')),
-                  ],
+                      color: AppColors.muted(context),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  flex: 3,
+                  child: Row(
+                    children: [
+                      _ipChip('ipv4', 'IPv4'),
+                      const SizedBox(width: 4),
+                      _ipChip('ipv6', 'IPv6'),
+                      const SizedBox(width: 4),
+                      _ipChip('both', _t('هر دو', 'Both')),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           _buildConnectButton(),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
           if (_testing)
             Padding(
@@ -691,8 +880,8 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                   const SizedBox(height: 4),
                   Text(
                     _t(
-                        '$_tested از $_total تست شد · ${_total - _tested} باقی‌مانده',
-                        '$_tested of $_total tested · ${_total - _tested} remaining'),
+                        '$_tested از $_total · ${_total - _tested} باقی',
+                        '$_tested of $_total · ${_total - _tested} left'),
                     style: TextStyle(
                         color: AppColors.muted2(context), fontSize: 11),
                   ),
@@ -702,126 +891,9 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
 
           Expanded(
             child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
               itemCount: all.length,
-              itemBuilder: (_, i) {
-                final dns = all[i];
-                final active = dns.primary == _activePrimary;
-                final ping = _pingResults[dns.primary];
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: active
-                        ? AppColors.accent.withOpacity(0.1)
-                        : AppColors.surface(context),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: active
-                          ? AppColors.accent
-                          : AppColors.border(context),
-                      width: active ? 1.5 : 1,
-                    ),
-                  ),
-                  child: ListTile(
-                    onTap: () => _select(dns),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 4),
-                    title: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            dns.name,
-                            style: TextStyle(
-                              color: AppColors.fg(context),
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        if (ping != null && ping > 0)
-                          Text(
-                            '$ping ms',
-                            style: TextStyle(
-                              color: _pingColor(ping),
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          )
-                        else if (ping != null && ping <= 0)
-                          const Text('✕',
-                              style: TextStyle(
-                                  color: AppColors.danger,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-                    subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        dns.primaryV6 != null
-                            ? '${dns.primary}\n${dns.secondary}\n${dns.primaryV6}\n${dns.secondaryV6}'
-                            : '${dns.primary}\n${dns.secondary}',
-                        style: TextStyle(
-                            color: AppColors.muted2(context),
-                            fontSize: 11,
-                            height: 1.5),
-                      ),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 26),
-                          icon: const Icon(Icons.bolt,
-                              color: AppColors.warn, size: 17),
-                          onPressed: () => _testOneDns(dns),
-                          tooltip: _t('تست پینگ', 'Test ping'),
-                        ),
-                        IconButton(
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 26),
-                          icon: Icon(Icons.edit_outlined,
-                              color: AppColors.muted(context), size: 17),
-                          onPressed: () => _editDns(dns),
-                          tooltip: _t('ویرایش', 'Edit'),
-                        ),
-                        IconButton(
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 26),
-                          icon: Icon(Icons.share_outlined,
-                              color: AppColors.muted(context), size: 17),
-                          onPressed: () => _shareDns(dns),
-                          tooltip: _t('اشتراک‌گذاری', 'Share'),
-                        ),
-                        IconButton(
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 26),
-                          icon: const Icon(Icons.copy,
-                              color: AppColors.accent, size: 17),
-                          onPressed: () => _copy(dns),
-                          tooltip: _t('کپی', 'Copy'),
-                        ),
-                        IconButton(
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 26),
-                          icon: const Icon(Icons.delete_outline,
-                              color: AppColors.danger, size: 17),
-                          onPressed: () => _deleteDns(dns),
-                          tooltip: _t('حذف', 'Delete'),
-                        ),
-                        if (active)
-                          const Icon(Icons.check_circle,
-                              color: AppColors.accent, size: 20)
-                        else
-                          Icon(Icons.radio_button_unchecked,
-                              color: AppColors.muted2(context), size: 20),
-                      ],
-                    ),
-                  ),
-                );
-              },
+              itemBuilder: (_, i) => _buildDnsTile(all[i]),
             ),
           ),
         ],
