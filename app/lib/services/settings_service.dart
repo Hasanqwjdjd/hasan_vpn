@@ -12,6 +12,9 @@ class SettingsService {
   static const String _dnsPreferenceKey = 'settings_dns_pref_v1';
   static const String _customDnsKey = 'settings_custom_dns_v1';
   static const String _dnsPingKey = 'settings_dns_ping_v1';
+  static const String _hiddenDnsKey = 'settings_hidden_dns_v1';
+  static const String _dnsOverridesKey = 'settings_dns_overrides_v1';
+  static const String _serverNameOverridesKey = 'settings_server_name_overrides_v1';
 
   static Future<void> loadVersion() async {
     try {
@@ -94,8 +97,7 @@ class SettingsService {
 
   // --------------------------------------------------------- Custom DNS
 
-  /// لیست DNS‌های سفارشی که کاربر خودش اضافه کرده است.
-  /// فرمت: [{'name': '...', 'primary': '...', 'secondary': '...'}]
+  /// لیست DNS‌های سفارشی. [{name, primary, secondary}]
   static Future<List<Map<String, String>>> getCustomDnsList() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_customDnsKey);
@@ -116,12 +118,18 @@ class SettingsService {
       String name, String primary, String secondary) async {
     final prefs = await SharedPreferences.getInstance();
     final list = await getCustomDnsList();
-    list.add({
-      'name': name,
-      'primary': primary,
-      'secondary': secondary,
-    });
+    list.add({'name': name, 'primary': primary, 'secondary': secondary});
     await prefs.setString(_customDnsKey, jsonEncode(list));
+  }
+
+  static Future<void> updateCustomDns(
+      int index, String name, String primary, String secondary) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = await getCustomDnsList();
+    if (index >= 0 && index < list.length) {
+      list[index] = {'name': name, 'primary': primary, 'secondary': secondary};
+      await prefs.setString(_customDnsKey, jsonEncode(list));
+    }
   }
 
   static Future<void> removeCustomDns(int index) async {
@@ -133,10 +141,76 @@ class SettingsService {
     }
   }
 
+  // --------------------------------------------------------- Hidden DNS
+
+  static Future<List<String>> getHiddenDns() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_hiddenDnsKey);
+    if (raw == null) return [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) return decoded.map((e) => e.toString()).toList();
+    } catch (_) {}
+    return [];
+  }
+
+  static Future<void> addHiddenDns(String primary) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = await getHiddenDns();
+    if (!list.contains(primary)) list.add(primary);
+    await prefs.setString(_hiddenDnsKey, jsonEncode(list));
+  }
+
+  static Future<void> removeHiddenDns(String primary) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = await getHiddenDns();
+    list.remove(primary);
+    await prefs.setString(_hiddenDnsKey, jsonEncode(list));
+  }
+
+  // --------------------------------------------------------- DNS Overrides
+
+  /// آپدیت روی DNS‌های اصلی. کلید = primary اصلی، مقدار = {name, primary, secondary}
+  static Future<Map<String, Map<String, String>>> getDnsOverrides() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_dnsOverridesKey);
+    if (raw == null) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        final out = <String, Map<String, String>>{};
+        decoded.forEach((k, v) {
+          if (v is Map) {
+            out[k.toString()] = v.map((k2, v2) => MapEntry(k2.toString(), v2.toString()));
+          }
+        });
+        return out;
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  static Future<void> setDnsOverride(String originalPrimary, String name,
+      String primary, String secondary) async {
+    final prefs = await SharedPreferences.getInstance();
+    final map = await getDnsOverrides();
+    map[originalPrimary] = {
+      'name': name,
+      'primary': primary,
+      'secondary': secondary,
+    };
+    await prefs.setString(_dnsOverridesKey, jsonEncode(map));
+  }
+
+  static Future<void> removeDnsOverride(String originalPrimary) async {
+    final prefs = await SharedPreferences.getInstance();
+    final map = await getDnsOverrides();
+    map.remove(originalPrimary);
+    await prefs.setString(_dnsOverridesKey, jsonEncode(map));
+  }
+
   // --------------------------------------------------------- DNS Ping
 
-  /// ذخیره‌ی نتیجه‌ی پینگ DNS‌ها.
-  /// فرمت: {'primary|secondary': latency_ms, ...}
   static Future<Map<String, int>> getDnsPingResults() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_dnsPingKey);
@@ -162,10 +236,37 @@ class SettingsService {
     await prefs.remove(_dnsPingKey);
   }
 
-  // --------------------------------------------------------- Server Ping
+  // --------------------------------------------------------- Server Name Overrides
 
-  /// ذخیره‌ی پینگ سرورها برای ماندگاری پس از بستن برنامه.
-  /// فرمت: {'server_id': {'ping': int, 'kind': 'tcp'|'real', 'ts': ...}, ...}
+  static Future<Map<String, String>> getServerNameOverrides() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_serverNameOverridesKey);
+    if (raw == null) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return decoded.map((k, v) => MapEntry(k.toString(), v.toString()));
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  static Future<void> setServerNameOverride(String serverId, String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    final map = await getServerNameOverrides();
+    map[serverId] = name;
+    await prefs.setString(_serverNameOverridesKey, jsonEncode(map));
+  }
+
+  static Future<void> removeServerNameOverride(String serverId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final map = await getServerNameOverrides();
+    map.remove(serverId);
+    await prefs.setString(_serverNameOverridesKey, jsonEncode(map));
+  }
+
+  // --------------------------------------------------------- Server Pings
+
   static Future<Map<String, dynamic>> getServerPings() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('server_pings_v1');
