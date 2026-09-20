@@ -800,22 +800,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
               ListTile(
-                leading: Icon(
-                  Icons.sort,
-                  color: AppColors.muted(context),
-                ),
-                title: Text(
-                  _t('مرتب‌سازی', 'Sort'),
-                  style: TextStyle(
-                    color: AppColors.fg(context),
-                  ),
-                ),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _toggleSort();
-                },
-              ),
-              ListTile(
                 leading: const Icon(
                   Icons.delete_sweep,
                   color: AppColors.danger,
@@ -921,6 +905,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ],
                 ),
+              ),
+              IconButton(
+                icon: Icon(
+                  _sortAscending ? Icons.sort : Icons.sort_by_alpha,
+                  color: AppColors.accent,
+                  size: 22,
+                ),
+                onPressed: _toggleSort,
+                tooltip: _t('مرتب‌سازی', 'Sort'),
               ),
               IconButton(
                 icon: _testing
