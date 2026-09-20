@@ -1,14 +1,14 @@
-# مسیر مقصد در ریپو: app/lib/screens/home_screen.dart
-# ------------------------------------------------------------
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+
 import '../models/server.dart';
-import '../services/server_tester.dart';
-import '../services/v2ray_engine.dart';
 import '../services/aether_service.dart';
 import '../services/app_colors.dart';
+import '../services/server_tester.dart';
+import '../services/v2ray_engine.dart';
 import '../widgets/server_tile.dart';
 import 'add_config_screen.dart';
 import 'qr_share_screen.dart';
@@ -36,25 +36,31 @@ class _HomeScreenState extends State<HomeScreen> {
   static const String _pinnedKey = 'pinned_server_ids_v1';
   static const String _customKey = 'custom_servers_v1';
 
+  final TextEditingController _searchController = TextEditingController();
+
   List<VpnServer> _servers = [];
   List<VpnServer> _customServers = [];
-  Set<String> _deletedIds = {};
-  Set<String> _pinnedIds = {};
+  Set<String> _deletedIds = <String>{};
+  Set<String> _pinnedIds = <String>{};
+
   VpnServer? _selected;
+
   bool _testing = false;
   bool _autoMode = true;
   bool _connecting = false;
   bool _connected = false;
   bool _sortAscending = true;
+  bool _cancelTest = false;
+  bool _showSearch = false;
+
+  String _searchQuery = '';
   String _status = 'آماده';
+
   int _tested = 0;
   int _total = 0;
-  bool _cancelTest = false;
-  String _searchQuery = '';
-  bool _showSearch = false;
-  final TextEditingController _searchController = TextEditingController();
 
   bool get _isFa => widget.language == 'fa';
+
   String _t(String fa, String en) => _isFa ? fa : en;
 
   @override
@@ -64,76 +70,137 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _bootstrap() async {
-    await _loadDeleted();
+    await _loadDeletedAndPinned();
     await _loadCustomServers();
+
+    if (!mounted) return;
     _rebuildServerList();
+
     await V2RayEngine.init();
   }
 
   @override
   void didUpdateWidget(covariant HomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.extraServers.length != widget.extraServers.length) {
+
+    if (oldWidget.extraServers != widget.extraServers ||
+        oldWidget.language != widget.language) {
       _rebuildServerList();
     }
   }
 
-  Future<void> _loadDeleted() async {
+  Future<void> _loadDeletedAndPinned() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_deletedKey);
-    if (raw != null) {
+
+    final deletedRaw = prefs.getString(_deletedKey);
+    if (deletedRaw != null) {
       try {
-        _deletedIds = (jsonDecode(raw) as List).cast<String>().toSet();
-      } catch (_) {}
+        final decoded = jsonDecode(deletedRaw);
+        if (decoded is List) {
+          _deletedIds = decoded.map((e) => e.toString()).toSet();
+        }
+      } catch (_) {
+        _deletedIds = <String>{};
+      }
     }
-    final rawPin = prefs.getString(_pinnedKey);
-    if (rawPin != null) {
+
+    final pinnedRaw = prefs.getString(_pinnedKey);
+    if (pinnedRaw != null) {
       try {
-        _pinnedIds = (jsonDecode(rawPin) as List).cast<String>().toSet();
-      } catch (_) {}
+        final decoded = jsonDecode(pinnedRaw);
+        if (decoded is List) {
+          _pinnedIds = decoded.map((e) => e.toString()).toSet();
+        }
+      } catch (_) {
+        _pinnedIds = <String>{};
+      }
     }
   }
 
   Future<void> _loadCustomServers() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_customKey);
-    if (raw != null) {
-      try {
-        final list = jsonDecode(raw) as List;
-        _customServers = list.map((e) {
-          final m = e as Map<String, dynamic>;
-          return VpnServer(
-            id: m['id'] as String,
-            name: m['name'] as String,
-            flag: m['flag'] as String? ?? '🔧',
-            shareLink: m['shareLink'] as String,
-            protocol: VpnProtocol.values.firstWhere(
-              (p) => p.name == (m['protocol'] as String? ?? 'custom'),
-              orElse: () => VpnProtocol.custom,
-            ),
-            host: m['host'] as String? ?? '',
-            port: m['port'] as int? ?? 443,
+
+    if (raw == null) return;
+
+    try {
+      final decoded = jsonDecode(raw);
+
+      if (decoded is! List) return;
+
+      final loaded = <VpnServer>[];
+
+      for (final item in decoded) {
+        if (item is! Map) continue;
+
+        final map = Map<String, dynamic>.from(item);
+
+        final id = map['id']?.toString();
+        final name = map['name']?.toString();
+        final shareLink = map['shareLink']?.toString();
+
+        if (id == null || name == null || shareLink == null) {
+          continue;
+        }
+
+        final protocolName = map['protocol']?.toString() ?? 'custom';
+
+        final protocol = VpnProtocol.values.firstWhere(
+          (value) => value.name == protocolName,
+          orElse: () => VpnProtocol.custom,
+        );
+
+        loaded.add(
+          VpnServer(
+            id: id,
+            name: name,
+            flag: map['flag']?.toString() ?? '🔧',
+            shareLink: shareLink,
+            protocol: protocol,
+            host: map['host']?.toString() ?? '',
+            port: _safePort(map['port']),
             isDeletable: true,
-          );
-        }).toList();
-      } catch (_) {}
+          ),
+        );
+      }
+
+      _customServers = loaded;
+    } catch (_) {
+      _customServers = <VpnServer>[];
     }
+  }
+
+  int _safePort(dynamic value) {
+    if (value is int && value > 0 && value <= 65535) {
+      return value;
+    }
+
+    final parsed = int.tryParse(value?.toString() ?? '');
+    if (parsed != null && parsed > 0 && parsed <= 65535) {
+      return parsed;
+    }
+
+    return 443;
   }
 
   Future<void> _saveCustomServers() async {
     final prefs = await SharedPreferences.getInstance();
-    final list = _customServers
-        .map((s) => {
-              'id': s.id,
-              'name': s.name,
-              'flag': s.flag,
-              'shareLink': s.shareLink,
-              'protocol': s.protocol.name,
-              'host': s.host,
-              'port': s.port,
-            })
+
+    final data = _customServers
+        .map(
+          (server) => <String, dynamic>{
+            'id': server.id,
+            'name': server.name,
+            'flag': server.flag,
+            'shareLink': server.shareLink,
+            'protocol': server.protocol.name,
+            'host': server.host,
+            'port': server.port,
+          },
+        )
         .toList();
-    await prefs.setString(_customKey, jsonEncode(list));
+
+    await prefs.setString(_customKey, jsonEncode(data));
   }
 
   Future<void> _saveDeleted() async {
@@ -146,50 +213,64 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.setString(_pinnedKey, jsonEncode(_pinnedIds.toList()));
   }
 
-  void _togglePin(VpnServer s) {
-    setState(() {
-      if (_pinnedIds.contains(s.id)) {
-        _pinnedIds.remove(s.id);
-        s.isPinned = false;
-      } else {
-        _pinnedIds.add(s.id);
-        s.isPinned = true;
-      }
-      _rebuildServerList();
+  void _sortCurrentServers() {
+    ServerTester.sortServers(
+      _servers,
+      descending: !_sortAscending,
+    );
+
+    _servers.sort((a, b) {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return 0;
     });
-    _savePinned();
   }
 
   void _rebuildServerList() {
     if (!mounted) return;
-    setState(() {
-      _servers = [
-        ...kServers.where((s) => !_deletedIds.contains(s.id)),
-        ..._customServers.where((s) => !_deletedIds.contains(s.id)),
-        ...widget.extraServers.where((s) => !_deletedIds.contains(s.id)),
-      ];
-      for (final s in _servers) {
-        s.isPinned = _pinnedIds.contains(s.id);
-      }
-      if (_searchQuery.isNotEmpty) {
-        final q = _searchQuery.toLowerCase();
-        _servers = _servers
-            .where((s) =>
-                s.name.toLowerCase().contains(q) ||
-                s.host.toLowerCase().contains(q) ||
-                s.protocol.name.toLowerCase().contains(q))
-            .toList();
-      }
-      ServerTester.sortServers(_servers, descending: !_sortAscending);
-      _servers.sort((a, b) {
-        if (a.isPinned && !b.isPinned) return -1;
-        if (!a.isPinned && b.isPinned) return 1;
-        return 0;
-      });
-    });
+
+    final allServers = <VpnServer>[
+      ...kServers.where((server) => !_deletedIds.contains(server.id)),
+      ..._customServers.where((server) => !_deletedIds.contains(server.id)),
+      ...widget.extraServers.where((server) => !_deletedIds.contains(server.id)),
+    ];
+
+    for (final server in allServers) {
+      server.isPinned = _pinnedIds.contains(server.id);
+    }
+
+    var visibleServers = allServers;
+
+    final query = _searchQuery.trim().toLowerCase();
+
+    if (query.isNotEmpty) {
+      visibleServers = visibleServers.where((server) {
+        return server.name.toLowerCase().contains(query) ||
+            server.host.toLowerCase().contains(query) ||
+            server.protocol.name.toLowerCase().contains(query);
+      }).toList();
+    }
+
+    _servers = visibleServers;
+    _sortCurrentServers();
+
+    setState(() {});
+  }
+
+  void _togglePin(VpnServer server) {
+    if (_pinnedIds.contains(server.id)) {
+      _pinnedIds.remove(server.id);
+    } else {
+      _pinnedIds.add(server.id);
+    }
+
+    _rebuildServerList();
+    _savePinned();
   }
 
   void _cancelTesting() {
+    if (!mounted) return;
+
     setState(() {
       _cancelTest = true;
       _testing = false;
@@ -198,7 +279,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _testAll() async {
-    if (_testing) return;
+    if (_testing || _servers.isEmpty) return;
 
     setState(() {
       _testing = true;
@@ -206,47 +287,46 @@ class _HomeScreenState extends State<HomeScreen> {
       _tested = 0;
       _total = _servers.length;
       _status = _t('در حال تست...', 'Testing...');
-      for (final s in _servers) {
-        s.ping = null;
-        s.status = ServerStatus.idle;
+
+      for (final server in _servers) {
+        server.ping = null;
+        server.status = ServerStatus.idle;
       }
     });
 
     await ServerTester.testAllStreaming(
       _servers,
       isCancelled: () => _cancelTest,
-      onServerTested: (server) {
-        if (mounted) setState(() => _tested++);
+      onServerTested: (_) {
+        if (!mounted) return;
+        setState(() {
+          _tested++;
+        });
       },
       onListUpdated: () {
         if (!mounted) return;
+
+        _sortCurrentServers();
+
         setState(() {
-          ServerTester.sortServers(_servers, descending: !_sortAscending);
-          _servers.sort((a, b) {
-            if (a.isPinned && !b.isPinned) return -1;
-            if (!a.isPinned && b.isPinned) return 1;
-            return 0;
-          });
-          _servers = List.from(_servers);
+          _servers = List<VpnServer>.from(_servers);
         });
       },
     );
 
     if (!mounted) return;
 
+    _sortCurrentServers();
+
     setState(() {
-      ServerTester.sortServers(_servers, descending: !_sortAscending);
-      _servers.sort((a, b) {
-        if (a.isPinned && !b.isPinned) return -1;
-        if (!a.isPinned && b.isPinned) return 1;
-        return 0;
-      });
-      _servers = List.from(_servers);
+      _servers = List<VpnServer>.from(_servers);
       _testing = false;
+
       if (!_cancelTest) {
-        final best = ServerTester.fastest(_servers);
-        if (best != null && _autoMode) {
-          _selected = best;
+        final fastest = ServerTester.fastest(_servers);
+
+        if (_autoMode && fastest != null) {
+          _selected = fastest;
           _status = _t('بهترین سرور انتخاب شد', 'Best server selected');
         } else {
           _status = _t('تست تمام شد', 'Test finished');
@@ -255,83 +335,144 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _testOne(VpnServer s) async {
-    if (s.status == ServerStatus.testing) return;
+  Future<void> _testOne(VpnServer server) async {
+    if (server.status == ServerStatus.testing) return;
+
+    if (server.isAether) {
+      _showMsg(
+        _t(
+          'تست پینگ برای Aether قابل استفاده نیست',
+          'Ping test is not available for Aether',
+        ),
+      );
+      return;
+    }
+
     setState(() {
-      s.status = ServerStatus.testing;
-      s.ping = null;
+      server.status = ServerStatus.testing;
+      server.ping = null;
     });
-    final ping = await ServerTester.testPing(s);
+
+    final ping = await ServerTester.testPing(server);
+
     if (!mounted) return;
+
     setState(() {
-      s.ping = ping;
-      s.status = ping != null ? ServerStatus.online : ServerStatus.offline;
+      server.ping = ping;
+      server.status =
+          ping == null ? ServerStatus.offline : ServerStatus.online;
     });
   }
 
-  void _deleteServer(VpnServer s) {
-    setState(() {
-      _deletedIds.add(s.id);
-      _customServers.removeWhere((c) => c.id == s.id);
-      if (_selected?.id == s.id) _selected = null;
-      _rebuildServerList();
-    });
+  void _deleteServer(VpnServer server) {
+    _deletedIds.add(server.id);
+    _customServers.removeWhere((item) => item.id == server.id);
+
+    if (_selected?.id == server.id) {
+      _selected = null;
+    }
+
+    _rebuildServerList();
     _saveDeleted();
     _saveCustomServers();
   }
 
   void _deleteInvalid() {
     final toDelete = _servers
-        .where((s) => s.ping == null && s.status == ServerStatus.offline)
+        .where(
+          (server) =>
+              !server.isAether &&
+              server.ping == null &&
+              server.status == ServerStatus.offline,
+        )
         .toList();
+
     if (toDelete.isEmpty) {
-      _showMsg(_t('سرور آفلاینی برای حذف نیست', 'No offline servers to delete'));
+      _showMsg(
+        _t(
+          'سرور آفلاینی برای حذف نیست',
+          'No offline servers to delete',
+        ),
+      );
       return;
     }
-    setState(() {
-      for (final s in toDelete) {
-        _deletedIds.add(s.id);
-        _customServers.removeWhere((c) => c.id == s.id);
-      }
-      if (_selected != null && _deletedIds.contains(_selected!.id)) {
-        _selected = null;
-      }
-      _rebuildServerList();
-    });
+
+    for (final server in toDelete) {
+      _deletedIds.add(server.id);
+      _customServers.removeWhere((item) => item.id == server.id);
+    }
+
+    if (_selected != null && _deletedIds.contains(_selected!.id)) {
+      _selected = null;
+    }
+
+    _rebuildServerList();
     _saveDeleted();
     _saveCustomServers();
+
     _showMsg(
-        _t('${toDelete.length} سرور حذف شد', '${toDelete.length} servers deleted'));
+      _t(
+        '${toDelete.length} سرور حذف شد',
+        '${toDelete.length} servers deleted',
+      ),
+    );
+  }
+
+  Future<void> _refreshConnectionState() async {
+    if (!_connected) return;
+
+    if (_selected?.isAether == true) {
+      final alive = await AetherService.syncStatus();
+
+      if (!alive && mounted) {
+        setState(() {
+          _connected = false;
+          _status = _t('آماده', 'Ready');
+        });
+      }
+    }
+  }
+
+  Future<void> _disconnectAll() async {
+    await AetherService.disconnect();
+    await V2RayEngine.disconnect();
   }
 
   Future<void> _toggleConnection() async {
     if (_connecting) return;
+
+    await _refreshConnectionState();
 
     if (_connected) {
       setState(() {
         _connecting = true;
         _status = _t('در حال قطع...', 'Disconnecting...');
       });
+
       try {
-        // هر دو موتور را متوقف می‌کند؛ آن که فعال نیست بی‌ضرر است.
-        if (AetherService.isConnected) {
-          await AetherService.disconnect();
-        } else {
-          await V2RayEngine.disconnect();
-        }
+        await _disconnectAll();
       } catch (_) {}
-      if (mounted) {
-        setState(() {
-          _connected = false;
-          _connecting = false;
-          _status = _t('آماده', 'Ready');
-        });
-      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _connected = false;
+        _connecting = false;
+        _status = _t('آماده', 'Ready');
+      });
+
       return;
     }
 
-    if (_selected == null) {
-      _showMsg(_t('اول یک سرور انتخاب کن', 'Select a server first'));
+    final selected = _selected;
+
+    if (selected == null) {
+      _showMsg(
+        _t(
+          'اول یک سرور انتخاب کن',
+          'Select a server first',
+        ),
+      );
       return;
     }
 
@@ -341,69 +482,94 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      final bool ok;
-      final String? err;
-      if (_selected!.isAether) {
-        ok = await AetherService.connect(_selected!);
-        err = AetherService.lastError;
+      final bool connected;
+      final String? error;
+
+      if (selected.isAether) {
+        connected = await AetherService.connect(selected);
+        error = AetherService.lastError;
       } else {
-        ok = await V2RayEngine.connect(_selected!);
-        err = V2RayEngine.lastError;
+        connected = await V2RayEngine.connect(selected);
+        error = V2RayEngine.lastError;
       }
-      if (mounted) {
-        setState(() {
-          _connected = ok;
-          _connecting = false;
-          _status = ok
-              ? _t('متصل شد', 'Connected')
-              : (err != null
-                  ? _t('اتصال ناموفق: $err', 'Connection failed: $err')
-                  : _t('اتصال ناموفق', 'Connection failed'));
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _connected = false;
-          _connecting = false;
-          _status = _t('خطا در اتصال', 'Connection error');
-        });
-      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _connected = connected;
+        _connecting = false;
+
+        if (connected) {
+          _status = _t('متصل شد', 'Connected');
+        } else if (error != null && error.isNotEmpty) {
+          _status = _t(
+            'اتصال ناموفق: $error',
+            'Connection failed: $error',
+          );
+        } else {
+          _status = _t('اتصال ناموفق', 'Connection failed');
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _connected = false;
+        _connecting = false;
+        _status = _t(
+          'خطا در اتصال',
+          'Connection error',
+        );
+      });
+
+      debugPrint('Connection error: $error');
     }
   }
 
   Future<void> _copyAll() async {
-    final links =
-        _servers.map((s) => s.shareLink).where((l) => l.isNotEmpty).join('\n');
+    final links = _servers
+        .map((server) => server.shareLink)
+        .where((link) => link.trim().isNotEmpty)
+        .join('\n');
+
+    if (links.isEmpty) {
+      _showMsg(_t('لینکی وجود ندارد', 'No links available'));
+      return;
+    }
+
     await Clipboard.setData(ClipboardData(text: links));
     _showMsg(_t('همه لینک‌ها کپی شد', 'All links copied'));
   }
 
-  void _shareServer(VpnServer s) {
+  void _shareServer(VpnServer server) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => QrShareScreen(server: s, language: widget.language),
+        builder: (_) => QrShareScreen(
+          server: server,
+          language: widget.language,
+        ),
       ),
     );
   }
 
   void _toggleSort() {
+    _sortAscending = !_sortAscending;
+    _sortCurrentServers();
+
     setState(() {
-      _sortAscending = !_sortAscending;
-      ServerTester.sortServers(_servers, descending: !_sortAscending);
-      _servers.sort((a, b) {
-        if (a.isPinned && !b.isPinned) return -1;
-        if (!a.isPinned && b.isPinned) return 1;
-        return 0;
-      });
+      _servers = List<VpnServer>.from(_servers);
     });
   }
 
-  void _showMsg(String msg) {
+  void _showMsg(String message) {
     if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 
@@ -414,10 +580,8 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => AddConfigScreen(
           language: widget.language,
           onServerAdded: (server) {
-            setState(() {
-              _customServers.add(server);
-              _rebuildServerList();
-            });
+            _customServers.add(server);
+            _rebuildServerList();
             _saveCustomServers();
           },
         ),
@@ -425,14 +589,29 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _openSearch() {
+    setState(() {
+      _showSearch = true;
+    });
+  }
+
+  void _closeSearch() {
+    _searchController.clear();
+    _searchQuery = '';
+    _showSearch = false;
+    _rebuildServerList();
+  }
+
   void _showMainMenu() {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.elevated(context),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(20),
+        ),
       ),
-      builder: (ctx) {
+      builder: (sheetContext) {
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -448,66 +627,108 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 12),
               ListTile(
-                leading: const Icon(Icons.add_circle_outline,
-                    color: AppColors.accent),
-                title: Text(_t('افزودن کانفیگ', 'Add Config'),
-                    style: TextStyle(color: AppColors.fg(context))),
+                leading: const Icon(
+                  Icons.add_circle_outline,
+                  color: AppColors.accent,
+                ),
+                title: Text(
+                  _t('افزودن کانفیگ', 'Add Config'),
+                  style: TextStyle(
+                    color: AppColors.fg(context),
+                  ),
+                ),
                 onTap: () {
-                  Navigator.pop(ctx);
+                  Navigator.pop(sheetContext);
                   _openAddConfig();
                 },
               ),
               ListTile(
-                leading: Icon(Icons.search, color: AppColors.muted(context)),
-                title: Text(_t('جستجو در سرورها', 'Search Servers'),
-                    style: TextStyle(color: AppColors.fg(context))),
+                leading: Icon(
+                  Icons.search,
+                  color: AppColors.muted(context),
+                ),
+                title: Text(
+                  _t('جستجو در سرورها', 'Search Servers'),
+                  style: TextStyle(
+                    color: AppColors.fg(context),
+                  ),
+                ),
                 onTap: () {
-                  Navigator.pop(ctx);
-                  setState(() => _showSearch = true);
+                  Navigator.pop(sheetContext);
+                  _openSearch();
                 },
               ),
               ListTile(
-                leading: Icon(Icons.sort, color: AppColors.muted(context)),
-                title: Text(_t('مرتب‌سازی', 'Sort'),
-                    style: TextStyle(color: AppColors.fg(context))),
+                leading: Icon(
+                  Icons.sort,
+                  color: AppColors.muted(context),
+                ),
+                title: Text(
+                  _t('مرتب‌سازی', 'Sort'),
+                  style: TextStyle(
+                    color: AppColors.fg(context),
+                  ),
+                ),
                 onTap: () {
-                  Navigator.pop(ctx);
+                  Navigator.pop(sheetContext);
                   _toggleSort();
                 },
               ),
               ListTile(
-                leading:
-                    const Icon(Icons.delete_sweep, color: AppColors.danger),
-                title: Text(_t('حذف سرورهای آفلاین', 'Delete Offline'),
-                    style: TextStyle(color: AppColors.fg(context))),
+                leading: const Icon(
+                  Icons.delete_sweep,
+                  color: AppColors.danger,
+                ),
+                title: Text(
+                  _t('حذف سرورهای آفلاین', 'Delete Offline'),
+                  style: TextStyle(
+                    color: AppColors.fg(context),
+                  ),
+                ),
                 onTap: () {
-                  Navigator.pop(ctx);
+                  Navigator.pop(sheetContext);
                   _deleteInvalid();
                 },
               ),
               ListTile(
-                leading: Icon(Icons.copy_all, color: AppColors.muted(context)),
-                title: Text(_t('کپی همه لینک‌ها', 'Copy All Links'),
-                    style: TextStyle(color: AppColors.fg(context))),
+                leading: Icon(
+                  Icons.copy_all,
+                  color: AppColors.muted(context),
+                ),
+                title: Text(
+                  _t('کپی همه لینک‌ها', 'Copy All Links'),
+                  style: TextStyle(
+                    color: AppColors.fg(context),
+                  ),
+                ),
                 onTap: () {
-                  Navigator.pop(ctx);
+                  Navigator.pop(sheetContext);
                   _copyAll();
                 },
               ),
               ListTile(
                 leading: Icon(
-                  _autoMode ? Icons.auto_mode : Icons.auto_mode_outlined,
-                  color: _autoMode ? AppColors.accent : AppColors.muted(context),
+                  _autoMode
+                      ? Icons.auto_mode
+                      : Icons.auto_mode_outlined,
+                  color: _autoMode
+                      ? AppColors.accent
+                      : AppColors.muted(context),
                 ),
                 title: Text(
-                    _t('حالت خودکار', 'Auto Mode'),
-                    style: TextStyle(color: AppColors.fg(context))),
+                  _t('حالت خودکار', 'Auto Mode'),
+                  style: TextStyle(
+                    color: AppColors.fg(context),
+                  ),
+                ),
                 trailing: Switch(
                   value: _autoMode,
                   activeColor: AppColors.accent,
-                  onChanged: (v) {
-                    setState(() => _autoMode = v);
-                    Navigator.pop(ctx);
+                  onChanged: (value) {
+                    setState(() {
+                      _autoMode = value;
+                    });
+                    Navigator.pop(sheetContext);
                   },
                 ),
               ),
@@ -519,6 +740,260 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildTopBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(4, 6, 4, 4),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              IconButton(
+                icon: Icon(
+                  Icons.menu,
+                  color: AppColors.muted(context),
+                  size: 24,
+                ),
+                onPressed: _showMainMenu,
+                tooltip: _t('منو', 'Menu'),
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      _isFa ? 'حسن' : 'Hasan',
+                      style: TextStyle(
+                        color: AppColors.fg(context),
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _status,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppColors.muted(context),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: _testing
+                    ? const Icon(
+                        Icons.stop_circle_outlined,
+                        color: AppColors.danger,
+                        size: 22,
+                      )
+                    : const Icon(
+                        Icons.speed,
+                        color: AppColors.accent,
+                        size: 22,
+                      ),
+                onPressed: _testing ? _cancelTesting : _testAll,
+                tooltip: _t('تست همه', 'Test All'),
+              ),
+              IconButton(
+                icon: Icon(
+                  Icons.settings,
+                  color: AppColors.muted(context),
+                  size: 22,
+                ),
+                onPressed: widget.onOpenSettings,
+                tooltip: _t('تنظیمات', 'Settings'),
+              ),
+            ],
+          ),
+          if (_showSearch)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      style: TextStyle(
+                        color: AppColors.fg(context),
+                        fontSize: 14,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: _t('جستجو...', 'Search...'),
+                        hintStyle: TextStyle(
+                          color: AppColors.muted2(context),
+                        ),
+                        prefixIcon: Icon(
+                          Icons.search,
+                          color: AppColors.muted(context),
+                          size: 20,
+                        ),
+                        filled: true,
+                        fillColor: AppColors.surface(context),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      onChanged: (value) {
+                        _searchQuery = value;
+                        _rebuildServerList();
+                      },
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      Icons.close,
+                      color: AppColors.muted(context),
+                    ),
+                    onPressed: _closeSearch,
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConnectButton() {
+    final selectedColor = _selected == null
+        ? AppColors.border(context)
+        : AppColors.accent;
+
+    return GestureDetector(
+      onTap: _connecting ? null : _toggleConnection,
+      child: Container(
+        width: 130,
+        height: 130,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: _connected ? AppColors.accent : selectedColor,
+            width: 3,
+          ),
+          color: _connected
+              ? AppColors.accent.withOpacity(0.15)
+              : (_selected != null
+                  ? AppColors.accent.withOpacity(0.05)
+                  : Colors.transparent),
+          boxShadow: _connected
+              ? [
+                  BoxShadow(
+                    color: AppColors.accent.withOpacity(0.3),
+                    blurRadius: 20,
+                    spreadRadius: 2,
+                  ),
+                ]
+              : null,
+        ),
+        child: Center(
+          child: _connecting
+              ? const SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    color: AppColors.accent,
+                  ),
+                )
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _connected
+                          ? Icons.shield
+                          : Icons.power_settings_new,
+                      size: 42,
+                      color: _connected
+                          ? AppColors.accent
+                          : (_selected != null
+                              ? AppColors.accent
+                              : AppColors.muted2(context)),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _connected
+                          ? _t('قطع اتصال', 'Disconnect')
+                          : (_selected != null
+                              ? _t('اتصال', 'Connect')
+                              : _t('انتخاب سرور', 'Pick server')),
+                      style: TextStyle(
+                        color: _connected
+                            ? AppColors.accent
+                            : (_selected != null
+                                ? AppColors.accent
+                                : AppColors.muted2(context)),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildServerList() {
+    return Expanded(
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: _servers.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${_t("سرورها", "Servers")} (${_servers.length})',
+                    style: TextStyle(
+                      color: AppColors.muted(context),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (_testing)
+                    Text(
+                      '$_tested / $_total',
+                      style: TextStyle(
+                        color: AppColors.muted2(context),
+                        fontSize: 10,
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }
+
+          final server = _servers[index - 1];
+
+          return ServerTile(
+            server: server,
+            selected: _selected?.id == server.id,
+            onTap: () {
+              setState(() {
+                _selected = server;
+              });
+            },
+            onDelete: () => _deleteServer(server),
+            onPin: () => _togglePin(server),
+            onShare: () => _shareServer(server),
+            onTest: () => _testOne(server),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -526,257 +1001,21 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // ========== TOP BAR ==========
-            Container(
-              padding: const EdgeInsets.fromLTRB(4, 6, 4, 4),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      // Hamburger Menu (≡)
-                      IconButton(
-                        icon: Icon(Icons.menu,
-                            color: AppColors.muted(context), size: 24),
-                        onPressed: _showMainMenu,
-                        tooltip: _t('منو', 'Menu'),
-                      ),
-
-                      // Title
-                      Expanded(
-                        child: Column(
-                          children: [
-                            Text(
-                              _isFa ? 'حسن' : 'Hasan',
-                              style: TextStyle(
-                                color: AppColors.fg(context),
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _status,
-                              style: TextStyle(
-                                  color: AppColors.muted(context),
-                                  fontSize: 11),
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // Speed Test
-                      IconButton(
-                        icon: _testing
-                            ? const Icon(Icons.stop_circle_outlined,
-                                color: AppColors.danger, size: 22)
-                            : Icon(Icons.speed,
-                                color: AppColors.accent, size: 22),
-                        onPressed: _testing ? _cancelTesting : _testAll,
-                        tooltip: _t('تست همه', 'Test All'),
-                      ),
-
-                      // Settings (gear)
-                      IconButton(
-                        icon: Icon(Icons.settings,
-                            color: AppColors.muted(context), size: 22),
-                        onPressed: widget.onOpenSettings,
-                        tooltip: _t('تنظیمات', 'Settings'),
-                      ),
-                    ],
-                  ),
-
-                  // Search bar (when active)
-                  if (_showSearch)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _searchController,
-                              autofocus: true,
-                              style: TextStyle(
-                                  color: AppColors.fg(context), fontSize: 14),
-                              decoration: InputDecoration(
-                                hintText: _t('جستجو...', 'Search...'),
-                                hintStyle: TextStyle(
-                                    color: AppColors.muted2(context)),
-                                prefixIcon: Icon(Icons.search,
-                                    color: AppColors.muted(context), size: 20),
-                                filled: true,
-                                fillColor: AppColors.surface(context),
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 8),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                              ),
-                              onChanged: (v) {
-                                setState(() {
-                                  _searchQuery = v;
-                                  _rebuildServerList();
-                                });
-                              },
-                            ),
-                          ),
-                          IconButton(
-                            icon: Icon(Icons.close,
-                                color: AppColors.muted(context)),
-                            onPressed: () {
-                              setState(() {
-                                _showSearch = false;
-                                _searchQuery = '';
-                                _searchController.clear();
-                                _rebuildServerList();
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ),
-
+            _buildTopBar(),
             const SizedBox(height: 4),
-
-            // ========== CONNECT BUTTON ==========
-            GestureDetector(
-              onTap: _connecting ? null : _toggleConnection,
-              child: Container(
-                width: 130,
-                height: 130,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: _connected
-                        ? AppColors.accent
-                        : (_selected != null
-                            ? AppColors.accent
-                            : AppColors.border(context)),
-                    width: 3,
-                  ),
-                  color: _connected
-                      ? AppColors.accent.withOpacity(0.15)
-                      : (_selected != null
-                          ? AppColors.accent.withOpacity(0.05)
-                          : Colors.transparent),
-                  boxShadow: _connected
-                      ? [
-                          BoxShadow(
-                            color: AppColors.accent.withOpacity(0.3),
-                            blurRadius: 20,
-                            spreadRadius: 2,
-                          )
-                        ]
-                      : null,
-                ),
-                child: Center(
-                  child: _connecting
-                      ? const SizedBox(
-                          width: 36,
-                          height: 36,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 3,
-                            color: AppColors.accent,
-                          ),
-                        )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              _connected
-                                  ? Icons.shield
-                                  : Icons.power_settings_new,
-                              size: 42,
-                              color: _connected
-                                  ? AppColors.accent
-                                  : (_selected != null
-                                      ? AppColors.accent
-                                      : AppColors.muted2(context)),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              _connected
-                                  ? _t('قطع اتصال', 'Disconnect')
-                                  : (_selected != null
-                                      ? _t('اتصال', 'Connect')
-                                      : _t('انتخاب سرور', 'Pick server')),
-                              style: TextStyle(
-                                color: _connected
-                                    ? AppColors.accent
-                                    : (_selected != null
-                                        ? AppColors.accent
-                                        : AppColors.muted2(context)),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                ),
-              ),
-            ),
-
+            _buildConnectButton(),
             const SizedBox(height: 12),
-
-            // ========== SERVER LIST ==========
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: _servers.length + 1,
-                itemBuilder: (_, i) {
-                  if (i == 0) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '${_t("سرورها", "Servers")} (${_servers.length})',
-                            style: TextStyle(
-                              color: AppColors.muted(context),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          if (_testing)
-                            Text(
-                              '$_tested / $_total',
-                              style: TextStyle(
-                                  color: AppColors.muted2(context),
-                                  fontSize: 10),
-                            ),
-                        ],
-                      ),
-                    );
-                  }
-                  final s = _servers[i - 1];
-                  return ServerTile(
-                    server: s,
-                    selected: _selected?.id == s.id,
-                    onTap: () => setState(() => _selected = s),
-                    onDelete: () => _deleteServer(s),
-                    onPin: () => _togglePin(s),
-                    onShare: () => _shareServer(s),
-                    onTest: () => _testOne(s), // صاعقه نگه داشته شد
-                  );
-                },
-              ),
-            ),
+            _buildServerList(),
           ],
         ),
       ),
-
-      // Floating + button
       floatingActionButton: FloatingActionButton(
         onPressed: _openAddConfig,
         backgroundColor: AppColors.accent,
-        child: const Icon(Icons.add, color: Colors.black),
+        child: const Icon(
+          Icons.add,
+          color: Colors.black,
+        ),
       ),
     );
   }
