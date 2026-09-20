@@ -10,6 +10,7 @@ import '../models/subscription.dart';
 import '../services/aether_service.dart';
 import '../services/app_colors.dart';
 import '../services/server_tester.dart';
+import '../services/settings_service.dart';
 import '../services/v2ray_engine.dart';
 import '../widgets/server_tile.dart';
 import 'add_config_screen.dart';
@@ -85,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _bootstrap() async {
     await _loadDeletedAndPinned();
     await _loadCustomServers();
+    await _loadServerNameOverrides();
     if (!mounted) return;
     _rebuildServerList();
     await _loadPings();
@@ -145,6 +147,66 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
     await prefs.setString(_pingsKey, jsonEncode(map));
+  }
+
+  // ----------------------------------------------------- server names
+
+  Future<void> _loadServerNameOverrides() async {
+    final overrides = await SettingsService.getServerNameOverrides();
+    final allServers = <VpnServer>[
+      ...kServers,
+      ..._customServers,
+      ...widget.extraServers,
+    ];
+    for (final server in allServers) {
+      final ov = overrides[server.id];
+      if (ov != null && ov.isNotEmpty) {
+        server.nameOverride = ov;
+      }
+    }
+  }
+
+  Future<void> _editServerName(VpnServer server) async {
+    final ctrl = TextEditingController(text: server.displayName);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.elevated(ctx),
+        title: Text(_t('ویرایش نام سرور', 'Edit server name'),
+            style: TextStyle(color: AppColors.fg(ctx))),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: TextStyle(color: AppColors.fg(ctx)),
+          decoration: InputDecoration(
+            labelText: _t('نام جدید', 'New name'),
+            labelStyle: TextStyle(color: AppColors.muted(ctx)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(_t('لغو', 'Cancel'),
+                style: TextStyle(color: AppColors.muted(ctx))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(_t('ذخیره', 'Save'),
+                style: const TextStyle(color: AppColors.accent)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final newName = ctrl.text.trim();
+    if (newName.isEmpty) return;
+
+    await SettingsService.setServerNameOverride(server.id, newName);
+    if (!mounted) return;
+    setState(() {
+      server.nameOverride = newName;
+    });
   }
 
   // ------------------------------------------------------------- loading
@@ -271,7 +333,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final query = _searchQuery.trim().toLowerCase();
     if (query.isNotEmpty) {
       list = list.where((server) {
-        return server.name.toLowerCase().contains(query) ||
+        return server.displayName.toLowerCase().contains(query) ||
             server.host.toLowerCase().contains(query) ||
             server.protocol.name.toLowerCase().contains(query);
       }).toList();
@@ -1015,6 +1077,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onDelete: () => _deleteServer(server),
             onPin: () => _togglePin(server),
             onShare: () => _shareServer(server),
+            onEdit: () => _editServerName(server),
             onTest: () => _testOne(server),
           );
         },
