@@ -33,10 +33,10 @@ class ServerTile extends StatelessWidget {
     if (server.isAether) {
       return 'AETHER · ${AetherProfile.fromLink(server.shareLink).summary}';
     }
-    final name = server.protocol.name.toUpperCase();
+    final proto = server.protocol.name.toUpperCase();
     final host = server.host.trim();
-    if (host.isEmpty || host == 'unknown') return name;
-    return '$name · $host';
+    if (host.isEmpty || host == 'unknown') return proto;
+    return '$proto · $host';
   }
 
   Color _pingColor(BuildContext context) {
@@ -58,25 +58,20 @@ class ServerTile extends StatelessWidget {
 
     if (ping != null) {
       final testing = server.status == ServerStatus.testing;
-      return Tooltip(
-        message: testing
-            ? (isTcp ? 'TCP (testing)' : 'Real (testing)')
-            : (isTcp ? 'TCP' : 'Real'),
-        child: Text(
-          '${isTcp ? '~' : ''}$ping ms',
-          style: TextStyle(
-            color: testing ? AppColors.muted2(context) : _pingColor(context),
-            fontSize: 12,
-            fontWeight: isTcp ? FontWeight.w500 : FontWeight.w700,
-          ),
+      return Text(
+        '${isTcp ? '~' : ''}$ping',
+        style: TextStyle(
+          color: testing ? AppColors.muted2(context) : _pingColor(context),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
         ),
       );
     }
 
     if (server.status == ServerStatus.testing) {
       return const SizedBox(
-        width: 14,
-        height: 14,
+        width: 12,
+        height: 12,
         child: CircularProgressIndicator(
           strokeWidth: 2,
           color: AppColors.accent,
@@ -96,7 +91,7 @@ class ServerTile extends StatelessWidget {
         color = AppColors.muted(context);
         break;
       default:
-        text = '---';
+        text = '—';
         color = AppColors.muted2(context);
     }
 
@@ -105,35 +100,35 @@ class ServerTile extends StatelessWidget {
       style: TextStyle(
         color: color,
         fontSize: 12,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
       ),
     );
   }
 
-  Widget _iconButton({
+  Widget _smallIcon({
     required IconData icon,
     required Color color,
     required VoidCallback? onPressed,
-    double size = 16,
   }) {
-    return IconButton(
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 26),
-      iconSize: size,
-      icon: Icon(icon, color: color, size: size),
-      onPressed: onPressed,
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Icon(icon, color: color, size: 16),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
         color: selected
             ? AppColors.elevated(context)
             : AppColors.surface(context),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: selected ? AppColors.accent : AppColors.border(context),
           width: selected ? 1.5 : 1,
@@ -142,27 +137,36 @@ class ServerTile extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            padding: const EdgeInsets.fromLTRB(4, 6, 8, 6),
             child: Row(
               children: [
+                // Pin
                 if (onPin != null)
-                  _iconButton(
-                    icon: server.isPinned
-                        ? Icons.push_pin
-                        : Icons.push_pin_outlined,
-                    color: server.isPinned
-                        ? AppColors.accent
-                        : AppColors.muted2(context),
-                    onPressed: onPin,
-                    size: 18,
+                  InkWell(
+                    onTap: onPin,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Icon(
+                        server.isPinned
+                            ? Icons.push_pin
+                            : Icons.push_pin_outlined,
+                        color: server.isPinned
+                            ? AppColors.accent
+                            : AppColors.muted2(context),
+                        size: 16,
+                      ),
+                    ),
                   ),
 
-                Text(server.flag, style: const TextStyle(fontSize: 18)),
+                // Flag
+                Text(server.flag, style: const TextStyle(fontSize: 16)),
                 const SizedBox(width: 6),
 
+                // Name + caption
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -170,7 +174,7 @@ class ServerTile extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Flexible(
+                          Expanded(
                             child: Text(
                               server.displayName,
                               style: TextStyle(
@@ -206,53 +210,42 @@ class ServerTile extends StatelessWidget {
                   ),
                 ),
 
-                const SizedBox(width: 4),
-                _buildPing(context),
+                const SizedBox(width: 6),
 
-                _iconButton(
-                  icon: Icons.copy,
-                  color: AppColors.accent,
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: server.shareLink));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('لینک کپی شد'),
-                        duration: Duration(seconds: 1),
-                      ),
-                    );
-                  },
+                // Ping
+                SizedBox(
+                  width: 38,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: _buildPing(context),
+                  ),
                 ),
 
+                const SizedBox(width: 2),
+
+                // Actions (کمتر و فشرده‌تر)
                 if (onTest != null)
-                  _iconButton(
+                  _smallIcon(
                     icon: Icons.bolt,
                     color: AppColors.warn,
-                    onPressed:
-                        server.status == ServerStatus.testing ? null : onTest,
-                  ),
-
-                if (onShare != null)
-                  _iconButton(
-                    icon: Icons.share_outlined,
-                    color: AppColors.muted(context),
-                    onPressed: onShare,
+                    onPressed: server.status == ServerStatus.testing
+                        ? null
+                        : onTest,
                   ),
 
                 if (onEdit != null)
-                  _iconButton(
+                  _smallIcon(
                     icon: Icons.edit_outlined,
                     color: AppColors.muted(context),
                     onPressed: onEdit,
                   ),
 
                 if (onDelete != null)
-                  _iconButton(
+                  _smallIcon(
                     icon: Icons.delete_outline,
                     color: AppColors.danger,
                     onPressed: onDelete,
-                  )
-                else
-                  const SizedBox(width: 26),
+                  ),
               ],
             ),
           ),
