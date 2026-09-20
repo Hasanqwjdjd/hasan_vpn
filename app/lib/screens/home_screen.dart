@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
+import '../models/subscription.dart';
 import '../services/aether_service.dart';
 import '../services/app_colors.dart';
 import '../services/server_tester.dart';
@@ -16,6 +17,7 @@ import 'qr_share_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final List<VpnServer> extraServers;
+  final List<Subscription> subscriptions;
   final VoidCallback? onOpenSettings;
   final String language;
   final VoidCallback? onRefreshSubscriptions;
@@ -23,6 +25,7 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     this.extraServers = const [],
+    this.subscriptions = const [],
     this.onOpenSettings,
     this.language = 'fa',
     this.onRefreshSubscriptions,
@@ -44,9 +47,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Set<String> _deletedIds = <String>{};
   Set<String> _pinnedIds = <String>{};
 
-  VpnServer? _selected;
+  /// null = «همه»، در غیر این صورت شناسه‌ی اشتراک انتخاب‌شده.
+  String? _selectedSubId;
 
-  /// سروری که الان به آن وصل هستیم (ممکن است با [_selected] فرق کند).
+  VpnServer? _selected;
   VpnServer? _active;
 
   TestSession? _session;
@@ -63,8 +67,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int _pollTick = 0;
   int _deadStrikes = 0;
-
-  /// آخرین پینگ زنده‌ی اتصال فعلی (کل مسیر: اپ ← تونل ← اینترنت).
   int? _livePing;
 
   String _searchQuery = '';
@@ -74,7 +76,6 @@ class _HomeScreenState extends State<HomeScreen> {
   int _total = 0;
 
   bool get _isFa => widget.language == 'fa';
-
   String _t(String fa, String en) => _isFa ? fa : en;
 
   @override
@@ -86,24 +87,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _bootstrap() async {
     await _loadDeletedAndPinned();
     await _loadCustomServers();
-
     if (!mounted) return;
     _rebuildServerList();
-
     await V2RayEngine.init();
     if (!mounted) return;
-
-    _pollTimer = Timer.periodic(
-      const Duration(seconds: 4),
-      (_) => _poll(),
-    );
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _poll());
   }
 
   @override
   void didUpdateWidget(covariant HomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-
     if (oldWidget.extraServers != widget.extraServers ||
+        oldWidget.subscriptions != widget.subscriptions ||
         oldWidget.language != widget.language) {
       _rebuildServerList();
     }
@@ -111,7 +106,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadDeletedAndPinned() async {
     final prefs = await SharedPreferences.getInstance();
-
     final deletedRaw = prefs.getString(_deletedKey);
     if (deletedRaw != null) {
       try {
@@ -123,7 +117,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _deletedIds = <String>{};
       }
     }
-
     final pinnedRaw = prefs.getString(_pinnedKey);
     if (pinnedRaw != null) {
       try {
@@ -140,50 +133,34 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadCustomServers() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_customKey);
-
     if (raw == null) return;
-
     try {
       final decoded = jsonDecode(raw);
-
       if (decoded is! List) return;
-
       final loaded = <VpnServer>[];
-
       for (final item in decoded) {
         if (item is! Map) continue;
-
         final map = Map<String, dynamic>.from(item);
-
         final id = map['id']?.toString();
         final name = map['name']?.toString();
         final shareLink = map['shareLink']?.toString();
-
-        if (id == null || name == null || shareLink == null) {
-          continue;
-        }
-
+        if (id == null || name == null || shareLink == null) continue;
         final protocolName = map['protocol']?.toString() ?? 'custom';
-
         final protocol = VpnProtocol.values.firstWhere(
           (value) => value.name == protocolName,
           orElse: () => VpnProtocol.custom,
         );
-
-        loaded.add(
-          VpnServer(
-            id: id,
-            name: name,
-            flag: map['flag']?.toString() ?? '🔧',
-            shareLink: shareLink,
-            protocol: protocol,
-            host: map['host']?.toString() ?? '',
-            port: _safePort(map['port']),
-            isDeletable: true,
-          ),
-        );
+        loaded.add(VpnServer(
+          id: id,
+          name: name,
+          flag: map['flag']?.toString() ?? '🔧',
+          shareLink: shareLink,
+          protocol: protocol,
+          host: map['host']?.toString() ?? '',
+          port: _safePort(map['port']),
+          isDeletable: true,
+        ));
       }
-
       _customServers = loaded;
     } catch (_) {
       _customServers = <VpnServer>[];
@@ -191,35 +168,25 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   int _safePort(dynamic value) {
-    if (value is int && value > 0 && value <= 65535) {
-      return value;
-    }
-
+    if (value is int && value > 0 && value <= 65535) return value;
     final parsed = int.tryParse(value?.toString() ?? '');
-    if (parsed != null && parsed > 0 && parsed <= 65535) {
-      return parsed;
-    }
-
+    if (parsed != null && parsed > 0 && parsed <= 65535) return parsed;
     return 443;
   }
 
   Future<void> _saveCustomServers() async {
     final prefs = await SharedPreferences.getInstance();
-
     final data = _customServers
-        .map(
-          (server) => <String, dynamic>{
-            'id': server.id,
-            'name': server.name,
-            'flag': server.flag,
-            'shareLink': server.shareLink,
-            'protocol': server.protocol.name,
-            'host': server.host,
-            'port': server.port,
-          },
-        )
+        .map((server) => <String, dynamic>{
+              'id': server.id,
+              'name': server.name,
+              'flag': server.flag,
+              'shareLink': server.shareLink,
+              'protocol': server.protocol.name,
+              'host': server.host,
+              'port': server.port,
+            })
         .toList();
-
     await prefs.setString(_customKey, jsonEncode(data));
   }
 
@@ -231,14 +198,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _savePinned() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_pinnedKey, jsonEncode(_pinnedIds.toList()));
-  }
-
-  void _sortCurrentServers() {
-    // sortServers خودش پین‌شده‌ها را اول می‌گذارد و ترتیب را پایدار نگه می‌دارد.
-    ServerTester.sortServers(
-      _servers,
-      descending: !_sortAscending,
-    );
   }
 
   void _rebuildServerList() {
@@ -254,22 +213,35 @@ class _HomeScreenState extends State<HomeScreen> {
       server.isPinned = _pinnedIds.contains(server.id);
     }
 
-    var visibleServers = allServers;
+    var list = allServers;
+    if (_selectedSubId != null) {
+      final sub = widget.subscriptions.firstWhere(
+        (s) => s.id == _selectedSubId,
+        orElse: () => Subscription(id: '', name: '', url: ''),
+      );
+      if (sub.id.isNotEmpty) {
+        final links = sub.cachedLinks.toSet();
+        list = list.where((s) => links.contains(s.shareLink)).toList();
+      }
+    }
 
     final query = _searchQuery.trim().toLowerCase();
-
     if (query.isNotEmpty) {
-      visibleServers = visibleServers.where((server) {
+      list = list.where((server) {
         return server.name.toLowerCase().contains(query) ||
             server.host.toLowerCase().contains(query) ||
             server.protocol.name.toLowerCase().contains(query);
       }).toList();
     }
 
-    _servers = visibleServers;
+    _servers = list;
     _sortCurrentServers();
-
     setState(() {});
+  }
+
+  void _selectSubscription(String? subId) {
+    setState(() => _selectedSubId = subId);
+    _rebuildServerList();
   }
 
   void _togglePin(VpnServer server) {
@@ -278,21 +250,20 @@ class _HomeScreenState extends State<HomeScreen> {
     } else {
       _pinnedIds.add(server.id);
     }
-
     _rebuildServerList();
     _savePinned();
   }
 
+  void _sortCurrentServers() {
+    ServerTester.sortServers(_servers, descending: !_sortAscending);
+  }
+
   void _cancelTesting() {
     if (!mounted) return;
-
     _session?.cancel();
-
     setState(() {
       _testing = false;
       _status = _t('تست لغو شد', 'Test cancelled');
-
-      // سرورهایی که وسط تست بودند نباید برای همیشه «در حال تست» بمانند.
       for (final server in _servers) {
         if (server.status == ServerStatus.testing) {
           server.status =
@@ -304,22 +275,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _testAll() async {
     if (_testing || _servers.isEmpty) return;
-
     final targets = _servers.where((s) => !s.isAether).toList();
     if (targets.isEmpty) {
       _showMsg(_t('سروری برای تست نیست', 'Nothing to test'));
       return;
     }
-
-    // وقتی با یک VPN معمولی وصل هستیم، ترافیک تست هم از داخل همان تونل می‌رود
-    // و عددها واقعی نیستند (Aether مستثنا است، چون خود برنامه از VPN خارج است).
     if (_connected && _active?.isAether != true) {
-      _showMsg(
-        _t(
-          'الان وصل هستی؛ پینگ‌ها از داخل تونل فعلی اندازه‌گیری می‌شوند. برای عدد دقیق اول قطع کن.',
-          'You are connected; pings are measured through the current tunnel. Disconnect for accurate numbers.',
-        ),
-      );
+      _showMsg(_t(
+        'الان وصل هستی؛ پینگ‌ها از داخل تونل فعلی اندازه‌گیری می‌شوند.',
+        'You are connected; pings are measured through the current tunnel.',
+      ));
     }
 
     final session = TestSession();
@@ -330,7 +295,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _tested = 0;
       _total = targets.length;
       _status = _t('در حال تست...', 'Testing...');
-
       for (final server in targets) {
         server.resetPing();
       }
@@ -351,64 +315,41 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (!mounted || session.cancelled) return;
-
     _sortCurrentServers();
 
     setState(() {
       _servers = List<VpnServer>.from(_servers);
       _testing = false;
-
       final fastest = ServerTester.fastest(_servers);
       final counts = '${summary.online}/${summary.total}';
-
       if (_autoMode && fastest != null && !_connected) {
         _selected = fastest;
-        _status = _t(
-          'بهترین سرور انتخاب شد ($counts آنلاین)',
-          'Best server selected ($counts online)',
-        );
+        _status = _t('بهترین سرور انتخاب شد ($counts آنلاین)',
+            'Best server ($counts online)');
       } else {
-        _status = _t('تست تمام شد ($counts آنلاین)', 'Test finished ($counts online)');
-      }
-
-      if (summary.realUnavailable) {
-        _status += _t(
-          ' · پینگ واقعی پشتیبانی نشد، فقط TCP',
-          ' · real ping unsupported, TCP only',
-        );
+        _status = _t(
+            'تست تمام شد ($counts آنلاین)', 'Test finished ($counts online)');
       }
     });
   }
 
   Future<void> _testOne(VpnServer server) async {
     if (server.status == ServerStatus.testing) return;
-
     if (server.isAether) {
-      // پینگ Aether فقط وقتی تونل بالاست معنا دارد.
       if (_connected && _active?.id == server.id) {
         await _measureLive(force: true);
-        _showMsg(
-          _livePing != null
-              ? _t('پینگ زنده: $_livePing ms', 'Live ping: $_livePing ms')
-              : _t('پاسخی از تونل نیامد', 'No response through the tunnel'),
-        );
+        _showMsg(_livePing != null
+            ? _t('پینگ زنده: $_livePing ms', 'Live ping: $_livePing ms')
+            : _t('پاسخی نیامد', 'No response'));
       } else {
-        _showMsg(
-          _t(
-            'Aether آدرس ثابت ندارد؛ برای دیدن پینگ ابتدا وصل شو',
-            'Aether has no fixed address; connect first to see its ping',
-          ),
-        );
+        _showMsg(_t('Aether آدرس ثابت ندارد؛ اول وصل شو',
+            'Aether has no fixed address; connect first'));
       }
       return;
     }
 
-    setState(() {
-      server.status = ServerStatus.testing;
-    });
-
+    setState(() => server.status = ServerStatus.testing);
     final session = TestSession();
-
     await ServerTester.testOne(
       server,
       session: session,
@@ -416,7 +357,6 @@ class _HomeScreenState extends State<HomeScreen> {
         if (mounted) setState(() {});
       },
     );
-
     if (!mounted) return;
     setState(() {});
   }
@@ -424,11 +364,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _deleteServer(VpnServer server) {
     _deletedIds.add(server.id);
     _customServers.removeWhere((item) => item.id == server.id);
-
-    if (_selected?.id == server.id) {
-      _selected = null;
-    }
-
+    if (_selected?.id == server.id) _selected = null;
     _rebuildServerList();
     _saveDeleted();
     _saveCustomServers();
@@ -436,43 +372,25 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _deleteInvalid() {
     final toDelete = _servers
-        .where(
-          (server) =>
-              !server.isAether &&
-              server.ping == null &&
-              server.status == ServerStatus.offline,
-        )
+        .where((s) =>
+            !s.isAether && s.ping == null && s.status == ServerStatus.offline)
         .toList();
-
     if (toDelete.isEmpty) {
-      _showMsg(
-        _t(
-          'سرور آفلاینی برای حذف نیست',
-          'No offline servers to delete',
-        ),
-      );
+      _showMsg(_t('سرور آفلاینی نیست', 'No offline servers'));
       return;
     }
-
     for (final server in toDelete) {
       _deletedIds.add(server.id);
       _customServers.removeWhere((item) => item.id == server.id);
     }
-
     if (_selected != null && _deletedIds.contains(_selected!.id)) {
       _selected = null;
     }
-
     _rebuildServerList();
     _saveDeleted();
     _saveCustomServers();
-
     _showMsg(
-      _t(
-        '${toDelete.length} سرور حذف شد',
-        '${toDelete.length} servers deleted',
-      ),
-    );
+        _t('${toDelete.length} سرور حذف شد', '${toDelete.length} servers deleted'));
   }
 
   Future<void> _disconnectAll() async {
@@ -493,35 +411,25 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// هر ۴ ثانیه: وضعیت واقعی اتصال را با هسته هماهنگ می‌کند (مثلاً وقتی کاربر
-  /// از نوتیفیکیشن قطع می‌کند یا پردازه‌ی Aether می‌میرد) و هر ~۱۲ ثانیه پینگ
-  /// زنده را به‌روز می‌کند.
   Future<void> _poll() async {
     if (!mounted || _connecting || _polling || !_connected) return;
     _polling = true;
-
     try {
       final active = _active;
       var alive = V2RayEngine.isConnected;
-
       if (alive && active?.isAether == true) {
         alive = await AetherService.syncStatus();
       }
-
       if (!alive) {
-        // یک بار خطا را ندیده می‌گیریم تا رویداد گذرای افزونه قطع کاذب نسازد.
         _deadStrikes++;
         if (_deadStrikes >= 2) {
           try {
             await _disconnectAll();
           } catch (_) {}
-          _markDisconnected(
-            _t('اتصال قطع شد', 'Connection lost'),
-          );
+          _markDisconnected(_t('اتصال قطع شد', 'Connection lost'));
         }
         return;
       }
-
       _deadStrikes = 0;
       _pollTick++;
       if (_pollTick % 3 == 1) await _measureLive();
@@ -530,17 +438,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// پینگ زنده‌ی واقعی: یک درخواست HTTP از داخل خود تونل.
   Future<void> _measureLive({bool force = false}) async {
     if (!_connected) return;
     if (!force && _connecting) return;
-
     final result = await V2RayEngine.probeConnected();
     if (!mounted || !_connected) return;
-
     setState(() {
       _livePing = result.ms;
-
       final active = _active;
       if (active != null && result.ok) {
         active.ping = result.ms;
@@ -552,41 +456,28 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _toggleConnection() async {
-    // حین اتصال، دوباره زدن دکمه = لغو (برای Aether که ممکن است طول بکشد).
     if (_connecting) {
       _cancelConnect = true;
       setState(() => _status = _t('در حال لغو...', 'Cancelling...'));
       return;
     }
-
     if (_connected) {
       setState(() {
         _connecting = true;
         _status = _t('در حال قطع...', 'Disconnecting...');
       });
-
       try {
         await _disconnectAll();
       } catch (_) {}
-
       _markDisconnected(_t('آماده', 'Ready'));
       return;
     }
-
     final selected = _selected;
-
     if (selected == null) {
-      _showMsg(
-        _t(
-          'اول یک سرور انتخاب کن',
-          'Select a server first',
-        ),
-      );
+      _showMsg(_t('اول یک سرور انتخاب کن', 'Select a server first'));
       return;
     }
-
     _cancelConnect = false;
-
     setState(() {
       _connecting = true;
       _livePing = null;
@@ -596,7 +487,6 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final bool connected;
       final String? error;
-
       if (selected.isAether) {
         connected = await AetherService.connect(
           selected,
@@ -613,56 +503,41 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (!mounted) return;
-
       if (connected && _cancelConnect) {
-        // کاربر وسط راه لغو کرد ولی اتصال برقرار شده بود.
         try {
           await _disconnectAll();
         } catch (_) {}
         _markDisconnected(_t('لغو شد', 'Cancelled'));
         return;
       }
-
       _deadStrikes = 0;
       _pollTick = 0;
-
       setState(() {
         _connected = connected;
         _connecting = false;
         _active = connected ? selected : null;
-
         if (connected) {
           _status = _t('متصل شد', 'Connected');
         } else if (_cancelConnect) {
           _status = _t('لغو شد', 'Cancelled');
         } else if (error != null && error.isNotEmpty) {
-          _status = _t(
-            'اتصال ناموفق: $error',
-            'Connection failed: $error',
-          );
+          _status = _t('اتصال ناموفق: $error', 'Failed: $error');
         } else {
-          _status = _t('اتصال ناموفق', 'Connection failed');
+          _status = _t('اتصال ناموفق', 'Failed');
         }
       });
-
       if (connected) {
-        // کمی صبر تا تونل جا بیفتد، بعد اولین پینگ زنده.
         await Future<void>.delayed(const Duration(milliseconds: 800));
         await _measureLive();
       }
     } catch (error) {
       if (!mounted) return;
-
       setState(() {
         _connected = false;
         _connecting = false;
         _active = null;
-        _status = _t(
-          'خطا در اتصال',
-          'Connection error',
-        );
+        _status = _t('خطا در اتصال', 'Connection error');
       });
-
       debugPrint('Connection error: $error');
     }
   }
@@ -672,12 +547,10 @@ class _HomeScreenState extends State<HomeScreen> {
         .map((server) => server.shareLink)
         .where((link) => link.trim().isNotEmpty)
         .join('\n');
-
     if (links.isEmpty) {
-      _showMsg(_t('لینکی وجود ندارد', 'No links available'));
+      _showMsg(_t('لینکی وجود ندارد', 'No links'));
       return;
     }
-
     await Clipboard.setData(ClipboardData(text: links));
     _showMsg(_t('همه لینک‌ها کپی شد', 'All links copied'));
   }
@@ -686,10 +559,8 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => QrShareScreen(
-          server: server,
-          language: widget.language,
-        ),
+        builder: (_) =>
+            QrShareScreen(server: server, language: widget.language),
       ),
     );
   }
@@ -697,20 +568,13 @@ class _HomeScreenState extends State<HomeScreen> {
   void _toggleSort() {
     _sortAscending = !_sortAscending;
     _sortCurrentServers();
-
-    setState(() {
-      _servers = List<VpnServer>.from(_servers);
-    });
+    setState(() => _servers = List<VpnServer>.from(_servers));
   }
 
   void _showMsg(String message) {
     if (!mounted) return;
-
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 2),
-      ),
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
 
@@ -730,11 +594,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openSearch() {
-    setState(() {
-      _showSearch = true;
-    });
-  }
+  void _openSearch() => setState(() => _showSearch = true);
 
   void _closeSearch() {
     _searchController.clear();
@@ -748,9 +608,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       backgroundColor: AppColors.elevated(context),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(20),
-        ),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (sheetContext) {
         return SafeArea(
@@ -768,64 +626,40 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 12),
               ListTile(
-                leading: const Icon(
-                  Icons.add_circle_outline,
-                  color: AppColors.accent,
-                ),
-                title: Text(
-                  _t('افزودن کانفیگ', 'Add Config'),
-                  style: TextStyle(
-                    color: AppColors.fg(context),
-                  ),
-                ),
+                leading: const Icon(Icons.add_circle_outline,
+                    color: AppColors.accent),
+                title: Text(_t('افزودن کانفیگ', 'Add Config'),
+                    style: TextStyle(color: AppColors.fg(context))),
                 onTap: () {
                   Navigator.pop(sheetContext);
                   _openAddConfig();
                 },
               ),
               ListTile(
-                leading: Icon(
-                  Icons.search,
-                  color: AppColors.muted(context),
-                ),
-                title: Text(
-                  _t('جستجو در سرورها', 'Search Servers'),
-                  style: TextStyle(
-                    color: AppColors.fg(context),
-                  ),
-                ),
+                leading:
+                    Icon(Icons.search, color: AppColors.muted(context)),
+                title: Text(_t('جستجو در سرورها', 'Search Servers'),
+                    style: TextStyle(color: AppColors.fg(context))),
                 onTap: () {
                   Navigator.pop(sheetContext);
                   _openSearch();
                 },
               ),
               ListTile(
-                leading: const Icon(
-                  Icons.delete_sweep,
-                  color: AppColors.danger,
-                ),
-                title: Text(
-                  _t('حذف سرورهای آفلاین', 'Delete Offline'),
-                  style: TextStyle(
-                    color: AppColors.fg(context),
-                  ),
-                ),
+                leading:
+                    const Icon(Icons.delete_sweep, color: AppColors.danger),
+                title: Text(_t('حذف سرورهای آفلاین', 'Delete Offline'),
+                    style: TextStyle(color: AppColors.fg(context))),
                 onTap: () {
                   Navigator.pop(sheetContext);
                   _deleteInvalid();
                 },
               ),
               ListTile(
-                leading: Icon(
-                  Icons.copy_all,
-                  color: AppColors.muted(context),
-                ),
-                title: Text(
-                  _t('کپی همه لینک‌ها', 'Copy All Links'),
-                  style: TextStyle(
-                    color: AppColors.fg(context),
-                  ),
-                ),
+                leading:
+                    Icon(Icons.copy_all, color: AppColors.muted(context)),
+                title: Text(_t('کپی همه لینک‌ها', 'Copy All Links'),
+                    style: TextStyle(color: AppColors.fg(context))),
                 onTap: () {
                   Navigator.pop(sheetContext);
                   _copyAll();
@@ -833,26 +667,18 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               ListTile(
                 leading: Icon(
-                  _autoMode
-                      ? Icons.auto_mode
-                      : Icons.auto_mode_outlined,
+                  _autoMode ? Icons.auto_mode : Icons.auto_mode_outlined,
                   color: _autoMode
                       ? AppColors.accent
                       : AppColors.muted(context),
                 ),
-                title: Text(
-                  _t('حالت خودکار', 'Auto Mode'),
-                  style: TextStyle(
-                    color: AppColors.fg(context),
-                  ),
-                ),
+                title: Text(_t('حالت خودکار', 'Auto Mode'),
+                    style: TextStyle(color: AppColors.fg(context))),
                 trailing: Switch(
                   value: _autoMode,
                   activeColor: AppColors.accent,
                   onChanged: (value) {
-                    setState(() {
-                      _autoMode = value;
-                    });
+                    setState(() => _autoMode = value);
                     Navigator.pop(sheetContext);
                   },
                 ),
@@ -865,6 +691,57 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildSubTabs() {
+    if (widget.subscriptions.isEmpty) return const SizedBox.shrink();
+
+    final tabs = <Widget>[
+      _subTab(null, _t('همه', 'All')),
+      for (final sub in widget.subscriptions)
+        _subTab(sub.id, sub.name, sub.serverCount),
+    ];
+
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: tabs.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) => tabs[i],
+      ),
+    );
+  }
+
+  Widget _subTab(String? subId, String label, [int count = 0]) {
+    final active = _selectedSubId == subId;
+    final short = label.length > 14 ? '${label.substring(0, 13)}…' : label;
+    return GestureDetector(
+      onTap: () => _selectSubscription(subId),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: active
+              ? AppColors.accent.withOpacity(0.15)
+              : AppColors.surface(context),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: active ? AppColors.accent : AppColors.border(context),
+          ),
+        ),
+        child: Center(
+          child: Text(
+            count > 0 ? '$short ($count)' : short,
+            style: TextStyle(
+              color: active ? AppColors.accent : AppColors.fg(context),
+              fontSize: 12.5,
+              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTopBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(4, 6, 4, 4),
@@ -873,11 +750,8 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             children: [
               IconButton(
-                icon: Icon(
-                  Icons.menu,
-                  color: AppColors.muted(context),
-                  size: 24,
-                ),
+                icon: Icon(Icons.menu,
+                    color: AppColors.muted(context), size: 24),
                 onPressed: _showMainMenu,
                 tooltip: _t('منو', 'Menu'),
               ),
@@ -899,9 +773,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: AppColors.muted(context),
-                        fontSize: 11,
-                      ),
+                          color: AppColors.muted(context), fontSize: 11),
                     ),
                   ],
                 ),
@@ -917,25 +789,16 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               IconButton(
                 icon: _testing
-                    ? const Icon(
-                        Icons.stop_circle_outlined,
-                        color: AppColors.danger,
-                        size: 22,
-                      )
-                    : const Icon(
-                        Icons.speed,
-                        color: AppColors.accent,
-                        size: 22,
-                      ),
+                    ? const Icon(Icons.stop_circle_outlined,
+                        color: AppColors.danger, size: 22)
+                    : const Icon(Icons.speed,
+                        color: AppColors.accent, size: 22),
                 onPressed: _testing ? _cancelTesting : _testAll,
                 tooltip: _t('تست همه', 'Test All'),
               ),
               IconButton(
-                icon: Icon(
-                  Icons.settings,
-                  color: AppColors.muted(context),
-                  size: 22,
-                ),
+                icon: Icon(Icons.settings,
+                    color: AppColors.muted(context), size: 22),
                 onPressed: widget.onOpenSettings,
                 tooltip: _t('تنظیمات', 'Settings'),
               ),
@@ -951,25 +814,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       controller: _searchController,
                       autofocus: true,
                       style: TextStyle(
-                        color: AppColors.fg(context),
-                        fontSize: 14,
-                      ),
+                          color: AppColors.fg(context), fontSize: 14),
                       decoration: InputDecoration(
                         hintText: _t('جستجو...', 'Search...'),
-                        hintStyle: TextStyle(
-                          color: AppColors.muted2(context),
-                        ),
-                        prefixIcon: Icon(
-                          Icons.search,
-                          color: AppColors.muted(context),
-                          size: 20,
-                        ),
+                        hintStyle:
+                            TextStyle(color: AppColors.muted2(context)),
+                        prefixIcon: Icon(Icons.search,
+                            color: AppColors.muted(context), size: 20),
                         filled: true,
                         fillColor: AppColors.surface(context),
                         contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
+                            horizontal: 12, vertical: 8),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide.none,
@@ -982,10 +837,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   IconButton(
-                    icon: Icon(
-                      Icons.close,
-                      color: AppColors.muted(context),
-                    ),
+                    icon:
+                        Icon(Icons.close, color: AppColors.muted(context)),
                     onPressed: _closeSearch,
                   ),
                 ],
@@ -997,10 +850,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildConnectButton() {
-    final selectedColor = _selected == null
-        ? AppColors.border(context)
-        : AppColors.accent;
-
+    final selectedColor =
+        _selected == null ? AppColors.border(context) : AppColors.accent;
     return GestureDetector(
       onTap: _toggleConnection,
       child: Container(
@@ -1041,13 +892,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      _t('لغو', 'Cancel'),
-                      style: TextStyle(
-                        color: AppColors.muted(context),
-                        fontSize: 11,
-                      ),
-                    ),
+                    Text(_t('لغو', 'Cancel'),
+                        style: TextStyle(
+                            color: AppColors.muted(context), fontSize: 11)),
                   ],
                 )
               : Column(
@@ -1066,9 +913,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     Icon(
-                      _connected
-                          ? Icons.shield
-                          : Icons.power_settings_new,
+                      _connected ? Icons.shield : Icons.power_settings_new,
                       size: 42,
                       color: _connected
                           ? AppColors.accent
@@ -1124,9 +969,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Text(
                       '$_tested / $_total',
                       style: TextStyle(
-                        color: AppColors.muted2(context),
-                        fontSize: 10,
-                      ),
+                          color: AppColors.muted2(context), fontSize: 10),
                     ),
                 ],
               ),
@@ -1134,16 +977,11 @@ class _HomeScreenState extends State<HomeScreen> {
           }
 
           final server = _servers[index - 1];
-
           return ServerTile(
             server: server,
             selected: _selected?.id == server.id,
             active: _connected && _active?.id == server.id,
-            onTap: () {
-              setState(() {
-                _selected = server;
-              });
-            },
+            onTap: () => setState(() => _selected = server),
             onDelete: () => _deleteServer(server),
             onPin: () => _togglePin(server),
             onShare: () => _shareServer(server),
@@ -1163,6 +1001,8 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             _buildTopBar(),
             const SizedBox(height: 4),
+            _buildSubTabs(),
+            const SizedBox(height: 8),
             _buildConnectButton(),
             const SizedBox(height: 12),
             _buildServerList(),
@@ -1172,10 +1012,7 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: _openAddConfig,
         backgroundColor: AppColors.accent,
-        child: const Icon(
-          Icons.add,
-          color: Colors.black,
-        ),
+        child: const Icon(Icons.add, color: Colors.black),
       ),
     );
   }
