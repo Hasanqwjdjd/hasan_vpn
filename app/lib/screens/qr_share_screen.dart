@@ -1,5 +1,3 @@
-# مسیر مقصد در ریپو: app/lib/screens/qr_share_screen.dart  --  NEW FILE
-# ------------------------------------------------------------
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -89,18 +87,4 @@ class QrShareScreen extends StatelessWidget {
                     );
                   },
                   icon: const Icon(Icons.copy, size: 18),
-                  label: Text(_t('کپی لینک', 'Copy Link')),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.accent,
-                    side: const BorderSide(color: AppColors.accent),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+                  label: Text(_t('کپی ل
