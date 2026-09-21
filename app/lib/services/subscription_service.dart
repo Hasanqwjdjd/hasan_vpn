@@ -192,7 +192,11 @@ class SubscriptionService {
       final id = LinkParser.stableId('sub', link);
       if (!seen.add(id)) continue;
       final server = LinkParser.parse(link, id: id);
-      if (server != null) servers.add(server);
+      if (server != null) {
+        // سرورهای اشتراک قابل حذف یا اشتراک‌گذاری توسط کاربر نیستن
+        server.isDeletable = false;
+        servers.add(server);
+      }
     }
     return servers;
   }
