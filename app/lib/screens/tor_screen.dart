@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/server.dart';
 import '../services/app_colors.dart';
 import '../services/tor_service.dart';
+import '../services/tor_sni_presets.dart';
 import '../services/v2ray_engine.dart';
 
 class TorScreen extends StatefulWidget {
@@ -28,6 +29,7 @@ class _TorScreenState extends State<TorScreen> {
   ];
 
   String _bridgeType = 'obfs4';
+  String _selectedSni = TorSniPresets.defaultSni;
   List<String> _customBridges = [];
   bool _running = false;
   bool _connecting = false;
@@ -59,10 +61,12 @@ class _TorScreenState extends State<TorScreen> {
     final prefs = await SharedPreferences.getInstance();
     final bt = prefs.getString('tor_bridge_type') ?? 'obfs4';
     final cb = prefs.getStringList('tor_custom_bridges') ?? <String>[];
+    final sni = prefs.getString('tor_sni') ?? TorSniPresets.defaultSni;
     if (!mounted) return;
     setState(() {
       _bridgeType = bt;
       _customBridges = cb;
+      _selectedSni = sni;
     });
   }
 
@@ -70,6 +74,7 @@ class _TorScreenState extends State<TorScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('tor_bridge_type', _bridgeType);
     await prefs.setStringList('tor_custom_bridges', _customBridges);
+    await prefs.setString('tor_sni', _selectedSni);
   }
 
   Future<void> _poll() async {
@@ -224,6 +229,7 @@ class _TorScreenState extends State<TorScreen> {
     final r = await TorService.start(
       bridgeType: _bridgeType,
       customBridges: _customBridges.isEmpty ? null : _customBridges,
+      sni: _selectedSni,
     );
     if (!mounted) return;
     if (r['ok'] != true) {
@@ -539,6 +545,58 @@ class _TorScreenState extends State<TorScreen> {
                     ),
                   ),
               const SizedBox(height: 20),
+            ],
+
+            // انتخاب SNI (برای meek_lite و snowflake)
+            if (_bridgeType == 'meek_lite' || _bridgeType == 'snowflake') ...[
+              Text(
+                _t('نام میزبان SNI (جعل نام سرور)',
+                    'SNI hostname (fake server name)'),
+                style: TextStyle(
+                  color: AppColors.muted(context),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.surface(context),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border(context)),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _selectedSni,
+                    isExpanded: true,
+                    dropdownColor: AppColors.elevated(context),
+                    style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+                    icon: const Icon(Icons.expand_more, color: AppColors.accent),
+                    items: [
+                      for (final s in TorSniPresets.all)
+                        DropdownMenuItem<String>(
+                          value: s,
+                          child: Text(s, overflow: TextOverflow.ellipsis),
+                        ),
+                    ],
+                    onChanged: (v) async {
+                      if (v == null) return;
+                      setState(() => _selectedSni = v);
+                      await _savePrefs();
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _t(
+                  'این نام در TLS handshake جعل می‌شود تا DPI فریب بخورد.',
+                  'This name is spoofed in TLS handshake to evade DPI.',
+                ),
+                style: TextStyle(color: AppColors.muted2(context), fontSize: 11),
+              ),
+              const SizedBox(height: 16),
             ],
 
             Center(child: _connectButton()),

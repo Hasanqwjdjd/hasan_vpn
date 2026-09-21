@@ -104,11 +104,13 @@ class MainActivity : FlutterActivity() {
                     "start" -> {
                         val bridgeType = call.argument<String>("bridgeType") ?: "vanilla"
                         val customBridges = call.argument<List<String>>("customBridges")
+                        val sni = call.argument<String>("sni")
                         Thread {
                             val map = TorService.start(
                                 applicationContext,
                                 bridgeType,
                                 customBridges,
+                                sni,
                             )
                             runOnUiThread { result.success(map) }
                         }.start()

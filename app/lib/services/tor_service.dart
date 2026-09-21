@@ -9,11 +9,13 @@ class TorService {
   static Future<Map<String, dynamic>> start({
     String bridgeType = 'vanilla',
     List<String>? customBridges,
+    String? sni,
   }) async {
     try {
       final result = await _channel.invokeMapMethod<String, dynamic>('start', {
         'bridgeType': bridgeType,
         'customBridges': customBridges,
+        'sni': sni,
       });
       return result ?? {'ok': false, 'error': 'no response'};
     } catch (e) {

@@ -33,7 +33,7 @@ object TorService {
     fun getLastError(): String? = lastError
 
     /** نقطه‌ی شروع. bridgeType: 'vanilla','obfs4','snowflake','meek_lite','conjure','dnstt' */
-    fun start(context: Context, bridgeType: String, customBridges: List<String>?): Map<String, Any> {
+    fun start(context: Context, bridgeType: String, customBridges: List<String>?, sni: String? = null): Map<String, Any> {
         synchronized(lock) {
             if (running) return mapOf("ok" to true, "socksPort" to socksPort, "alreadyRunning" to true)
 
@@ -73,6 +73,7 @@ object TorService {
                     snowflakePath.takeIf { File(it).exists() },
                     conjurePath.takeIf { File(it).exists() },
                     dnsttPath.takeIf { File(it).exists() },
+                    sni,
                 )
                 torrc.writeText(torrcText)
                 SafeLog.d(TAG, "torrc content:\n$torrcText")
@@ -179,6 +180,7 @@ object TorService {
         bridgeType: String,
         customBridges: List<String>?,
         obfs4Path: String?, snowflakePath: String?, conjurePath: String?, dnsttPath: String?,
+        sni: String?,
     ): String {
         val sb = StringBuilder()
         sb.appendLine("SocksPort $socksPort")
@@ -204,13 +206,20 @@ object TorService {
                 if (obfs4Path != null) {
                     sb.appendLine("UseBridges 1")
                     sb.appendLine("ClientTransportPlugin meek_lite exec ${obfs4Path}")
-                    customBridges?.forEach { sb.appendLine("Bridge $it") }
+                    if (!customBridges.isNullOrEmpty()) {
+                        customBridges.forEach { sb.appendLine("Bridge $it") }
+                    } else {
+                        // اگر پل شخصی نده، از SNI برای ساخت پل use می‌کنیم
+                        val host = sni ?: "certum.pl"
+                        sb.appendLine("Bridge meek_lite 192.0.2.2:443 url=https://$host/ front=$host")
+                    }
                 }
             }
             "snowflake" -> {
                 if (snowflakePath != null) {
                     sb.appendLine("UseBridges 1")
-                    sb.appendLine("ClientTransportPlugin snowflake exec ${snowflakePath}")
+                    val frontArg = if (!sni.isNullOrEmpty()) " -front=$sni" else ""
+                    sb.appendLine("ClientTransportPlugin snowflake exec ${snowflakePath}$frontArg")
                     sb.appendLine("Bridge snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72")
                 }
             }

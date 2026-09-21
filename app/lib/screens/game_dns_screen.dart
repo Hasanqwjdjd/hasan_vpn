@@ -52,7 +52,8 @@ class GameDnsScreen extends StatefulWidget {
 class _GameDnsScreenState extends State<GameDnsScreen> {
   int _sortMode = 1;
 
-  String? _activeKey; // کلید ترکیبی: "primary|secondary"
+  String? _activeKey; // DNS فعال واقعی (برای اتصال)
+  String? _selectedKey; // DNS انتخاب‌شده در UI (فقط هایلایت)
   String _ipPref = 'ipv4';
 
   List<Map<String, String>> _customDns = [];
@@ -115,6 +116,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       _pingResults = pings;
       if (activePrimary != null && activeSecondary != null) {
         _activeKey = '$activePrimary|$activeSecondary';
+        _selectedKey ??= _activeKey;
       } else {
         _activeKey = null;
       }
@@ -281,18 +283,20 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   }
 
   Future<void> _jumpToSelected() async {
-    if (_activeKey == null) {
-      _showMsg(_t('هیچ DNS فعالی نیست', 'No active DNS'));
+    final targetKey = _selectedKey ?? _activeKey;
+    if (targetKey == null) {
+      _showMsg(_t('هیچ DNS‌ای انتخاب نشده',
+          'No DNS selected'));
       return;
     }
     final list = _visibleDns;
-    final idx = list.indexWhere((d) => _keyOf(d) == _activeKey);
+    final idx = list.indexWhere((d) => _keyOf(d) == targetKey);
     if (idx == -1) {
       _showMsg(_t('DNS انتخاب‌شده در لیست نیست',
           'Selected DNS is not in the list'));
       return;
     }
-    final key = _tileKeys[_activeKey];
+    final key = _tileKeys[targetKey];
     final ctx = key?.currentContext;
     if (ctx != null) {
       await Scrollable.ensureVisible(
@@ -728,26 +732,31 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   Widget _buildDnsTile(GameDns dns) {
     final key = _keyOf(dns);
     final active = key == _activeKey;
+    final selected = key == _selectedKey;
     final ping = _pingResults[key];
     final pinned = _pinnedKeys.contains(key);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
-        color: active
+        color: (active || selected)
             ? AppColors.accent.withOpacity(0.08)
             : AppColors.surface(context),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: active ? AppColors.accent : AppColors.border(context),
-          width: active ? 1.5 : 1,
+          color: (active || selected)
+              ? AppColors.accent
+              : AppColors.border(context),
+          width: (active || selected) ? 1.5 : 1,
         ),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: null,
+          onTap: () {
+            setState(() => _selectedKey = key);
+          },
           child: Padding(
             padding: const EdgeInsets.fromLTRB(4, 8, 8, 8),
             child: Row(
@@ -947,6 +956,79 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     );
   }
 
+  void _showDnsMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.elevated(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.muted2(context),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.add_circle_outline,
+                    color: AppColors.accent),
+                title: Text(_t('افزودن DNS جدید', 'Add new DNS'),
+                    style: TextStyle(color: AppColors.fg(context))),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _addCustomDns();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.content_copy,
+                    color: AppColors.accent),
+                title: Text(_t('حذف DNS تکراری', 'Delete duplicates'),
+                    style: TextStyle(color: AppColors.fg(context))),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _deleteDuplicates();
+                },
+              ),
+              ListTile(
+                leading:
+                    const Icon(Icons.my_location, color: AppColors.accent),
+                title: Text(_t('پیدا کردن انتخاب‌شده', 'Find selected'),
+                    style: TextStyle(color: AppColors.fg(context))),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _jumpToSelected();
+                },
+              ),
+              Divider(color: AppColors.border(context), height: 1),
+              ListTile(
+                leading: Icon(
+                  _sortMode == 0 ? Icons.sort_by_alpha : Icons.speed,
+                  color: AppColors.accent,
+                ),
+                title: Text(
+                    _t('مرتب‌سازی بر اساس پینگ', 'Sort by ping'),
+                    style: TextStyle(color: AppColors.fg(context))),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _toggleSort();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final all = _visibleDns;
@@ -960,14 +1042,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
         title: Text(_t('DNS بازی', 'Game DNS'),
             style: TextStyle(color: AppColors.fg(context))),
         actions: [
-          IconButton(
-            icon: Icon(
-              _sortMode == 0 ? Icons.sort_by_alpha : Icons.speed,
-              color: AppColors.accent,
-            ),
-            tooltip: _t('مرتب‌سازی', 'Sort'),
-            onPressed: _toggleSort,
-          ),
           IconButton(
             icon: Icon(
               _showSearch ? Icons.close : Icons.search,
@@ -985,19 +1059,9 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
             onPressed: _testing ? _cancelTestAll : _testAllDns,
           ),
           IconButton(
-            icon: const Icon(Icons.my_location, color: AppColors.accent),
-            tooltip: _t('یافتن انتخاب‌شده', 'Find selected'),
-            onPressed: _jumpToSelected,
-          ),
-          IconButton(
-            icon: Icon(Icons.content_copy, color: AppColors.muted(context)),
-            tooltip: _t('حذف تکراری‌ها', 'Delete duplicates'),
-            onPressed: _deleteDuplicates,
-          ),
-          IconButton(
-            icon: const Icon(Icons.add, color: AppColors.accent),
-            tooltip: _t('افزودن DNS', 'Add DNS'),
-            onPressed: _addCustomDns,
+            icon: Icon(Icons.menu, color: AppColors.fg(context)),
+            tooltip: _t('منو', 'Menu'),
+            onPressed: _showDnsMenu,
           ),
         ],
       ),
