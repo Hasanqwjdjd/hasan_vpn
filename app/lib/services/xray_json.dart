@@ -21,7 +21,6 @@ class XrayJson {
     try {
       final decoded = jsonDecode(t);
       if (decoded is! Map) return false;
-      // حداقل یک outbound یا routing داشته باشد
       return decoded.containsKey('outbounds') ||
           decoded.containsKey('outbound') ||
           decoded.containsKey('routing');
@@ -47,6 +46,7 @@ class XrayJson {
               tag.isNotEmpty &&
               protocol != 'freedom' &&
               protocol != 'blackhole' &&
+              protocol != 'block' &&
               protocol != 'dns') {
             return tag;
           }
@@ -56,16 +56,19 @@ class XrayJson {
     return 'Xray Config';
   }
 
-  /// تلاش برای پیدا کردن host/port از outboundهای پروکسی (نه freedom)
+  /// تلاش برای پیدا کردن host/port از outboundهای پروکسی (نه freedom).
+  /// برای کانفیگ‌های serverless که فقط direct/block دارن،
+  /// ('serverless', 0) برمی‌گردونه.
   static (String host, int port) extractEndpoint(Map<String, dynamic> json) {
     final outbounds = json['outbounds'];
-    if (outbounds is! List) return ('local', 0);
+    if (outbounds is! List) return ('serverless', 0);
 
     for (final o in outbounds) {
       if (o is! Map) continue;
       final protocol = (o['protocol']?.toString() ?? '').toLowerCase();
       if (protocol == 'freedom' ||
           protocol == 'blackhole' ||
+          protocol == 'block' ||
           protocol == 'dns' ||
           protocol == 'loopback') {
         continue;
@@ -93,8 +96,8 @@ class XrayJson {
       }
     }
 
-    // کانفیگ فقط-direct (مثل بعضی پروفایل‌های fragment)
-    return ('direct', 0);
+    // کانفیگ فقط-direct (مثل بعضی پروفایل‌های serverless/fragment)
+    return ('serverless', 0);
   }
 
   /// تبدیل JSON خام به لینک داخلی xrayjson://base64#name
