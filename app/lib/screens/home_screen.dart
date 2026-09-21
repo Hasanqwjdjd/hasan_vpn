@@ -1273,11 +1273,13 @@ class _HomeScreenState extends State<HomeScreen> {
               setState(() => _selected = server);
               await SettingsService.setLastServer(server.id);
             },
-            onDelete: server.isDeletable
+            onDelete: _customServers.any((s) => s.id == server.id)
                 ? () => _deleteServer(server)
                 : null,
             onPin: () => _togglePin(server),
-            onShare: server.isDeletable ? () => _shareServer(server) : null,
+            onShare: _customServers.any((s) => s.id == server.id)
+                ? () => _shareServer(server)
+                : null,
             onEdit: () => _editServerName(server),
             onTest: () => _testOne(server),
           );

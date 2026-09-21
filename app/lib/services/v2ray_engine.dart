@@ -252,6 +252,12 @@ class V2RayEngine {
       // تونل قبلی رو ببند تا پورت SOCKS آزاد شه
       try { await _engine.stopVless(); } catch (_) {}
       await Future<void>.delayed(const Duration(milliseconds: 700));
+      // قبل از شروع، حتماً تونل قبلی بسته بشه
+      try { await _engine.stopVless(); } catch (_) {}
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      try { await _engine.stopVless(); } catch (_) {}
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+
       bool proxyOnly = forceProxyOnly ?? false;
       if (forceProxyOnly == null) {
         try {
