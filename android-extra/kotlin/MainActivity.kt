@@ -18,6 +18,7 @@ class MainActivity : FlutterActivity() {
     private val aetherChannel = "com.hasan.hasan_vpn/aether"
     private val psiphonChannel = "com.hasan.hasan_vpn/psiphon"
     private val deviceChannel = "com.hasan.hasan_vpn/device"
+    private val torChannel = "com.hasan.hasan_vpn/tor"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -90,6 +91,30 @@ class MainActivity : FlutterActivity() {
                     }
                     "telemetryHide" -> {
                         TelemetryNotifier.hide(applicationContext)
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, torChannel)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "status" -> result.success(TorService.status())
+                    "start" -> {
+                        val bridgeType = call.argument<String>("bridgeType") ?: "vanilla"
+                        val customBridges = call.argument<List<String>>("customBridges")
+                        Thread {
+                            val map = TorService.start(
+                                applicationContext,
+                                bridgeType,
+                                customBridges,
+                            )
+                            runOnUiThread { result.success(map) }
+                        }.start()
+                    }
+                    "stop" -> {
+                        TorService.stop(applicationContext)
                         result.success(true)
                     }
                     else -> result.notImplemented()

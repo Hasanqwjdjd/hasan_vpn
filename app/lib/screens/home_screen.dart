@@ -18,6 +18,7 @@ import '../services/v2ray_engine.dart';
 import '../widgets/server_tile.dart';
 import 'add_config_screen.dart';
 import 'announcements_screen.dart';
+import 'tor_screen.dart';
 import 'qr_share_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -977,6 +978,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 onTap: () {
                   Navigator.pop(sheetContext);
                   _openAddConfig();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.security, color: AppColors.accent),
+                title: Text(_t('اتصال Tor', 'Tor Connection'),
+                    style: TextStyle(color: AppColors.fg(context))),
+                subtitle: Text(
+                  _t('اتصال از طریق شبکه Tor', 'Connect via Tor network'),
+                  style: TextStyle(color: AppColors.muted2(context), fontSize: 11),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TorScreen(language: widget.language),
+                    ),
+                  );
                 },
               ),
               ListTile(
