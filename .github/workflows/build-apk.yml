@@ -27,40 +27,9 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Setup Gradle mirrors and retry
+      - name: Setup Gradle properties for retry
         run: |
           mkdir -p ~/.gradle
-          cat > ~/.gradle/init.gradle << 'EOF'
-          allprojects {
-              buildscript {
-                  repositories {
-                      maven { url 'https://maven.aliyun.com/repository/public' }
-                      maven { url 'https://maven.aliyun.com/repository/google' }
-                      maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
-                      google()
-                      mavenCentral()
-                  }
-              }
-              repositories {
-                  maven { url 'https://maven.aliyun.com/repository/public' }
-                  maven { url 'https://maven.aliyun.com/repository/google' }
-                  maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
-                  google()
-                  mavenCentral()
-              }
-          }
-          settingsEvaluated { settings ->
-              settings.pluginManagement {
-                  repositories {
-                      maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
-                      maven { url 'https://maven.aliyun.com/repository/public' }
-                      google()
-                      mavenCentral()
-                      gradlePluginPortal()
-                  }
-              }
-          }
-          EOF
           cat > ~/.gradle/gradle.properties << 'EOF'
           systemProp.org.gradle.internal.repository.max.retries=10
           systemProp.org.gradle.internal.repository.initial.backoff=1000
@@ -68,7 +37,7 @@ jobs:
           org.gradle.parallel=true
           org.gradle.caching=true
           EOF
-          echo "✅ Gradle mirrors and retry settings configured"
+          echo "✅ Gradle retry settings configured"
 
       - name: Compute app version
         id: appver
@@ -127,6 +96,23 @@ jobs:
           cp -r app/lib/. build_src/lib/
           cp app/pubspec.yaml build_src/pubspec.yaml
           cp hasan.keystore build_src/android/app/hasan.keystore
+          # Add Aliyun mirrors to settings.gradle to avoid Maven Central 429 errors
+          python3 << 'PYEOF'
+          path = "build_src/android/settings.gradle"
+          with open(path, "r") as f:
+              text = f.read()
+          mirrors = '''        maven { url "https://maven.aliyun.com/repository/google" }
+                  maven { url "https://maven.aliyun.com/repository/public" }
+                  maven { url "https://maven.aliyun.com/repository/gradle-plugin" }
+                  '''
+          # Insert aliyun mirrors before the first google() in pluginManagement
+          if 'maven.aliyun.com' not in text:
+              text = text.replace('google()', mirrors + '        google()', 1)
+          with open(path, "w") as f:
+              f.write(text)
+          print("✅ settings.gradle patched with Aliyun mirrors")
+          PYEOF
+          cat build_src/android/settings.gradle
 
       - name: Generate protected default subscriptions
         env:
