@@ -1014,7 +1014,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => TorScreen(language: widget.language),
+                      builder: (_) => TorScreen(
+                        language: widget.language,
+                        onServerAdded: (server) {
+                          _customServers.insert(0, server);
+                          _rebuildServerList();
+                          _saveCustomServers();
+                        },
+                      ),
                     ),
                   );
                 },
