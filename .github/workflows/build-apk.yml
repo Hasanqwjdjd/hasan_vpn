@@ -144,6 +144,7 @@ jobs:
           cp -f android-extra/kotlin/TelemetryNotifier.kt "$KT_DIR/TelemetryNotifier.kt"
           cp -f android-extra/kotlin/SafeLog.kt "$KT_DIR/SafeLog.kt"
           cp -f android-extra/kotlin/TorService.kt "$KT_DIR/TorService.kt"
+          cp -f android-extra/kotlin/TorForegroundService.kt "$KT_DIR/TorForegroundService.kt"
           if [ -d android-extra/psiphon ] && [ "$(find android-extra/psiphon -name '*.aar' | wc -l)" -gt 0 ]; then
             echo "Using real Psiphon AAR"
             cp -f android-extra/kotlin/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
@@ -289,6 +290,15 @@ jobs:
           """
           if '<queries>' not in text:
               text = text.replace("</manifest>", queries + "</manifest>", 1)
+          # ثبت TorForegroundService در Manifest
+          if 'TorForegroundService' not in text:
+              svc = """    <service
+                  android:name="com.hasan.hasan_vpn.TorForegroundService"
+                  android:enabled="true"
+                  android:exported="false"
+                  android:foregroundServiceType="specialUse" />
+          """
+              text = text.replace("</application>", svc + "</application>", 1)
           with open(path, "w", encoding="utf-8") as f:
               f.write(text)
           PYEOF

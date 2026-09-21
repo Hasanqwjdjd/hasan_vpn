@@ -111,6 +111,12 @@ object TorService {
                 }.also { it.isDaemon = true; it.start() }
 
                 Thread.sleep(300)
+                // سرویس foreground را راه بینداز تا Tor در پس‌زمینه زنده بماند
+                try {
+                    TorForegroundService.start(context)
+                } catch (e: Exception) {
+                    SafeLog.w(TAG, "Failed to start foreground service", e)
+                }
                 return mapOf("ok" to true, "socksPort" to socksPort)
             } catch (e: Throwable) {
                 lastError = e.message ?: e.toString()
@@ -132,6 +138,16 @@ object TorService {
             running = false
             bootstrapPercent = 0
             bootstrapMessage = ""
+        }
+    }
+
+    /** نسخه‌ی stop که Context می‌گیرد تا سرویس foreground را هم متوقف کند. */
+    fun stopWithContext(context: Context) {
+        stop()
+        try {
+            TorForegroundService.stop(context)
+        } catch (e: Exception) {
+            SafeLog.w(TAG, "Failed to stop foreground service", e)
         }
     }
 

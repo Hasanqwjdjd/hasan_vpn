@@ -116,7 +116,7 @@ class MainActivity : FlutterActivity() {
                         }.start()
                     }
                     "stop" -> {
-                        TorService.stop(applicationContext)
+                        TorService.stopWithContext(applicationContext)
                         result.success(true)
                     }
                     else -> result.notImplemented()
