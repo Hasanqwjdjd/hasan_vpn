@@ -26,6 +26,7 @@ class AddConfigScreen extends StatefulWidget {
 class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _linkController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _sniController = TextEditingController();
   bool _isFa = true;
   String _selectedType = 'manual'; // manual | aether | oblivion | siphon | tor
 
@@ -83,9 +84,15 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     final stamp = DateTime.now().millisecondsSinceEpoch;
     var added = 0;
 
+    // SNI جعلی (اختیاری)
+    final sniOverride = _sniController.text.trim();
+
     // کانفیگ کامل JSON (Patterniha و مشابه)
     if (XrayJson.looksLike(text)) {
-      var server = XrayJson.parse(text, id: 'custom_$stamp');
+      final modified = sniOverride.isEmpty
+          ? text
+          : LinkParser.applySniOverride(text, sniOverride);
+      var server = XrayJson.parse(modified, id: 'custom_$stamp');
       if (server != null) {
         if (customName.isNotEmpty) {
           server = server.copyWith(name: customName);
@@ -107,7 +114,10 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       }
 
       for (var i = 0; i < links.length; i++) {
-        var server = LinkParser.parse(links[i], id: 'custom_${stamp}_$i');
+        final rawLink = sniOverride.isEmpty
+            ? links[i]
+            : LinkParser.applySniOverride(links[i], sniOverride);
+        var server = LinkParser.parse(rawLink, id: 'custom_${stamp}_$i');
         if (server == null) continue;
 
         if (customName.isNotEmpty && links.length == 1) {
@@ -1581,6 +1591,51 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 14),
+              Text(
+                _t('جعل SNI / نام سرور (اختیاری)',
+                    'Spoof SNI / server name (optional)'),
+                style: TextStyle(
+                  color: AppColors.muted(context),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _sniController,
+                style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'certum.pl',
+                  hintStyle: TextStyle(color: AppColors.muted2(context)),
+                  prefixIcon: Icon(Icons.security,
+                      color: AppColors.accent, size: 18),
+                  filled: true,
+                  fillColor: AppColors.surface(context),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: AppColors.border(context)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: AppColors.border(context)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide:
+                        const BorderSide(color: AppColors.accent, width: 1.5),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _t(
+                  'اگر ISP شما SNI را مسدود می‌کند، یک دامنه معمولی (مثل certum.pl یا google.com) وارد کنید. توجه: ممکن است باعث عدم اتصال بعضی سرورها شود.',
+                  'If your ISP blocks SNI, enter a common domain (e.g. certum.pl or google.com). Note: may break some servers.',
+                ),
+                style: TextStyle(
+                    color: AppColors.muted2(context), fontSize: 11, height: 1.5),
+              ),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
@@ -1623,6 +1678,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _psiphonChannelController.dispose();
     _psiphonConfigController.dispose();
     _nameController.dispose();
+    _sniController.dispose();
     _aetherDnsController.dispose();
     _aetherPeerController.dispose();
     _aetherUpstreamController.dispose();
