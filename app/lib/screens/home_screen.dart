@@ -642,6 +642,24 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _refreshExitIp({bool force = false}) async {
+    if (!_connected) return;
+    try {
+      final info = await ExitIpService.fetch(
+        socksPort: V2RayEngine.localSocksPort,
+      );
+      if (!mounted || !_connected) return;
+      if (info != null && force) {
+        _showMsg(_t(
+          'IP خروجی: ${info.ip}',
+          'Exit IP: ${info.ip}',
+        ));
+      }
+    } catch (e) {
+      debugPrint('refreshExitIp: $e');
+    }
+  }
+
   Future<void> _measureLive({bool force = false}) async {
     if (!_connected) return;
     if (!force && _connecting) return;
