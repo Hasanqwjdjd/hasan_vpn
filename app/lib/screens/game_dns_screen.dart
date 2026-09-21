@@ -990,7 +990,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
             onPressed: _jumpToSelected,
           ),
           IconButton(
-            icon: const Icon(Icons.content_copy, color: AppColors.muted),
+            icon: Icon(Icons.content_copy, color: AppColors.muted(context)),
             tooltip: _t('حذف تکراری‌ها', 'Delete duplicates'),
             onPressed: _deleteDuplicates,
           ),
