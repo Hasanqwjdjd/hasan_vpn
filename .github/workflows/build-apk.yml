@@ -41,17 +41,14 @@ jobs:
 
       - name: Compute app version
         id: appver
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          COUNT=$(gh release list --limit 200 --json tagName --jq 'length' 2>/dev/null || echo 0)
-          if [ -z "$COUNT" ] || [ "$COUNT" = "null" ]; then COUNT=0; fi
-          NEXT=$((COUNT + 1))
-          RAW=$(awk "BEGIN {printf \"%.1f\", 1 + ($NEXT - 1) * 0.2}")
+          BASE=300
+          N=$(( ${{ github.run_number }} - BASE ))
+          if [ "$N" -lt 0 ]; then N=0; fi
+          RAW=$(awk "BEGIN {printf \"%.1f\", 1 + $N * 0.2}")
           CLEAN=$(echo "$RAW" | sed 's/\.0$//')
           echo "version=$CLEAN" >> "$GITHUB_OUTPUT"
-          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "Computed version: $CLEAN (release count: $COUNT, next: $NEXT)"
+          echo "Computed version: $CLEAN (run: ${{ github.run_number }})"
 
       - name: Prepare signing keystore
         env:
