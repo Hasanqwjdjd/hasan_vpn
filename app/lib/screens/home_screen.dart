@@ -98,6 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadPings();
     await _loadLastServer();
     await V2RayEngine.init();
+    await V2RayEngine.loadDelayUrl();
     if (!mounted) return;
     _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _poll());
   }
@@ -234,7 +235,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _jumpToSelected() {
+  Future<void> _jumpToSelected() async {
     final selected = _selected;
     if (selected == null) {
       _showMsg(_t('هیچ سروری انتخاب نشده', 'No server selected'));
@@ -242,47 +243,46 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final idx = _servers.indexWhere((s) => s.id == selected.id);
     if (idx == -1) {
-      _showMsg(
-          _t('سرور انتخاب‌شده در لیست نیست', 'Selected server is not in list'));
+      _showMsg(_t('سرور انتخاب‌شده در لیست نیست', 'Selected server is not in list'));
       return;
     }
 
-    // کلید پایدار برای هر سرور — اسکرول دقیق بدون فرض ارتفاع ثابت
+    setState(() => _selected = selected);
+
     final key = _tileKeys.putIfAbsent(selected.id, () => GlobalKey());
     final ctx = key.currentContext;
     if (ctx != null) {
-      Scrollable.ensureVisible(
+      await Scrollable.ensureVisible(
         ctx,
         duration: const Duration(milliseconds: 420),
         curve: Curves.easeOutCubic,
-        alignment: 0.15, // کمی بالاتر از وسط صفحه تا دیده شود
+        alignment: 0.15,
       );
+      if (mounted) setState(() => _selected = selected);
       return;
     }
 
-    // اگر آیتم هنوز ساخته نشده (خارج از viewport)، اول تقریبی اسکرول می‌کنیم
-    // تا ListView آن را بسازد، بعد ensureVisible را دوباره صدا می‌زنیم.
     if (!_listScrollController.hasClients) return;
     final approx = ((idx + 1) * 78.0)
         .clamp(0.0, _listScrollController.position.maxScrollExtent);
-    _listScrollController
-        .animateTo(
+    await _listScrollController.animateTo(
       approx,
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeOut,
-    )
-        .then((_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ctx2 = key.currentContext;
-        if (ctx2 != null && mounted) {
-          Scrollable.ensureVisible(
-            ctx2,
-            duration: const Duration(milliseconds: 280),
-            curve: Curves.easeOutCubic,
-            alignment: 0.15,
-          );
-        }
-      });
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx2 = key.currentContext;
+      if (ctx2 != null && mounted) {
+        Scrollable.ensureVisible(
+          ctx2,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          alignment: 0.15,
+        );
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (mounted) setState(() => _selected = selected);
+        });
+      }
     });
   }
 
@@ -805,9 +805,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _toggleSort() {
-    _sortAscending = !_sortAscending;
+    _sortAscending = true;
     _sortCurrentServers();
     setState(() => _servers = List<VpnServer>.from(_servers));
+    _showMsg(_t('سرورها مرتب شدند', 'Servers sorted'));
   }
 
   void _showMsg(String message) {
@@ -1191,6 +1192,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListView.builder(
         controller: _listScrollController,
         padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemExtent: 78.0,
         itemCount: _servers.length + 1,
         itemBuilder: (context, index) {
           if (index == 0) {
