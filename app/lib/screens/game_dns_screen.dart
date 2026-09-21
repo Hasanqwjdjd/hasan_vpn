@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +9,7 @@ import '../services/app_colors.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/settings_service.dart';
+import '../services/network_prober.dart';
 
 /// لیست DNSهای اضافی پرکاربرد (اضافه‌شده در پچ).
 const List<GameDns> kExtraDnsList = <GameDns>[
@@ -57,8 +57,13 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   String _ipPref = 'ipv4';
 
   List<Map<String, String>> _customDns = [];
-  List<String> _hiddenDns = [];
-  List<String> _pinnedKeys = [];
+  // Set به‌جای List: تا با هزاران آیتم هم .contains() آنی (O(1)) بمونه
+  // و روی هر رندر/سورت کند نشه.
+  Set<String> _hiddenDns = {};
+  Set<String> _pinnedKeys = {};
+  // ایندکس آماده برای _customIndexOf، تا به‌جای اسکن خطی لیست کاستوم
+  // به ازای هر تایل (O(n) در هر رندر)، یک lookup آنی باشه.
+  Map<String, int> _customIndexByKey = {};
   Map<String, Map<String, String>> _overrides = {};
   Map<String, int> _pingResults = {};
   List<String> _manualOrder = <String>[];
@@ -110,8 +115,12 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     setState(() {
       _ipPref = pref;
       _customDns = custom;
-      _hiddenDns = hidden;
-      _pinnedKeys = pinned;
+      _customIndexByKey = <String, int>{
+        for (var i = 0; i < custom.length; i++)
+          '${custom[i]['primary']}|${custom[i]['secondary']}': i,
+      };
+      _hiddenDns = hidden.toSet();
+      _pinnedKeys = pinned.toSet();
       _overrides = overrides;
       _pingResults = pings;
       if (activePrimary != null && activeSecondary != null) {
@@ -324,19 +333,15 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   }
 
   Future<int> _pingDns(String host, {int port = 53}) async {
-    final watch = Stopwatch()..start();
-    try {
-      final socket = await Socket.connect(
-        host,
-        port,
-        timeout: const Duration(seconds: 3),
-      );
-      watch.stop();
-      socket.destroy();
-      return watch.elapsedMilliseconds.clamp(1, 9999);
-    } catch (_) {
-      return -1;
-    }
+    // چند نمونه به‌جای یک تلاش تکی: نتیجه پایدارتره و نوسان/پکت‌لاس واقعی
+    // رو هم لحاظ می‌کنه (منطق برگرفته از NetworkProber در WhiteGame).
+    final result = await NetworkProber.probeTcp(
+      host,
+      port: port,
+      samples: 3,
+      timeout: const Duration(milliseconds: 1200),
+    );
+    return result.avgMs ?? -1;
   }
 
   Future<void> _testAllDns() async {
@@ -351,22 +356,32 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     });
 
     final results = <String, int>{};
-    for (var i = 0; i < list.length; i++) {
-      if (_cancelTest) break;
-      final dns = list[i];
-      int ping = -1;
-      if (dns.primary.isNotEmpty && !dns.primary.startsWith('http')) {
-        ping = await _pingDns(dns.primary);
-      }
-      final key = _keyOf(dns);
-      results[key] = ping;
-      await SettingsService.saveDnsPingResult(key, ping);
-      if (!mounted) return;
-      setState(() {
-        _pingResults = Map<String, int>.from(_pingResults)..[key] = ping;
-        _tested = i + 1;
-      });
-    }
+    var doneCount = 0;
+    // تست دسته‌ای و هم‌زمان (نه یکی‌یکی): با لیست‌های بزرگ (صدها/هزاران
+    // DNS) تست ترتیبی با تایم‌اوت چندثانیه‌ای روی هر کدوم عملاً غیرقابل
+    // استفاده می‌شه. اینجا هم‌زمان چند تا رو تست می‌کنیم (مثل الگوی
+    // chunked+awaitAll در WhiteGame) و UI هم قفل نمی‌مونه.
+    await NetworkProber.runBatched<GameDns>(
+      list,
+      12,
+      (dns) async {
+        if (_cancelTest) return;
+        int ping = -1;
+        if (dns.primary.isNotEmpty && !dns.primary.startsWith('http')) {
+          ping = await _pingDns(dns.primary);
+        }
+        final key = _keyOf(dns);
+        results[key] = ping;
+        await SettingsService.saveDnsPingResult(key, ping);
+        doneCount++;
+        if (!mounted) return;
+        setState(() {
+          _pingResults[key] = ping;
+          _tested = doneCount;
+        });
+      },
+      isCancelled: () => _cancelTest,
+    );
 
     if (!mounted) return;
     setState(() => _testing = false);
@@ -489,13 +504,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   }
 
   int? _customIndexOf(GameDns dns) {
-    for (var i = 0; i < _customDns.length; i++) {
-      if (_customDns[i]['primary'] == dns.primary &&
-          _customDns[i]['secondary'] == dns.secondary) {
-        return i;
-      }
-    }
-    return null;
+    return _customIndexByKey['${dns.primary}|${dns.secondary}'];
   }
 
   Future<void> _addCustomDns() async {
@@ -857,7 +866,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                   color: AppColors.muted(context),
                   onTap: () => _editDns(dns),
                 ),
-                if (_customIndexOf(dns) != null)
                 if (_customIndexOf(dns) != null)
                     _smallIcon(
                       icon: Icons.share_outlined,
