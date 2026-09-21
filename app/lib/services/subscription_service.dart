@@ -161,6 +161,12 @@ class SubscriptionService {
       if (server != null) return <VpnServer>[server];
     }
 
+    // آرایه‌ای از کانفیگ‌های Xray JSON (مثل Patterniha Serverless)
+    if (trimmed.startsWith('[')) {
+      final xrayServers = _xrayArrayFromJson(trimmed);
+      if (xrayServers.isNotEmpty) return xrayServers;
+    }
+
     if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
       links = _linksFromJson(trimmed);
     }
@@ -212,6 +218,29 @@ class SubscriptionService {
     } catch (_) {
       return <String>[];
     }
+  }
+
+  /// آرایه‌ای از کانفیگ‌های Xray JSON → لیست سرورها.
+  /// بعضی اشتراک‌ها (مثل Patterniha) به‌جای لینک، آرایه‌ای از JSON کامل
+  /// با outbounds/routing می‌فرستند.
+  static List<VpnServer> _xrayArrayFromJson(String content) {
+    final servers = <VpnServer>[];
+    try {
+      final decoded = jsonDecode(content);
+      if (decoded is! List) return servers;
+      for (final item in decoded) {
+        if (item is! Map) continue;
+        final jsonString = jsonEncode(item);
+        if (!XrayJson.looksLike(jsonString)) continue;
+        final id = LinkParser.stableId('xray', jsonString);
+        final server = XrayJson.parse(jsonString, id: id);
+        if (server != null) {
+          server.isDeletable = false;
+          servers.add(server);
+        }
+      }
+    } catch (_) {}
+    return servers;
   }
 
   /// اشتراک‌ها معمولاً Base64 هستند (استاندارد یا URL-safe، با یا بدون padding).
