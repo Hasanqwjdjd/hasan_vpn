@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/announcement.dart';
 import '../services/announcement_service.dart';
 import '../services/app_colors.dart';
+import '../services/telemetry_service.dart';
 
 class AnnouncementsScreen extends StatefulWidget {
   final String language;
@@ -16,6 +17,7 @@ class AnnouncementsScreen extends StatefulWidget {
 class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
   List<Announcement> _items = [];
   bool _loading = true;
+  bool _telemetry = false;
 
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
@@ -24,6 +26,7 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
   void initState() {
     super.initState();
     _reload();
+    _loadTelemetry();
   }
 
   Future<void> _reload() async {
@@ -89,7 +92,7 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
           ),
         ],
       ),
-      body: _loading
+      body: _withTelemetry(_loading
           ? const Center(child: CircularProgressIndicator())
           : _items.isEmpty
               ? Center(
@@ -178,7 +181,44 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
                       ),
                     );
                   },
-                ),
+                )),
+    );
+  }
+
+  Future<void> _loadTelemetry() async {
+    await TelemetryService.load();
+    if (mounted) setState(() => _telemetry = TelemetryService.enabled);
+  }
+
+  Widget _withTelemetry(Widget list) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface(context),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border(context)),
+            ),
+            child: SwitchListTile(
+              title: Text(_t('تله‌متری زنده اتصال', 'Live connection telemetry')),
+              subtitle: Text(
+                _t('پینگ و سرعت در نوار وضعیت',
+                    'Ping and speed in the status bar'),
+                style: TextStyle(color: AppColors.muted(context), fontSize: 12),
+              ),
+              value: _telemetry,
+              activeColor: AppColors.accent,
+              onChanged: (v) async {
+                setState(() => _telemetry = v);
+                await TelemetryService.setEnabled(v);
+              },
+            ),
+          ),
+        ),
+        Expanded(child: list),
+      ],
     );
   }
 }

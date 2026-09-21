@@ -1,5 +1,3 @@
-# مسیر مقصد در ریپو: app/pubspec.yaml
-# ------------------------------------------------------------
 name: hasan_vpn
 description: Hasan VPN
 publish_to: "none"
@@ -11,15 +9,17 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_vless: ^1.1.5
+  # نسخه‌ی 1.1.6 (15 سپتامبر 2026) رفتار VPN را عوض کرد؛ پین شد.
+  flutter_vless: 1.1.5
   http: ^1.1.0
   shared_preferences: ^2.2.2
   url_launcher: ^6.2.4
   package_info_plus: ^8.0.0
-
-  # --- اضافه شد: اسکن و ساخت QR ---
   mobile_scanner: ^5.2.3
   qr_flutter: ^4.1.0
+
+dependency_overrides:
+  flutter_vless_android: 1.1.5
 
 dev_dependencies:
   flutter_lints: ^3.0.0

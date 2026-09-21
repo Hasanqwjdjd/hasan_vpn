@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/app_colors.dart';
+import '../services/test_budget.dart';
 
 class TestSettingsScreen extends StatefulWidget {
   final String language;
@@ -15,11 +16,10 @@ class TestSettingsScreen extends StatefulWidget {
 }
 
 class _TestSettingsScreenState extends State<TestSettingsScreen> {
-  static const String _key = 'test_settings_v1';
-
+  int _timeout = 10;
+  int _direct = 16;
   int _samples = 1;
-  bool _tcpFallback = true;
-  int _concurrency = 0;
+  bool _tcp = true;
   String _delayUrl = 'http://cp.cloudflare.com/generate_204';
   bool _loading = true;
 
@@ -42,29 +42,34 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
   }
 
   Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key);
-    if (raw != null) {
-      try {
-        final m = jsonDecode(raw) as Map;
-        _samples = (m['samples'] as num?)?.toInt() ?? 1;
-        _tcpFallback = m['tcpFallback'] != false;
-        _concurrency = (m['concurrency'] as num?)?.toInt() ?? 0;
-        _delayUrl = m['delayUrl']?.toString() ?? _delayUrl;
-        _urlController.text = _delayUrl;
-      } catch (_) {}
-    }
+    final b = await TestBudget.load();
+    _timeout = b.timeoutSec;
+    _direct = b.direct;
+    _samples = b.samples;
+    _tcp = b.tcpFallback;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(TestBudget.storageKey);
+      if (raw != null) {
+        final m = jsonDecode(raw);
+        if (m is Map && m['delayUrl'] != null) {
+          _delayUrl = m['delayUrl'].toString();
+        }
+      }
+    } catch (_) {}
+    _urlController.text = _delayUrl;
     if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-      _key,
+      TestBudget.storageKey,
       jsonEncode({
+        'timeoutSec': _timeout,
+        'directConcurrency': _direct,
         'samples': _samples,
-        'tcpFallback': _tcpFallback,
-        'concurrency': _concurrency,
+        'tcpFallback': _tcp,
         'delayUrl': _delayUrl,
       }),
     );
@@ -90,6 +95,42 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
     );
   }
 
+  Widget _title(String text) => Padding(
+        padding: const EdgeInsets.only(top: 18, bottom: 4),
+        child: Text(text,
+            style: TextStyle(
+                color: AppColors.fg(context),
+                fontWeight: FontWeight.w700,
+                fontSize: 15)),
+      );
+
+  Widget _sub(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Text(text,
+            style: TextStyle(
+                color: AppColors.muted(context), fontSize: 12, height: 1.6)),
+      );
+
+  Widget _chips(List<int> options, int value, String Function(int) label,
+      void Function(int) onPick) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final o in options)
+          ChoiceChip(
+            label: Text(label(o)),
+            selected: o == value,
+            selectedColor: AppColors.accent.withOpacity(0.25),
+            onSelected: (_) {
+              setState(() => onPick(o));
+              _save();
+            },
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -97,79 +138,62 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.bg(context),
         elevation: 0,
-        title: Text(_t('تنظیمات تست', 'Test Settings')),
+        title: Text(_t('تنظیمات تست و رتبه‌بندی', 'Test & ranking')),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                _title(_t('بودجه اندازه‌گیری', 'Measurement budget')),
+                _sub(_t(
+                  'مهلت و تعداد نمونه برای هر روش اعمال می‌شود. سرورهای هم‌زمان، هم‌زمانی روش‌های مستقیم (TCP) است؛ تست واقعی به دلیل اجرای یک هسته Xray برای هر سرور به ۲ تا ۴ محدود است.',
+                  'Timeout and samples apply to every method. Concurrent servers is the concurrency of direct (TCP) methods; the real test is capped at 2-4 because one Xray core runs per server.',
+                )),
+                _title(_t('مهلت هر سرور', 'Timeout per server')),
+                _sub(_t('هر سرور چقدر فرصت دارد تا پیش از «در دسترس نیست» پاسخ دهد',
+                    'How long each server has to answer before "unreachable"')),
+                _chips(TestBudget.timeoutOptions, _timeout, (o) => '${o}s',
+                    (o) => _timeout = o),
+                _title(_t('سرورهای مستقیم هم‌زمان', 'Concurrent direct servers')),
+                _sub(_t(
+                    'تعداد کمتر کندتر ولی روی اتصال ضعیف بسیار دقیق‌تر است',
+                    'Fewer is slower but far more accurate on a weak connection')),
+                _chips(TestBudget.directOptions, _direct, (o) => '$o',
+                    (o) => _direct = o),
+                _title(_t('تعداد نمونه هر سرور', 'Samples per server')),
+                _sub(_t(
+                    'تأخیر نهایی میانه‌ی نمونه‌هاست (نمونه‌ی اول به‌عنوان warm-up کنار گذاشته می‌شود)',
+                    'Published latency is the median after the warm-up sample is discarded')),
+                _chips(TestBudget.sampleOptions, _samples, (o) => '×$o',
+                    (o) => _samples = o),
+                const SizedBox(height: 10),
                 Text(
-                  _t('تعداد نمونه برای هر سرور', 'Samples per server'),
+                  _t(
+                    'بدترین حالت برای هر سرور: ${_timeout * _samples} ثانیه • $_direct مستقیم هم‌زمان',
+                    'Worst case per server: ${_timeout * _samples}s • $_direct direct concurrent',
+                  ),
                   style: TextStyle(
-                      color: AppColors.fg(context),
-                      fontWeight: FontWeight.w600),
+                      color: AppColors.muted2(context), fontSize: 11),
                 ),
-                Slider(
-                  value: _samples.toDouble(),
-                  min: 1,
-                  max: 5,
-                  divisions: 4,
-                  label: '$_samples',
-                  activeColor: AppColors.accent,
-                  onChanged: (v) {
-                    setState(() => _samples = v.round());
-                    _save();
-                  },
-                ),
+                const SizedBox(height: 8),
                 SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
                   title: Text(_t('پشتیبان TCP', 'TCP fallback')),
                   subtitle: Text(
-                    _t(
-                      'اگر پینگ واقعی در دسترس نبود، TCP امتحان شود',
-                      'Fall back to TCP if real delay is unavailable',
-                    ),
+                    _t('اگر پینگ واقعی در دسترس نبود، TCP امتحان شود',
+                        'Fall back to TCP if real delay is unavailable'),
                     style: TextStyle(
                         color: AppColors.muted(context), fontSize: 12),
                   ),
-                  value: _tcpFallback,
+                  value: _tcp,
                   activeColor: AppColors.accent,
                   onChanged: (v) {
-                    setState(() => _tcpFallback = v);
+                    setState(() => _tcp = v);
                     _save();
                   },
                 ),
-                ListTile(
-                  title: Text(_t('هم‌زمانی', 'Concurrency')),
-                  subtitle: Text(
-                    _concurrency == 0
-                        ? _t('خودکار (بر اساس CPU)', 'Auto (based on CPU)')
-                        : '$_concurrency',
-                    style: TextStyle(color: AppColors.muted(context)),
-                  ),
-                  trailing: DropdownButton<int>(
-                    value: _concurrency,
-                    dropdownColor: AppColors.elevated(context),
-                    items: [
-                      DropdownMenuItem(
-                          value: 0, child: Text(_t('خودکار', 'Auto'))),
-                      for (final n in [2, 4, 6, 8, 10])
-                        DropdownMenuItem(value: n, child: Text('$n')),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => _concurrency = v);
-                      _save();
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  _t('آدرس تست تأخیر', 'Delay test URL'),
-                  style: TextStyle(
-                      color: AppColors.fg(context),
-                      fontWeight: FontWeight.w600),
-                ),
+                _title(_t('آدرس تست تأخیر', 'Delay test URL')),
                 const SizedBox(height: 6),
                 TextField(
                   controller: _urlController,
@@ -182,15 +206,6 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide(color: AppColors.border(context)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: AppColors.border(context)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(
-                          color: AppColors.accent, width: 1.5),
                     ),
                   ),
                 ),
@@ -208,27 +223,12 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 20),
                 Text(
-                  _t(
-                    'نمونه: https://www.gstatic.com/generate_204',
-                    'Example: https://www.gstatic.com/generate_204',
-                  ),
-                  style: TextStyle(
-                    color: AppColors.muted2(context),
-                    fontSize: 11,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  _t(
-                    'رتبه‌بندی بر اساس تأخیر واقعی، jitter و نرخ موفقیت انجام می‌شود.',
-                    'Ranking uses real latency, jitter and success rate.',
-                  ),
-                  style: TextStyle(
-                    color: AppColors.muted2(context),
-                    fontSize: 12,
-                  ),
+                  _t('رتبه‌بندی بر اساس تأخیر واقعی و jitter انجام می‌شود.',
+                      'Ranking uses real latency and jitter.'),
+                  style:
+                      TextStyle(color: AppColors.muted2(context), fontSize: 12),
                 ),
               ],
             ),

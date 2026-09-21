@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:io';
 
 import '../models/server.dart';
+import 'test_budget.dart';
 import 'v2ray_engine.dart';
 
 /// توکن لغو برای یک دور تست.
@@ -61,11 +62,6 @@ class ServerTester {
 
   /// تعداد تست هم‌زمان؛ هر تست یک نمونه‌ی موقت از هسته می‌سازد، پس بر اساس
   /// تعداد هسته‌های گوشی تنظیم می‌شود (۴ تا ۱۰).
-  static int get _concurrency {
-    final cores = Platform.numberOfProcessors;
-    return (cores ~/ 2 + 2).clamp(4, 10).toInt();
-  }
-
   // ------------------------------------------------------------------- API
 
   static Future<TestSummary> testAll(
@@ -74,9 +70,12 @@ class ServerTester {
     void Function(VpnServer server)? onServerDone,
     void Function()? onChanged,
   }) async {
+    await V2RayEngine.loadDelayUrl();
+    final budget = await TestBudget.load();
     final targets = servers.where((s) => !s.isAether && !s.isPsiphon).toList();
     final summary = TestSummary()..total = targets.length;
-    final gate = _Semaphore(_concurrency);
+    final gate = _Semaphore(budget.realConcurrency);
+    final tcpGate = _Semaphore(budget.direct);
 
     Timer? throttle;
     var dirty = false;
@@ -101,6 +100,8 @@ class ServerTester {
           session: session,
           retries: 1,
           gate: gate,
+          tcpGate: tcpGate,
+          budget: budget,
           summary: summary,
           notify: notify,
         ).then((_) {
@@ -114,12 +115,13 @@ class ServerTester {
     return summary;
   }
 
-  /// تست یک سرور (دکمه‌ی رعد): با تلاش مجدد بیشتر.
   static Future<TestSummary> testOne(
     VpnServer server, {
     required TestSession session,
     void Function()? onChanged,
   }) async {
+    await V2RayEngine.loadDelayUrl();
+    final budget = await TestBudget.load();
     final summary = TestSummary()..total = 1;
 
     await _testServer(
@@ -127,6 +129,8 @@ class ServerTester {
       session: session,
       retries: 2,
       gate: _Semaphore(1),
+      tcpGate: _Semaphore(1),
+      budget: budget,
       summary: summary,
       notify: () => onChanged?.call(),
     );
@@ -135,11 +139,93 @@ class ServerTester {
 
   // ---------------------------------------------------------------- engine
 
+  static (int, int?) _summarize(List<int> values, {required bool dropWarmup}) {
+    if (values.isEmpty) return (-1, null);
+    var used = List<int>.from(values);
+    if (dropWarmup && used.length >= 2) used = used.sublist(1);
+    used.sort();
+    final mid = used.length ~/ 2;
+    final ms =
+        used.length.isOdd ? used[mid] : (used[mid - 1] + used[mid]) ~/ 2;
+    final jitter = used.length >= 2 ? used.last - used.first : null;
+    return (ms < 1 ? 1 : ms, jitter);
+  }
+
+  /// (ms, jitter): ms=-1 ناموفق، ms=-2 پینگ واقعی پشتیبانی نمی‌شود.
+  static Future<(int, int?)> _measure(
+    VpnServer server,
+    TestBudget budget,
+    int retries,
+    TestSession session,
+  ) async {
+    final timeout = Duration(seconds: budget.timeoutSec);
+    final values = <int>[];
+    var attempt = 0;
+
+    for (var i = 0; i < budget.samples; i++) {
+      if (session.cancelled) break;
+      var result = -1;
+      while (true) {
+        final watch = Stopwatch()..start();
+        result = await V2RayEngine.realDelay(server, timeout: timeout);
+        if (result != -1 || session.cancelled) break;
+        if (attempt >= retries || watch.elapsedMilliseconds >= _fastFailMs) {
+          break;
+        }
+        attempt++;
+      }
+      if (result == -2) return (-2, null);
+      if (result > 0) {
+        values.add(result);
+      } else if (values.isEmpty) {
+        break;
+      }
+    }
+    return _summarize(values, dropWarmup: budget.samples >= 2);
+  }
+
+  static Future<(int, int?)> _tcpProbe(
+    VpnServer server,
+    TestBudget budget,
+    _Semaphore gate,
+  ) async {
+    if (server.host.isEmpty ||
+        server.port <= 0 ||
+        server.host == 'serverless' ||
+        server.usesUdpTransport) {
+      return (-1, null);
+    }
+    await gate.acquire();
+    try {
+      final times = <int>[];
+      for (var i = 0; i < budget.samples; i++) {
+        final watch = Stopwatch()..start();
+        try {
+          final socket = await Socket.connect(
+            server.host,
+            server.port,
+            timeout: Duration(seconds: budget.timeoutSec),
+          );
+          watch.stop();
+          socket.destroy();
+          times.add(watch.elapsedMilliseconds);
+        } catch (_) {
+          if (times.isEmpty) break;
+        }
+      }
+      return _summarize(times, dropWarmup: budget.samples >= 2);
+    } finally {
+      gate.release();
+    }
+  }
+
   static Future<void> _testServer(
     VpnServer server, {
     required TestSession session,
     required int retries,
     required _Semaphore gate,
+    required _Semaphore tcpGate,
+    required TestBudget budget,
     required TestSummary summary,
     required void Function() notify,
   }) async {
@@ -152,28 +238,27 @@ class ServerTester {
       server.status = ServerStatus.testing;
       notify();
 
-      // فقط تست واقعی.
-      var attempt = 0;
-      var result = -1;
-      while (true) {
-        final watch = Stopwatch()..start();
-        result = await V2RayEngine.realDelay(server);
-        if (result != -1 || session.cancelled) break;
-        if (attempt >= retries || watch.elapsedMilliseconds >= _fastFailMs) {
-          break;
-        }
-        attempt++;
-      }
-
+      var (ms, jitter) = await _measure(server, budget, retries, session);
       if (session.cancelled) return;
 
-      if (result > 0) {
-        server.ping = result;
-        server.jitter = null;
-        server.pingKind = PingKind.real;
+      var kind = PingKind.real;
+      if (ms == -2 && budget.tcpFallback) {
+        final tcp = await _tcpProbe(server, budget, tcpGate);
+        if (session.cancelled) return;
+        if (tcp.$1 > 0) {
+          ms = tcp.$1;
+          jitter = tcp.$2;
+          kind = PingKind.tcp;
+        }
+      }
+
+      if (ms > 0) {
+        server.ping = ms;
+        server.jitter = jitter;
+        server.pingKind = kind;
         server.status = ServerStatus.online;
         summary.online++;
-      } else if (result == -2) {
+      } else if (ms == -2) {
         summary.realUnavailable = true;
         server.ping = null;
         server.jitter = null;
@@ -181,7 +266,6 @@ class ServerTester {
         server.status = ServerStatus.unknown;
         summary.unknown++;
       } else {
-        // اتصال واقعی برقرار نشد.
         server.ping = null;
         server.jitter = null;
         server.pingKind = PingKind.none;

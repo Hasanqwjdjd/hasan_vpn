@@ -2,35 +2,32 @@ package com.hasan.hasan_vpn
 
 import android.content.Context
 import android.util.Log
+import ca.psiphon.PsiphonTunnel
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * پل بومی برای هستهٔ واقعی Psiphon (ca.psiphon.PsiphonTunnel).
- *
- * اگر AAR روی classpath نباشد، start با خطای واضح برمی‌گردد تا
- * لایهٔ Dart بتواند به Gool fallback کند.
- *
- * کانال MethodChannel در MainActivity: com.hasan.hasan_vpn/psiphon
+ * پل بومی Psiphon با AAR رسمی (ca.psiphon:psiphontunnel).
  *   start(configJson) -> Map { ok, socksPort, httpPort, error }
- *   stop()            -> Bool
- *   status()          -> Map { running, socksPort, httpPort, region, error }
+ *   stop()            -> Unit
+ *   status()          -> Map { running, socksPort, httpPort, region, error, libraryPresent }
  */
 object PsiphonService {
     private const val TAG = "PsiphonService"
 
+    private val lock = Any()
+
+    @Volatile private var tunnel: PsiphonTunnel? = null
     @Volatile private var running = false
     @Volatile private var lastError: String? = null
     @Volatile private var region: String? = null
     private val socksPort = AtomicInteger(0)
     private val httpPort = AtomicInteger(0)
 
-    // reflective handle so compile works even if AAR missing at edit-time
-    @Volatile private var tunnelObj: Any? = null
+    fun isLibraryPresent(): Boolean = true
 
     fun status(): Map<String, Any?> = mapOf(
         "running" to running,
@@ -38,220 +35,136 @@ object PsiphonService {
         "httpPort" to httpPort.get(),
         "region" to region,
         "error" to lastError,
-        "libraryPresent" to isLibraryPresent(),
+        "libraryPresent" to true,
     )
 
-    fun isLibraryPresent(): Boolean {
-        return try {
-            Class.forName("ca.psiphon.PsiphonTunnel")
-            true
-        } catch (_: ClassNotFoundException) {
+    private fun failed(): Map<String, Any?> =
+        status().toMutableMap().apply { put("ok", false) }
+
+    fun start(context: Context, configJson: String, timeoutSec: Long = 90): Map<String, Any?> {
+        val host = Host(context.applicationContext, configJson)
+
+        synchronized(lock) {
+            stopLocked()
+            lastError = null
+            region = null
+            socksPort.set(0)
+            httpPort.set(0)
+            try {
+                val t = PsiphonTunnel.newPsiphonTunnel(host)
+                tunnel = t
+                t.startTunneling("")
+            } catch (e: Throwable) {
+                Log.e(TAG, "start failed", e)
+                lastError = e.message ?: e.toString()
+                stopLocked()
+                return failed()
+            }
+        }
+
+        val ok = try {
+            host.latch.await(timeoutSec, TimeUnit.SECONDS) && host.connected
+        } catch (e: InterruptedException) {
             false
         }
-    }
 
-    @Synchronized
-    fun start(context: Context, configJson: String, timeoutSec: Long = 90): Map<String, Any?> {
-        stop(context)
-        lastError = null
-        region = null
-        socksPort.set(0)
-        httpPort.set(0)
-
-        if (!isLibraryPresent()) {
-            lastError = "Psiphon library (ca.psiphon.aar) is not bundled in this build"
-            return status().toMutableMap().apply { put("ok", false) }
+        if (!ok) {
+            lastError = host.failReason ?: host.lastDiag ?: "Psiphon connect timeout"
+            synchronized(lock) { stopLocked() }
+            return failed()
         }
 
-        return try {
-            val host = HostBridge(context, configJson)
-            val clazz = Class.forName("ca.psiphon.PsiphonTunnel")
-            val newMethod = clazz.getMethod("newPsiphonTunnel", Class.forName("ca.psiphon.PsiphonTunnel\$HostService"))
-            // HostService is interface implemented by HostBridge via dynamic proxy if needed
-            // Prefer concrete: some versions use PsiphonTunnel.HostService
-            val tunnel = try {
-                val ctorHost = Class.forName("ca.psiphon.PsiphonTunnel\$HostService")
-                clazz.getMethod("newPsiphonTunnel", ctorHost)
-                    .invoke(null, host)
-            } catch (_: Throwable) {
-                // fallback: implement via reflection helper class registered as HostService
-                host.asHostService()?.let { hs ->
-                    clazz.getMethod("newPsiphonTunnel", hs.javaClass.interfaces.first())
-                        .invoke(null, hs)
-                } ?: throw IllegalStateException("Cannot create PsiphonTunnel")
-            }
-
-            tunnelObj = tunnel
-            val startMethod = clazz.getMethod("startTunneling", String::class.java)
-            startMethod.invoke(tunnel, "") // embedded config from HostService
-
-            val connected = host.awaitConnected(timeoutSec)
-            if (!connected) {
-                lastError = host.failReason ?: "Psiphon connect timeout"
-                stop(context)
-                return status().toMutableMap().apply { put("ok", false) }
-            }
-
-            running = true
-            status().toMutableMap().apply { put("ok", true) }
-        } catch (t: Throwable) {
-            lastError = t.message ?: t.toString()
-            Log.e(TAG, "start failed", t)
-            running = false
-            tunnelObj = null
-            status().toMutableMap().apply { put("ok", false) }
+        val t = tunnel
+        if (socksPort.get() == 0 && t != null) {
+            socksPort.set(t.getLocalSocksProxyPort())
         }
+        if (socksPort.get() == 0) {
+            lastError = "Psiphon connected but SOCKS port is unknown"
+            synchronized(lock) { stopLocked() }
+            return failed()
+        }
+
+        running = true
+        return status().toMutableMap().apply { put("ok", true) }
     }
 
-    @Synchronized
     fun stop(context: Context? = null) {
+        synchronized(lock) { stopLocked() }
+    }
+
+    private fun stopLocked() {
         try {
-            val t = tunnelObj
-            if (t != null) {
-                t.javaClass.getMethod("stop").invoke(t)
-            }
-        } catch (t: Throwable) {
-            Log.w(TAG, "stop: ${t.message}")
+            tunnel?.stop()
+        } catch (e: Throwable) {
+            Log.w(TAG, "stop: ${e.message}")
         }
-        tunnelObj = null
+        tunnel = null
         running = false
         socksPort.set(0)
         httpPort.set(0)
     }
 
-    /** Host callbacks bridged to PsiphonTunnel.HostService via reflection-friendly fields. */
-    class HostBridge(
+    /** callbackها روی thread کتابخانه می‌آیند؛ هیچ‌وقت stop() را از داخلشان صدا نزن. */
+    private class Host(
         private val appContext: Context,
         private val configJson: String,
-    ) {
-        private val latch = CountDownLatch(1)
-        private val connectedFlag = AtomicBoolean(false)
-        var failReason: String? = null
-            private set
+    ) : PsiphonTunnel.HostService {
 
-        fun awaitConnected(timeoutSec: Long): Boolean {
-            latch.await(timeoutSec, TimeUnit.SECONDS)
-            return connectedFlag.get()
-        }
+        val latch = CountDownLatch(1)
 
-        fun getContext(): Context = appContext
+        @Volatile var connected = false
+        @Volatile var failReason: String? = null
+        @Volatile var lastDiag: String? = null
 
-        fun getPsiphonConfig(): String {
-            // Ensure data root points to app files
+        override fun getContext(): Context = appContext
+
+        override fun getPsiphonConfig(): String {
             return try {
                 val obj = JSONObject(configJson)
                 val root = File(appContext.filesDir, "psiphon").apply { mkdirs() }
                 obj.put("DataRootDirectory", root.absolutePath)
-                if (!obj.has("ClientPlatform")) obj.put("ClientPlatform", "Android")
-                if (!obj.has("ClientVersion")) obj.put("ClientVersion", "10")
-                // Local proxy ports 0 = auto
                 if (!obj.has("LocalSocksProxyPort")) obj.put("LocalSocksProxyPort", 0)
-                if (!obj.has("LocalHttpProxyPort")) obj.put("LocalHttpProxyPort", 0)
+                if (!obj.has("DisableLocalHTTPProxy")) obj.put("DisableLocalHTTPProxy", true)
                 obj.toString()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 configJson
             }
         }
 
-        fun onDiagnosticMessage(message: String) {
-            Log.i(TAG, message)
-            if (message.contains("error", ignoreCase = true) ||
-                message.contains("failed", ignoreCase = true)
-            ) {
-                failReason = message
+        override fun onDiagnosticMessage(message: String?) {
+            if (message != null) {
+                lastDiag = message
+                Log.d(TAG, message)
             }
         }
 
-        fun onListeningSocksProxyPort(port: Int) {
-            socksPort.set(port)
-            Log.i(TAG, "SOCKS on $port")
+        override fun onListeningSocksProxyPort(port: Int) {
+            PsiphonService.socksPort.set(port)
         }
 
-        fun onListeningHttpProxyPort(port: Int) {
-            httpPort.set(port)
-            Log.i(TAG, "HTTP on $port")
+        override fun onListeningHttpProxyPort(port: Int) {
+            PsiphonService.httpPort.set(port)
         }
 
-        fun onConnected() {
-            connectedFlag.set(true)
+        override fun onSocksProxyPortInUse(port: Int) {
+            failReason = "SOCKS port $port is in use"
+        }
+
+        override fun onUpstreamProxyError(message: String?) {
+            failReason = message
+        }
+
+        override fun onConnectedServerRegion(region: String?) {
+            PsiphonService.region = region
+        }
+
+        override fun onConnected() {
+            connected = true
             latch.countDown()
         }
 
-        fun onConnecting() {
-            Log.i(TAG, "connecting...")
-        }
-
-        fun onConnectedServerRegion(r: String) {
-            region = r
-        }
-
-        fun onExiting() {
-            running = false
+        override fun onExiting() {
             latch.countDown()
-        }
-
-        fun asHostService(): Any? {
-            // Dynamic proxy for ca.psiphon.PsiphonTunnel$HostService
-            return try {
-                val iface = Class.forName("ca.psiphon.PsiphonTunnel\$HostService")
-                java.lang.reflect.Proxy.newProxyInstance(
-                    iface.classLoader,
-                    arrayOf(iface),
-                ) { _, method, args ->
-                    when (method.name) {
-                        "getContext" -> getContext()
-                        "getAppName" -> "HasanVPN"
-                        "getPsiphonConfig" -> getPsiphonConfig()
-                        "onDiagnosticMessage" -> {
-                            onDiagnosticMessage(args?.get(0)?.toString() ?: ""); null
-                        }
-                        "onAvailableEgressRegions" -> null
-                        "onSocksProxyPortInUse" -> null
-                        "onHttpProxyPortInUse" -> null
-                        "onListeningSocksProxyPort" -> {
-                            onListeningSocksProxyPort((args?.get(0) as? Int) ?: 0); null
-                        }
-                        "onListeningHttpProxyPort" -> {
-                            onListeningHttpProxyPort((args?.get(0) as? Int) ?: 0); null
-                        }
-                        "onUpstreamProxyError" -> {
-                            failReason = args?.get(0)?.toString(); null
-                        }
-                        "onConnecting" -> {
-                            onConnecting(); null
-                        }
-                        "onConnected" -> {
-                            onConnected(); null
-                        }
-                        "onConnectedServerRegion" -> {
-                            onConnectedServerRegion(args?.get(0)?.toString() ?: ""); null
-                        }
-                        "onHomepage" -> null
-                        "onClientUpgradeDownloaded" -> null
-                        "onClientIsLatestVersion" -> null
-                        "onUntunneledAddress" -> null
-                        "onBytesTransferred" -> null
-                        "onStartedWaitingForNetworkConnectivity" -> null
-                        "onStoppedWaitingForNetworkConnectivity" -> null
-                        "onActiveAuthorizationIDs" -> null
-                        "onExiting" -> {
-                            onExiting(); null
-                        }
-                        "onClientRegion" -> null
-                        "onClientAddress" -> null
-                        "onApplicationParameters" -> null
-                        "onServerAlert" -> null
-                        else -> {
-                            if (method.returnType == Boolean::class.javaPrimitiveType) false
-                            else if (method.returnType == Integer::class.javaPrimitiveType) 0
-                            else null
-                        }
-                    }
-                }
-            } catch (t: Throwable) {
-                Log.e(TAG, "proxy failed", t)
-                null
-            }
         }
     }
 }

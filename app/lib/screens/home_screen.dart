@@ -596,8 +596,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _saveDeleted();
     _saveCustomServers();
     _savePings();
-    _showMsg(_t('\${toDelete.length} تکراری حذف شد',
-        '\${toDelete.length} duplicates deleted'));
+    _showMsg(_t('${toDelete.length} تکراری حذف شد',
+        '${toDelete.length} duplicates deleted'));
   }
 
   void _deleteInvalid() {

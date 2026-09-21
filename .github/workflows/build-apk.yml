@@ -60,7 +60,14 @@ jobs:
           mkdir -p "$KT_DIR"
           cp -f android-extra/kotlin/MainActivity.kt "$KT_DIR/MainActivity.kt"
           cp -f android-extra/kotlin/AetherService.kt "$KT_DIR/AetherService.kt"
-          cp -f android-extra/kotlin/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
+          cp -f android-extra/kotlin/TelemetryNotifier.kt "$KT_DIR/TelemetryNotifier.kt"
+          if [ -d android-extra/psiphon ] && [ "$(find android-extra/psiphon -name '*.aar' | wc -l)" -gt 0 ]; then
+            echo "Using real Psiphon AAR"
+            cp -f android-extra/kotlin/TelemetryNotifier.kt "$KT_DIR/TelemetryNotifier.kt"
+          else
+            echo "Using Psiphon stub (no AAR)"
+            cp -f android-extra/kotlin-stub/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
+          fi
           rm -f build_src/android/app/src/main/java/com/hasan/hasan_vpn/MainActivity.java 2>/dev/null || true
           ls -la "$KT_DIR"
 
@@ -213,6 +220,30 @@ jobs:
           p.write_text(text)
           print(p.read_text())
           PY
+
+      - name: Psiphon official AAR (typed bridge, stub fallback)
+        run: |
+          set -e
+          KT_DIR="build_src/android/app/src/main/kotlin/com/hasan/hasan_vpn"
+          META="https://raw.githubusercontent.com/Psiphon-Labs/psiphon-tunnel-core-Android-library/master/ca/psiphon/psiphontunnel/maven-metadata.xml"
+          if curl -fsSL --retry 3 --max-time 30 "$META" -o /tmp/psiphon-meta.xml; then
+            echo "Psiphon Maven reachable:"
+            head -20 /tmp/psiphon-meta.xml
+            cat >> build_src/android/app/build.gradle << 'GRADLE'
+
+          repositories {
+              maven { url "https://raw.githubusercontent.com/Psiphon-Labs/psiphon-tunnel-core-Android-library/master" }
+          }
+
+          dependencies {
+              implementation "ca.psiphon:psiphontunnel:2.+"
+          }
+          GRADLE
+            cp -f android-extra/kotlin/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
+          else
+            echo "::warning::Psiphon Maven repo unreachable - building with stub (Psiphon disabled)"
+            cp -f android-extra/kotlin-stub/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
+          fi
 
       - name: Flutter pub get
         working-directory: build_src

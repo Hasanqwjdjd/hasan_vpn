@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../services/app_colors.dart';
 import '../services/settings_service.dart';
+import '../services/update_service.dart';
 import 'announcements_screen.dart';
 import 'game_dns_screen.dart';
 import 'test_settings_screen.dart';
@@ -78,64 +79,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _checkUpdate() async {
     setState(() => _checkingUpdate = true);
     try {
-      final resp = await http.get(
-        Uri.parse(
-            'https://api.github.com/repos/Hasanqwjdjd/hasan_vpn/releases/latest'),
-        headers: {'Accept': 'application/vnd.github+json'},
-      ).timeout(const Duration(seconds: 15));
-
-      if (resp.statusCode == 200) {
-        final data = jsonDecode(resp.body);
-        final rawTag = (data['tag_name'] ?? '').toString();
-        final tag = rawTag.replaceAll('v', '').split('.').take(3).join('.');
-        final url = data['html_url'] ?? '';
-
-        final cmp = _compareVersion(tag, SettingsService.currentVersion);
-        final isNewer = cmp > 0;
-
-        if (!mounted) return;
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: AppColors.elevated(ctx),
-            title: Text(
-              isNewer
-                  ? _t('بروزرسانی موجود است', 'Update Available')
-                  : _t('برنامه بروز است', 'App is up to date'),
-              style: TextStyle(color: AppColors.fg(ctx)),
-            ),
-            content: Text(
-              isNewer
-                  ? _t(
-                      'نسخه فعلی: ${SettingsService.currentVersion}\nنسخه جدید: $tag',
-                      'Current: ${SettingsService.currentVersion}\nNew: $tag')
-                  : _t(
-                      'نسخه فعلی: ${SettingsService.currentVersion}\nشما آخرین نسخه را دارید ✅',
-                      'Current: ${SettingsService.currentVersion}\nYou have the latest version ✅'),
-              style: TextStyle(color: AppColors.muted(ctx), height: 1.7),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(_t('بستن', 'Close'),
-                    style: TextStyle(color: AppColors.muted(ctx))),
-              ),
-              if (isNewer && url.isNotEmpty)
-                TextButton(
-                  onPressed: () async {
-                    Navigator.pop(ctx);
-                    await _openUrl(url);
-                  },
-                  child: Text(_t('دانلود', 'Download'),
-                      style: const TextStyle(color: AppColors.accent)),
-                ),
-            ],
+      final info = await UpdateService.fetchLatest();
+      final isNewer =
+          _compareVersion(info.version, SettingsService.currentVersion) > 0;
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.elevated(ctx),
+          title: Text(
+            isNewer
+                ? _t('بروزرسانی موجود است', 'Update Available')
+                : _t('برنامه بروز است', 'App is up to date'),
+            style: TextStyle(color: AppColors.fg(ctx)),
           ),
-        );
-      } else {
-        _showMsg(_t('گیت‌هاب پاسخ نداد (${resp.statusCode})',
-            'GitHub did not respond (${resp.statusCode})'));
-      }
+          content: Text(
+            isNewer
+                ? _t(
+                    'نسخه فعلی: ${SettingsService.currentVersion}\nنسخه جدید: ${info.version}\nمعماری گوشی: ${info.abi}',
+                    'Current: ${SettingsService.currentVersion}\nNew: ${info.version}\nCPU: ${info.abi}')
+                : _t(
+                    'نسخه فعلی: ${SettingsService.currentVersion}\nشما آخرین نسخه را دارید',
+                    'Current: ${SettingsService.currentVersion}\nYou have the latest version'),
+            style: TextStyle(color: AppColors.muted(ctx), height: 1.7),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(_t('بستن', 'Close'),
+                  style: TextStyle(color: AppColors.muted(ctx))),
+            ),
+            if (isNewer)
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await _openUrl(info.apkUrl);
+                },
+                child: Text(_t('دانلود APK', 'Download APK'),
+                    style: const TextStyle(color: AppColors.accent)),
+              ),
+          ],
+        ),
+      );
     } catch (e) {
       _showMsg(_t('خطا در بررسی بروزرسانی', 'Error checking for update'));
     } finally {

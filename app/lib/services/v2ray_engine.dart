@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/server.dart';
 import 'settings_service.dart';
 import 'socks_probe.dart';
+import 'telemetry_service.dart';
 import 'xray_json.dart';
 import 'xray_settings.dart';
 
@@ -19,6 +20,7 @@ class V2RayEngine {
 
   static bool _initialized = false;
   static bool _connected = false;
+  static bool _sawState = false;
   static DateTime? _startedAt;
   static VpnServer? _current;
   static String _lastState = '';
@@ -28,7 +30,6 @@ class V2RayEngine {
   static int localSocksPort = 10808;
   static bool blockedAppsSupported = true;
 
-  /// آدرس تست تأخیر رو از تنظیمات می‌خونه.
   static Future<void> loadDelayUrl() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -52,23 +53,38 @@ class V2RayEngine {
     return status.toString();
   }
 
+  static void _pushTelemetry(dynamic status) {
+    try {
+      final down = (status.downloadSpeed as num?)?.toInt() ?? 0;
+      final up = (status.uploadSpeed as num?)?.toInt() ?? 0;
+      TelemetryService.onSpeed(
+          down: down, up: up, server: _current?.displayName);
+    } catch (_) {}
+  }
+
   static final FlutterVless _engine = FlutterVless(
     onStatusChanged: (dynamic status) {
       try {
         final state = _stateOf(status).toLowerCase();
         _lastState = state;
+        _sawState = true;
         debugPrint('V2Ray status: $state');
 
-        if (state.contains('disconnect') ||
+        final down = state.contains('disconnect') ||
             state.contains('stop') ||
             state.contains('closed') ||
-            state.contains('idle')) {
+            state.contains('idle');
+        if (down) {
           final started = _startedAt;
           final inGrace = started != null &&
               DateTime.now().difference(started) < const Duration(seconds: 4);
-          if (!inGrace) _connected = false;
+          if (!inGrace) {
+            _connected = false;
+            unawaited(TelemetryService.hide());
+          }
         } else if (state.contains('connected')) {
           _connected = true;
+          _pushTelemetry(status);
         }
       } catch (_) {}
     },
@@ -80,6 +96,7 @@ class V2RayEngine {
   static Future<void> init() async {
     if (_initialized) return;
     try {
+      await TelemetryService.load();
       await _engine.initializeVless(
         notificationIconResourceType: 'mipmap',
         notificationIconResourceName: 'ic_launcher',
@@ -120,9 +137,7 @@ class V2RayEngine {
       final map = Map<String, dynamic>.from(json);
 
       final servers = <String>[];
-      if (pref == 'ipv4') {
-        servers.addAll(<String>[dns[0], dns[1]]);
-      } else if (pref == 'ipv6') {
+      if (pref == 'ipv6') {
         servers.addAll(<String>[
           'https://dns.google/dns-query',
           'https://cloudflare-dns.com/dns-query',
@@ -163,8 +178,7 @@ class V2RayEngine {
           lastError = 'invalid xray json config';
           return false;
         }
-        config = raw;
-        config = _ensureLocalInbound(config);
+        config = _ensureLocalInbound(raw);
       } else {
         final FlutterVlessURL parser = FlutterVless.parse(server.shareLink);
         config = parser.getFullConfiguration();
@@ -176,7 +190,6 @@ class V2RayEngine {
         return false;
       }
 
-      // برای xrayJson نباید XraySettings رو اعمال کنیم چون inbound خودش رو خراب می‌کنه.
       if (server.protocol != VpnProtocol.xrayJson) {
         config = await XraySettings.applyToConfig(config);
       }
@@ -230,6 +243,79 @@ class V2RayEngine {
     }
   }
 
+  /// نسخه‌های جدید پلاگین در حالت VPN خودشان SOCKS را مدیریت می‌کنند و
+  /// listener اضافه را رد می‌کنند؛ این تابع آن‌ها را برمی‌دارد.
+  static String _stripProxyInbounds(String config) {
+    try {
+      final dynamic decoded = jsonDecode(config);
+      if (decoded is! Map) return config;
+      final map = Map<String, dynamic>.from(decoded);
+      final inbounds = map['inbounds'];
+      if (inbounds is List) {
+        map['inbounds'] = inbounds.where((e) {
+          if (e is! Map) return true;
+          final p = e['protocol']?.toString().toLowerCase() ?? '';
+          return p != 'socks' && p != 'http' && p != 'mixed';
+        }).toList();
+      }
+      return jsonEncode(map);
+    } catch (_) {
+      return config;
+    }
+  }
+
+  static bool _looksLikeInboundError(String? e) {
+    if (e == null) return false;
+    final t = e.toLowerCase();
+    return t.contains('inbound') || t.contains('listener');
+  }
+
+  static Future<bool> _startOnce({
+    required String remark,
+    required String config,
+    required bool proxyOnly,
+    List<String>? blockedApps,
+    required bool requireBlockedApps,
+  }) async {
+    try {
+      if (blockedApps != null && blockedApps.isNotEmpty) {
+        try {
+          final dynamic engine = _engine;
+          await engine.startVless(
+            remark: remark,
+            config: config,
+            proxyOnly: proxyOnly,
+            blockedApps: blockedApps,
+          );
+        } on NoSuchMethodError {
+          debugPrint('flutter_vless: blockedApps is not supported');
+          blockedAppsSupported = false;
+          if (requireBlockedApps) {
+            lastError = 'This flutter_vless version does not support '
+                'blockedApps, which Aether needs to avoid a routing loop.';
+            return false;
+          }
+          await _engine.startVless(
+            remark: remark,
+            config: config,
+            proxyOnly: proxyOnly,
+          );
+        }
+      } else {
+        await _engine.startVless(
+          remark: remark,
+          config: config,
+          proxyOnly: proxyOnly,
+        );
+      }
+      return true;
+    } catch (e) {
+      lastError = e.toString();
+      debugPrint('V2Ray start error: $e');
+      return false;
+    }
+  }
+
   static Future<bool> startConfig({
     required String remark,
     required String config,
@@ -242,28 +328,11 @@ class V2RayEngine {
     try {
       await init();
 
-      // اطمینان از بسته بودن تونل قبلی قبل از شروع تونل جدید
+      // تونل قبلی (اگر مانده) یک‌بار بسته می‌شود.
       try {
         await _engine.stopVless();
       } catch (_) {}
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-
-
-      // تونل قبلی رو ببند تا پورت SOCKS آزاد شه
-      try { await _engine.stopVless(); } catch (_) {}
       await Future<void>.delayed(const Duration(milliseconds: 700));
-      // قبل از شروع، حتماً تونل قبلی بسته بشه
-      try { await _engine.stopVless(); } catch (_) {}
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      try { await _engine.stopVless(); } catch (_) {}
-      await Future<void>.delayed(const Duration(milliseconds: 700));
-
-      // تونل قبلی رو کاملاً ببند (۳ تلاش)
-      for (var i = 0; i < 3; i++) {
-        try { await _engine.stopVless(); } catch (_) {}
-        await Future<void>.delayed(const Duration(milliseconds: 400));
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 1000));
 
       bool proxyOnly = forceProxyOnly ?? false;
       if (forceProxyOnly == null) {
@@ -283,44 +352,49 @@ class V2RayEngine {
 
       localSocksPort = _socksPortOf(config);
       _lastState = '';
+      _sawState = false;
+      _connected = false;
       _startedAt = DateTime.now();
+      _current = server;
 
-      if (blockedApps != null && blockedApps.isNotEmpty) {
-        try {
-          final dynamic engine = _engine;
-          await engine.startVless(
-            remark: remark,
-            config: config,
-            proxyOnly: proxyOnly,
-            blockedApps: blockedApps,
-          );
-        } on NoSuchMethodError {
-          debugPrint('flutter_vless: blockedApps is not supported');
-          blockedAppsSupported = false;
-          if (requireBlockedApps) {
-            lastError = 'This flutter_vless version does not support '
-                'blockedApps, which Aether needs to avoid a routing loop.';
-            _connected = false;
-            _current = null;
-            return false;
-          }
-          await _engine.startVless(
-            remark: remark,
-            config: config,
-            proxyOnly: proxyOnly,
-          );
-        }
-      } else {
-        await _engine.startVless(
+      var started = await _startOnce(
+        remark: remark,
+        config: config,
+        proxyOnly: proxyOnly,
+        blockedApps: blockedApps,
+        requireBlockedApps: requireBlockedApps,
+      );
+
+      if (!started && _looksLikeInboundError(lastError)) {
+        debugPrint('retrying without extra proxy inbounds');
+        lastError = null;
+        started = await _startOnce(
           remark: remark,
-          config: config,
+          config: _stripProxyInbounds(config),
           proxyOnly: proxyOnly,
+          blockedApps: blockedApps,
+          requireBlockedApps: requireBlockedApps,
         );
+      }
+
+      if (!started) {
+        _connected = false;
+        _current = null;
+        return false;
+      }
+
+      final ok = await _waitConnected(const Duration(seconds: 30));
+      if (!ok) {
+        try {
+          await _engine.stopVless();
+        } catch (_) {}
+        _connected = false;
+        _current = null;
+        return false;
       }
 
       _connected = true;
       _current = server;
-      await _waitForConnectedState(const Duration(seconds: 3));
       return true;
     } catch (e) {
       lastError = e.toString();
@@ -331,15 +405,32 @@ class V2RayEngine {
     }
   }
 
-  static Future<void> _waitForConnectedState(Duration timeout) async {
-    final deadline = DateTime.now().add(timeout);
+  static Future<bool> _waitConnected(Duration timeout) async {
+    final started = DateTime.now();
+    final deadline = started.add(timeout);
     while (DateTime.now().isBefore(deadline)) {
-      if (_lastState.contains('connected') &&
-          !_lastState.contains('disconnect')) {
-        return;
+      final s = _lastState;
+      if (s.contains('connected') && !s.contains('disconnect')) return true;
+
+      final elapsed = DateTime.now().difference(started);
+      if (_sawState &&
+          s.contains('disconnect') &&
+          elapsed > const Duration(seconds: 6)) {
+        final ms = await connectedDelay(timeout: const Duration(seconds: 5));
+        if (ms > 0) return true;
+        lastError ??= 'VPN service stopped before it connected (state: $s)';
+        return false;
       }
-      await Future<void>.delayed(const Duration(milliseconds: 150));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
     }
+
+    // پلاگین وضعیت نداد یا روی CONNECTING ماند: با یک درخواست واقعی بررسی کن.
+    final ms = await connectedDelay();
+    if (ms > 0) return true;
+    lastError ??= _sawState
+        ? 'connect timeout (state: $_lastState)'
+        : 'no status from VPN service';
+    return false;
   }
 
   static Future<void> disconnect() async {
@@ -348,9 +439,26 @@ class V2RayEngine {
     } catch (_) {}
     _connected = false;
     _current = null;
+    unawaited(TelemetryService.hide());
   }
 
   // ------------------------------------------------------------------- ping
+
+  /// تأخیر واقعی از داخل تونل فعلی (از خود پلاگین).
+  static Future<int> connectedDelay(
+      {Duration timeout = const Duration(seconds: 8)}) async {
+    try {
+      final dynamic engine = _engine;
+      final dynamic raw = await Future<dynamic>.value(
+        engine.getConnectedServerDelay(url: delayUrl),
+      ).timeout(timeout);
+      final int? v = raw is int ? raw : int.tryParse(raw.toString());
+      if (v == null || v <= 0) return -1;
+      return v;
+    } catch (_) {
+      return -1;
+    }
+  }
 
   static Future<int> realDelay(
     VpnServer server, {
@@ -361,7 +469,7 @@ class V2RayEngine {
 
     try {
       if (server.protocol != VpnProtocol.xrayJson) {
-        config = await XraySettings.applyToConfig(config!);
+        config = await XraySettings.applyToConfig(config);
       }
       config = await _applyGameDns(config);
     } catch (_) {}
@@ -404,12 +512,23 @@ class V2RayEngine {
     }
   }
 
-  static Future<ProbeResult> probeConnected() {
-    return SocksProbe.measure(
+  static Future<ProbeResult> probeConnected() async {
+    final viaSocks = await SocksProbe.measure(
       port: localSocksPort,
       samples: 2,
       timeout: const Duration(seconds: 6),
     );
+    if (viaSocks.ok) {
+      TelemetryService.livePing = viaSocks.ms;
+      return viaSocks;
+    }
+    // نسخه‌های جدید پلاگین SOCKS را رمزدار می‌کنند؛ از خود پلاگین بپرس.
+    final ms = await connectedDelay();
+    if (ms > 0) {
+      TelemetryService.livePing = ms;
+      return ProbeResult(ms: ms);
+    }
+    return viaSocks;
   }
 
   static int _socksPortOf(String config) {
