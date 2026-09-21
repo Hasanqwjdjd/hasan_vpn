@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/app_colors.dart';
 
-/// تنظیمات تست و رتبه‌بندی سرورها
 class TestSettingsScreen extends StatefulWidget {
   final String language;
 
@@ -20,9 +19,11 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
 
   int _samples = 1;
   bool _tcpFallback = true;
-  int _concurrency = 0; // 0 = خودکار
+  int _concurrency = 0;
   String _delayUrl = 'http://cp.cloudflare.com/generate_204';
   bool _loading = true;
+
+  late final TextEditingController _urlController;
 
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
@@ -30,7 +31,14 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    _urlController = TextEditingController(text: _delayUrl);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -43,6 +51,7 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
         _tcpFallback = m['tcpFallback'] != false;
         _concurrency = (m['concurrency'] as num?)?.toInt() ?? 0;
         _delayUrl = m['delayUrl']?.toString() ?? _delayUrl;
+        _urlController.text = _delayUrl;
       } catch (_) {}
     }
     if (mounted) setState(() => _loading = false);
@@ -58,6 +67,26 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
         'concurrency': _concurrency,
         'delayUrl': _delayUrl,
       }),
+    );
+  }
+
+  Future<void> _saveUrl() async {
+    final t = _urlController.text.trim();
+    if (!t.startsWith('http://') && !t.startsWith('https://')) {
+      _showMsg(_t('آدرس باید با http:// یا https:// شروع بشه',
+          'URL must start with http:// or https://'));
+      return;
+    }
+    setState(() => _delayUrl = t);
+    await _save();
+    if (!mounted) return;
+    _showMsg(_t('آدرس ذخیره شد', 'URL saved'));
+  }
+
+  void _showMsg(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
     );
   }
 
@@ -78,7 +107,8 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                 Text(
                   _t('تعداد نمونه برای هر سرور', 'Samples per server'),
                   style: TextStyle(
-                      color: AppColors.fg(context), fontWeight: FontWeight.w600),
+                      color: AppColors.fg(context),
+                      fontWeight: FontWeight.w600),
                 ),
                 Slider(
                   value: _samples.toDouble(),
@@ -133,33 +163,67 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                     },
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 16),
                 Text(
                   _t('آدرس تست تأخیر', 'Delay test URL'),
                   style: TextStyle(
-                      color: AppColors.fg(context), fontWeight: FontWeight.w600),
+                      color: AppColors.fg(context),
+                      fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 6),
-                TextFormField(
-                  initialValue: _delayUrl,
+                TextField(
+                  controller: _urlController,
+                  style: TextStyle(color: AppColors.fg(context), fontSize: 13),
                   decoration: InputDecoration(
-                    border: const OutlineInputBorder(),
                     hintText: 'http://cp.cloudflare.com/generate_204',
-                    isDense: true,
+                    hintStyle: TextStyle(color: AppColors.muted2(context)),
+                    filled: true,
+                    fillColor: AppColors.surface(context),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: AppColors.border(context)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: AppColors.border(context)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(
+                          color: AppColors.accent, width: 1.5),
+                    ),
                   ),
-                  onFieldSubmitted: (v) {
-                    final t = v.trim();
-                    if (t.startsWith('http')) {
-                      setState(() => _delayUrl = t);
-                      _save();
-                    }
-                  },
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _saveUrl,
+                    icon: const Icon(Icons.save, size: 18),
+                    label: Text(_t('ذخیره آدرس', 'Save URL')),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _t(
+                    'نمونه: https://www.gstatic.com/generate_204',
+                    'Example: https://www.gstatic.com/generate_204',
+                  ),
+                  style: TextStyle(
+                    color: AppColors.muted2(context),
+                    fontSize: 11,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 Text(
                   _t(
-                    'رتبه‌بندی بر اساس تأخیر واقعی، jitter و نرخ موفقیت انجام می‌شود. سقف ۸ سرور وجود ندارد.',
-                    'Ranking uses real latency, jitter and success rate. No 8-server cap.',
+                    'رتبه‌بندی بر اساس تأخیر واقعی، jitter و نرخ موفقیت انجام می‌شود.',
+                    'Ranking uses real latency, jitter and success rate.',
                   ),
                   style: TextStyle(
                     color: AppColors.muted2(context),
