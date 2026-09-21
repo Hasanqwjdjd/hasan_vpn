@@ -1232,7 +1232,9 @@ class _HomeScreenState extends State<HomeScreen> {
               setState(() => _selected = server);
               await SettingsService.setLastServer(server.id);
             },
-            onDelete: () => _deleteServer(server),
+            onDelete: server.isDeletable
+                ? () => _deleteServer(server)
+                : null,
             onPin: () => _togglePin(server),
             onShare: () => _shareServer(server),
             onEdit: () => _editServerName(server),
