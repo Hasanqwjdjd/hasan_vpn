@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -27,13 +29,18 @@ jobs:
 
       - name: Compute app version
         id: appver
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # نسخه = 1 + (شماره اجرا - 1) × 0.2
-          # خروجی: 1، 1.2، 1.4، 1.6، 1.8، 2، 2.2، 2.4 و ...
-          RAW=$(awk "BEGIN {printf \"%.1f\", 1 + (${{ github.run_number }} - 1) * 0.2}")
+          # تعداد Releaseهای موجود را می‌شماریم تا از ۱ شروع شود
+          COUNT=$(gh release list --limit 200 --json tagName --jq 'length' 2>/dev/null || echo 0)
+          if [ -z "$COUNT" ] || [ "$COUNT" = "null" ]; then COUNT=0; fi
+          NEXT=$((COUNT + 1))
+          RAW=$(awk "BEGIN {printf \"%.1f\", 1 + ($NEXT - 1) * 0.2}")
           CLEAN=$(echo "$RAW" | sed 's/\.0$//')
           echo "version=$CLEAN" >> "$GITHUB_OUTPUT"
-          echo "Computed version: $CLEAN"
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "Computed version: $CLEAN (release count: $COUNT, next: $NEXT)"
 
       - name: Prepare signing keystore
         env:
@@ -90,7 +97,6 @@ jobs:
           KT_DIR="build_src/android/app/src/main/kotlin/com/hasan/hasan_vpn"
           mkdir -p "$KT_DIR"
           rm -f build_src/android/app/src/main/java/com/hasan/hasan_vpn/MainActivity.java 2>/dev/null || true
-          ls -la "$KT_DIR"
           cp -f android-extra/kotlin/MainActivity.kt "$KT_DIR/MainActivity.kt"
           cp -f android-extra/kotlin/AetherService.kt "$KT_DIR/AetherService.kt"
           cp -f android-extra/kotlin/TelemetryNotifier.kt "$KT_DIR/TelemetryNotifier.kt"
@@ -138,16 +144,16 @@ jobs:
 
           rm -f build_src/android/app/build.gradle.kts
           cat > build_src/android/app/build.gradle << 'EOF'
-          def keystoreProperties = new Properties()
-          def keystorePropertiesFile = rootProject.file("key.properties")
-          if (keystorePropertiesFile.exists()) {
-              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-          }
-
           plugins {
               id "com.android.application"
               id "kotlin-android"
               id "dev.flutter.flutter-gradle-plugin"
+          }
+
+          def keystoreProperties = new Properties()
+          def keystorePropertiesFile = rootProject.file("key.properties")
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
           }
 
           def localProperties = new Properties()
@@ -213,7 +219,6 @@ jobs:
           }
           EOF
 
-          # مجوزها و تنظیمات manifest
           MF="build_src/android/app/src/main/AndroidManifest.xml"
           python3 - << 'PYEOF'
           import re
@@ -243,11 +248,6 @@ jobs:
           with open(path, "w", encoding="utf-8") as f:
               f.write(text)
           PYEOF
-
-          # اضافه کردن AARهای Psiphon به dependencies اگر موجودند
-          if [ -d build_src/android/app/libs ] && [ "$(find build_src/android/app/libs -name '*.aar' | wc -l)" -gt 0 ]; then
-            echo "AARs found, updating build.gradle dependencies"
-          fi
 
       - name: Flutter pub get
         working-directory: build_src
