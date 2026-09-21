@@ -29,20 +29,42 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Ensure keystore exists
+      - name: Prepare signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ ! -f hasan.keystore ]; then
-            keytool -genkey -v \
-              -keystore hasan.keystore \
-              -alias hasan \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -storepass hasan12345 \
-              -keypass hasan12345 \
-              -dname "CN=Hasan, OU=Hasan, O=Hasan, L=Tehran, S=Tehran, C=IR"
+          set -e
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            # روش امن: کلید امضا فقط داخل GitHub Secrets است.
+            echo "$KEYSTORE_BASE64" | base64 -d > hasan.keystore
+            SP="$KEYSTORE_PASSWORD"
+            echo "STORE_PASS=$SP" >> "$GITHUB_ENV"
+            echo "KEY_PASS=${KEY_PASSWORD:-$SP}" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS_NAME=${KEY_ALIAS:-hasan}" >> "$GITHUB_ENV"
+            echo "Using keystore from GitHub Secrets"
+          else
+            echo "::warning::KEYSTORE_BASE64 secret تنظیم نشده؛ از کلید قدیمی داخل ریپو استفاده می‌شود (ناامن!)."
+            if [ ! -f hasan.keystore ]; then
+              keytool -genkey -v \
+                -keystore hasan.keystore \
+                -alias hasan \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -storepass hasan12345 \
+                -keypass hasan12345 \
+                -dname "CN=Hasan, OU=Hasan, O=Hasan, L=Tehran, S=Tehran, C=IR"
+            fi
+            SP="hasan12345"
+            echo "STORE_PASS=$SP" >> "$GITHUB_ENV"
+            echo "KEY_PASS=hasan12345" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS_NAME=hasan" >> "$GITHUB_ENV"
           fi
-          keytool -list -keystore hasan.keystore -storepass hasan12345 -alias hasan
+          keytool -list -keystore hasan.keystore -storepass "$SP" >/dev/null
+          echo "keystore OK"
 
       - name: Create Flutter Android project
         run: |
@@ -53,6 +75,11 @@ jobs:
           cp -r app/lib/. build_src/lib/
           cp hasan.keystore build_src/android/app/hasan.keystore
 
+      - name: Generate protected default subscriptions
+        env:
+          DEFAULT_SUBS_JSON: ${{ secrets.DEFAULT_SUBS_JSON }}
+        run: python3 tools/gen_protected_defaults.py build_src/lib/services/protected_defaults.g.dart
+
       - name: Install Aether native (Kotlin) sources
         run: |
           set -e
@@ -61,6 +88,7 @@ jobs:
           cp -f android-extra/kotlin/MainActivity.kt "$KT_DIR/MainActivity.kt"
           cp -f android-extra/kotlin/AetherService.kt "$KT_DIR/AetherService.kt"
           cp -f android-extra/kotlin/TelemetryNotifier.kt "$KT_DIR/TelemetryNotifier.kt"
+          cp -f android-extra/kotlin/SafeLog.kt "$KT_DIR/SafeLog.kt"
           if [ -d android-extra/psiphon ] && [ "$(find android-extra/psiphon -name '*.aar' | wc -l)" -gt 0 ]; then
             echo "Using real Psiphon AAR"
             cp -f android-extra/kotlin/TelemetryNotifier.kt "$KT_DIR/TelemetryNotifier.kt"
@@ -112,12 +140,12 @@ jobs:
 
       - name: Write v1+v2+v3 signing and VPN manifest
         run: |
-          cat > build_src/android/key.properties << 'EOF'
-          storePassword=hasan12345
-          keyPassword=hasan12345
-          keyAlias=hasan
-          storeFile=hasan.keystore
-          EOF
+          {
+            echo "storePassword=${STORE_PASS}"
+            echo "keyPassword=${KEY_PASS}"
+            echo "keyAlias=${KEY_ALIAS_NAME}"
+            echo "storeFile=hasan.keystore"
+          } > build_src/android/key.properties
 
           rm -f build_src/android/app/build.gradle.kts
           cat > build_src/android/app/build.gradle << 'EOF'
@@ -206,6 +234,9 @@ jobs:
               text = text.replace("<application", perms + "    <application", 1)
           if 'android:extractNativeLibs' not in text:
               text = text.replace("<application", '<application android:extractNativeLibs="true" android:usesCleartextTraffic="true"', 1)
+          # جلوگیری از adb backup / انتقال داده‌ها (SharedPreferences شامل لیست سرورهاست)
+          if 'android:allowBackup' not in text:
+              text = text.replace("<application", '<application android:allowBackup="false"', 1)
           queries = """    <queries>
               <intent>
                   <action android:name="android.net.VpnService"/>
@@ -263,6 +294,8 @@ jobs:
         working-directory: build_src
         run: >
           flutter build apk --release --no-shrink
+          --obfuscate
+          --split-debug-info=build/symbols
           --split-per-abi
           --target-platform android-arm,android-arm64,android-x64
           --build-name=10.0.${{ github.run_number }}

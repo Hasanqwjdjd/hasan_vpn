@@ -22,6 +22,10 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // لاگ بومی فقط در بیلد debuggable روشن است.
+        SafeLog.enabled =
+            (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, aetherChannel)
             .setMethodCallHandler { call, result ->
                 when (call.method) {

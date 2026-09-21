@@ -12,6 +12,7 @@ dependencies:
   # نسخه‌ی 1.1.6 (15 سپتامبر 2026) رفتار VPN را عوض کرد؛ پین شد.
   flutter_vless: 1.1.5
   http: ^1.1.0
+  crypto: ^3.0.3
   shared_preferences: ^2.2.2
   url_launcher: ^6.2.4
   package_info_plus: ^8.0.0

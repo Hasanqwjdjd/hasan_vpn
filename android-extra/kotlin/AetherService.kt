@@ -10,7 +10,6 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
 import org.json.JSONObject
 import java.io.File
 import kotlin.concurrent.thread
@@ -114,7 +113,7 @@ class AetherService : Service() {
                 }
                 true
             } catch (error: Exception) {
-                Log.e(TAG, "Unable to start service", error)
+                SafeLog.e(TAG, "Unable to start service", error)
                 synchronized(lock) { lastError = error.message ?: error.javaClass.simpleName }
                 false
             }
@@ -125,7 +124,7 @@ class AetherService : Service() {
             try {
                 context.stopService(Intent(context, AetherService::class.java))
             } catch (error: Exception) {
-                Log.w(TAG, "Unable to stop service", error)
+                SafeLog.w(TAG, "Unable to stop service", error)
             }
         }
 
@@ -160,7 +159,7 @@ class AetherService : Service() {
             try {
                 target.destroy() // SIGTERM؛ Rust معمولاً تمیز بسته می‌شود.
             } catch (error: Exception) {
-                Log.w(TAG, "Could not stop process", error)
+                SafeLog.w(TAG, "Could not stop process", error)
             }
 
             // اگر تا ۱.۵ ثانیه بسته نشد، اجباری می‌کُشیم (بدون API های ۲۶+).
@@ -177,7 +176,7 @@ class AetherService : Service() {
                         android.os.Process.killProcess(pid)
                     }
                 } catch (error: Exception) {
-                    Log.w(TAG, "reaper: ${error.message}")
+                    SafeLog.w(TAG, "reaper: ${error.message}")
                 }
             }
         }
@@ -212,7 +211,7 @@ class AetherService : Service() {
         try {
             enterForeground(remark)
         } catch (error: Exception) {
-            Log.e(TAG, "startForeground failed", error)
+            SafeLog.e(TAG, "startForeground failed", error)
             fail("Could not start foreground service: ${error.message}")
             return START_NOT_STICKY
         }
@@ -237,7 +236,7 @@ class AetherService : Service() {
     // ---------------------------------------------------------------- launch
 
     private fun fail(message: String) {
-        Log.e(TAG, message)
+        SafeLog.e(TAG, message)
         synchronized(lock) {
             lastError = message
             running = false
@@ -307,7 +306,7 @@ class AetherService : Service() {
         val gen = current
 
         writePid(pid)
-        Log.i(TAG, "Aether started (${env["AETHER_PROTOCOL"]}, ${env["AETHER_SCAN"]})")
+        SafeLog.i(TAG, "Aether started (${env["AETHER_PROTOCOL"]}, ${env["AETHER_SCAN"]})")
 
         thread(name = "aether-log", isDaemon = true) { readLoop(proc, gen) }
 
@@ -324,7 +323,7 @@ class AetherService : Service() {
                     exitCode = code
                 }
             }
-            Log.w(TAG, "Aether exited with code $code")
+            SafeLog.w(TAG, "Aether exited with code $code")
             clearPid()
         }
     }
@@ -341,11 +340,11 @@ class AetherService : Service() {
                             if (tail.size > TAIL_SIZE) tail.removeAt(0)
                         }
                     }
-                    Log.d(TAG, "[aether] $line")
+                    SafeLog.d(TAG, "[aether] $line")
                 }
             }
         } catch (error: Exception) {
-            Log.d(TAG, "log reader stopped: ${error.message}")
+            SafeLog.d(TAG, "log reader stopped: ${error.message}")
         }
     }
 
@@ -358,7 +357,7 @@ class AetherService : Service() {
         try {
             pidFile().writeText(pid.toString())
         } catch (error: Exception) {
-            Log.w(TAG, "Could not write pid file", error)
+            SafeLog.w(TAG, "Could not write pid file", error)
         }
     }
 
@@ -366,7 +365,7 @@ class AetherService : Service() {
         try {
             pidFile().delete()
         } catch (error: Exception) {
-            Log.w(TAG, "Could not delete pid file", error)
+            SafeLog.w(TAG, "Could not delete pid file", error)
         }
     }
 
@@ -382,7 +381,7 @@ class AetherService : Service() {
             // به یک برنامه‌ی دیگر داده شده باشد.
             val cmdline = File("/proc/$pid/cmdline").readText()
             if (cmdline.contains(BINARY_NAME)) {
-                Log.w(TAG, "Killing leftover Aether process $pid")
+                SafeLog.w(TAG, "Killing leftover Aether process $pid")
                 android.os.Process.killProcess(pid)
             }
         } catch (error: Exception) {

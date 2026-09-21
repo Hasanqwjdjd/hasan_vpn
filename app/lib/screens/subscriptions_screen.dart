@@ -102,7 +102,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       return;
     }
 
-    if (_subs.any((s) => s.url == url)) {
+    if (_subs.any((s) => !s.isDefault && s.url == url)) {
       _showMsg(_t('این اشتراک قبلاً اضافه شده',
           'This subscription already exists'));
       return;
@@ -402,7 +402,10 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text(s.url,
+                      Text(
+                          s.isDefault
+                              ? _t('🔒 لینک محافظت‌شده', '🔒 Protected link')
+                              : s.url,
                           style: TextStyle(
                               color: AppColors.muted2(context), fontSize: 10),
                           maxLines: 1,

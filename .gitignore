@@ -1,0 +1,9 @@
+# کلیدها و رازها هرگز داخل ریپو نباید باشند
+*.keystore
+*.jks
+key.properties
+*.secret.json
+local.properties
+build/
+.dart_tool/
+__pycache__/

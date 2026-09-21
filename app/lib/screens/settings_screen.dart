@@ -47,9 +47,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String _t(String fa, String en) => _lang == 'fa' ? fa : en;
 
+  /// فقط https و فقط دامنه‌های GitHub (ریپو و دانلود بروزرسانی).
+  bool _isAllowedUrl(Uri uri) {
+    if (uri.scheme != 'https') return false;
+    final h = uri.host.toLowerCase();
+    return h == 'github.com' ||
+        h.endsWith('.github.com') ||
+        h.endsWith('.githubusercontent.com');
+  }
+
   Future<void> _openUrl(String url) async {
     try {
       final uri = Uri.parse(url);
+      if (!_isAllowedUrl(uri)) {
+        throw const FormatException('blocked url');
+      }
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
       await Clipboard.setData(ClipboardData(text: url));

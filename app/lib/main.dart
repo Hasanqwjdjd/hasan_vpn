@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'models/subscription.dart';
 import 'models/server.dart';
@@ -11,6 +12,10 @@ import 'screens/subscriptions_screen.dart';
 import 'screens/settings_screen.dart';
 
 void main() {
+  // در نسخهٔ نهایی هیچ لاگی (خطاها، آدرس‌ها، کانفیگ‌ها) روی logcat نمی‌رود.
+  if (kReleaseMode) {
+    debugPrint = (String? message, {int? wrapWidth}) {};
+  }
   runApp(const HasanApp());
 }
 

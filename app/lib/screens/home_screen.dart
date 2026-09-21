@@ -414,7 +414,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (query.isNotEmpty) {
       list = list.where((server) {
         return server.displayName.toLowerCase().contains(query) ||
-            server.host.toLowerCase().contains(query) ||
+            (server.isDeletable && server.host.toLowerCase().contains(query)) ||
             server.protocol.name.toLowerCase().contains(query);
       }).toList();
     }
@@ -814,7 +814,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _copyAll() async {
+    // فقط سرورهایی که خود کاربر اضافه کرده؛ لینک سرورهای اشتراک‌های پیش‌فرض
+    // (رایگان برنامه) هرگز کپی نمی‌شود.
+    final customIds = _customServers.map((s) => s.id).toSet();
     final links = _servers
+        .where((server) => customIds.contains(server.id))
         .map((server) => server.shareLink)
         .where((link) => link.trim().isNotEmpty)
         .join('\n');

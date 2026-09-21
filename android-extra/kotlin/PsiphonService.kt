@@ -1,7 +1,6 @@
 package com.hasan.hasan_vpn
 
 import android.content.Context
-import android.util.Log
 import ca.psiphon.PsiphonTunnel
 import org.json.JSONObject
 import java.io.File
@@ -57,7 +56,7 @@ object PsiphonService {
                 tunnel = t
                 t.startTunneling(loadEmbeddedServerEntries(context))
             } catch (e: Throwable) {
-                Log.e(TAG, "start failed", e)
+                SafeLog.e(TAG, "start failed", e)
                 lastError = e.message ?: e.toString()
                 stopLocked()
                 return failed()
@@ -110,7 +109,7 @@ object PsiphonService {
         try {
             tunnel?.stop()
         } catch (e: Throwable) {
-            Log.w(TAG, "stop: ${e.message}")
+            SafeLog.w(TAG, "stop: ${e.message}")
         }
         tunnel = null
         running = false
@@ -148,7 +147,7 @@ object PsiphonService {
         override fun onDiagnosticMessage(message: String?) {
             if (message != null) {
                 lastDiag = message
-                Log.d(TAG, message)
+                SafeLog.d(TAG, message)
             }
         }
 

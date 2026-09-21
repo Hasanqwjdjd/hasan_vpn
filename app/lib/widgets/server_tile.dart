@@ -53,16 +53,18 @@ class ServerTile extends StatelessWidget {
       }
       return 'AETHER · $summary';
     }
+    // سرورهای اشتراک (isDeletable=false) آدرس سرورشان نمایش داده نمی‌شود.
+    final hideHost = !server.isDeletable;
     if (server.protocol == VpnProtocol.xrayJson) {
       final host = server.host.trim();
-      if (host.isEmpty || host == 'direct' || host == 'local') {
+      if (hideHost || host.isEmpty || host == 'direct' || host == 'local') {
         return 'XRAY · JSON';
       }
       return 'XRAY · $host';
     }
     final proto = server.protocol.name.toUpperCase();
     final host = server.host.trim();
-    if (host.isEmpty || host == 'unknown') return proto;
+    if (hideHost || host.isEmpty || host == 'unknown') return proto;
     return '$proto · $host';
   }
 

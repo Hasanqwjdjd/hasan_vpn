@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -6,56 +7,28 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/server.dart';
 import '../models/subscription.dart';
 import 'link_parser.dart';
+import 'protected_defaults.dart';
 import 'xray_json.dart';
 
 class SubscriptionService {
   static const String _key = 'subscriptions_v3';
   static const String _removedDefaultsKey = 'subscriptions_removed_defaults_v1';
 
-  static final List<Subscription> defaultSubscriptions = [
-    Subscription(
-      id: 'aetris',
-      name: '🌐 Aetris (GitVerse)',
-      url:
-          'https://gitverse.ru/api/repos/flaafix/AetrisVPN_Black_list/raw/branch/master/configs.txt',
-      isDefault: true,
-    ),
-    Subscription(
-      id: 'spider',
-      name: '🕷 Spider-Hasan',
-      url:
-          'https://spiderpanel-production-d82c.up.railway.app/sub/97ff6e0e-d059-45a2-8fc7-57d09a07a15d',
-      isDefault: true,
-    ),
-    Subscription(
-      id: 'morning',
-      name: '🌅 Morning-Shape',
-      url:
-          'https://morning-shape-fb9a.jdjdxjjsj-wklakd.workers.dev/sub?id=413f4627-bfcb-41ff-8b6b-a0d830364376',
-      isDefault: true,
-    ),
-    Subscription(
-      id: 'zeus',
-      name: '⚡ Zeus (Hasanzeus)',
-      url:
-          'https://1oz95lepua0s.ekz8gsezum2s.workers.dev/feed/Hasanzeus',
-      isDefault: true,
-    ),
-    Subscription(
-      id: 'patterniha',
-      name: '🔷 Patterniha',
-      url:
-          'https://raw.githubusercontent.com/patterniha/Serverless-for-Iran/refs/heads/main/Subscription/Serverless-for-Iran.json',
-      isDefault: true,
-    ),
-    Subscription(
-      id: 'netra',
-      name: '🌐 Netra',
-      url:
-          'https://netra-73f72e.ekz8gsezum2s.workers.dev/7b86010baa2e/sub/raw?app=xray',
-      isDefault: true,
-    ),
-  ];
+  /// اشتراک‌های پیش‌فرض. لینک‌ها اینجا نیستند: از جدول رمزشدهٔ
+  /// [ProtectedDefaults] (ساخته‌شده در CI) فقط لحظهٔ دانلود خوانده می‌شوند.
+  static List<Subscription> get defaultSubscriptions => [
+        for (final e in ProtectedDefaults.entries)
+          Subscription(id: e[0], name: e[1], url: '', isDefault: true),
+      ];
+
+  /// آدرس واقعی برای دانلود. برای اشتراک پیش‌فرض از جدول محافظت‌شده می‌آید.
+  static String urlFor(Subscription sub) {
+    if (sub.isDefault) {
+      final u = ProtectedDefaults.urlFor(sub.id);
+      if (u != null && u.isNotEmpty) return u;
+    }
+    return sub.url;
+  }
 
   // ------------------------------------------------------------ persistence
 
@@ -121,22 +94,36 @@ class SubscriptionService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _key,
-      jsonEncode(subscriptions.map((s) => s.toJson()).toList()),
+      jsonEncode(subscriptions.map((s) {
+        final json = s.toJson();
+        // لینک اشتراک پیش‌فرض هرگز روی دستگاه ذخیره نمی‌شود.
+        if (s.isDefault && ProtectedDefaults.has(s.id)) json['url'] = '';
+        return json;
+      }).toList()),
     );
   }
 
   // ---------------------------------------------------------------- network
 
   static Future<List<VpnServer>> fetch(Subscription subscription) async {
-    final response = await http
-        .get(
-          Uri.parse(subscription.url),
-          headers: const {
-            'User-Agent': 'HasanVPN/10.0',
-            'Accept': '*/*',
-          },
-        )
-        .timeout(const Duration(seconds: 20));
+    final http.Response response;
+    try {
+      response = await http
+          .get(
+            Uri.parse(urlFor(subscription)),
+            headers: const {
+              'User-Agent': 'HasanVPN/10.0',
+              'Accept': '*/*',
+            },
+          )
+          .timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      throw Exception('timeout');
+    } catch (e) {
+      // پیام خطای http شامل آدرس کامل است؛ برای اشتراک پیش‌فرض نباید لو برود.
+      if (subscription.isDefault) throw Exception('network error');
+      rethrow;
+    }
 
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode}');
