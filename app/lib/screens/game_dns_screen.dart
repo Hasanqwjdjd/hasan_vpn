@@ -467,6 +467,70 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     _showMsg(_t('کپی شد', 'Copied'));
   }
 
+  void _shareDns(GameDns dns) {
+    final text = 'DNS: ' + dns.name + '\n'
+        'Primary: ' + dns.primary + '\n'
+        'Secondary: ' + dns.secondary;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.elevated(ctx),
+        title: Text(
+          _t('اشتراک‌گذاری DNS', 'Share DNS'),
+          style: TextStyle(color: AppColors.fg(ctx)),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: QrImageView(
+                data: text,
+                version: QrVersions.auto,
+                size: 220,
+                backgroundColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SelectableText(
+              text,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.fg(ctx),
+                fontSize: 12,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: text));
+              Navigator.pop(ctx);
+              _showMsg(_t('کپی شد', 'Copied'));
+            },
+            child: Text(
+              _t('کپی متن', 'Copy text'),
+              style: TextStyle(color: AppColors.muted(ctx)),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              _t('بستن', 'Close'),
+              style: const TextStyle(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showMsg(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -673,6 +737,11 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                   icon: Icons.edit_outlined,
                   color: AppColors.muted(context),
                   onTap: () => _editDns(dns),
+                ),
+                _smallIcon(
+                  icon: Icons.share_outlined,
+                  color: AppColors.muted(context),
+                  onTap: () => _shareDns(dns),
                 ),
                 _smallIcon(
                   icon: Icons.delete_outline,
