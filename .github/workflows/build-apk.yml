@@ -118,8 +118,9 @@ jobs:
                   maven { url "https://maven.aliyun.com/repository/public" }
                   maven { url "https://maven.aliyun.com/repository/gradle-plugin" }
                   '''
+          # Aliyun به‌عنوان fallback بعد از google() و mavenCentral()
           if 'maven.aliyun.com' not in text:
-              text = text.replace('google()', mirrors + '        google()', 1)
+              text = text.replace('mavenCentral()', 'mavenCentral()\n' + mirrors, 1)
 
           with open(path, "w") as f:
               f.write(text)
