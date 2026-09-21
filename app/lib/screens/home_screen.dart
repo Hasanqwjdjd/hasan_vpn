@@ -40,11 +40,12 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const String _deletedKey = 'deleted_server_ids_v1';
   static const String _pinnedKey = 'pinned_server_ids_v1';
   static const String _customKey = 'custom_servers_v1';
   static const String _pingsKey = 'server_pings_v1';
+  static const String _orderKey = 'server_order_v1';
 
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _listScrollController = ScrollController();
@@ -54,6 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<VpnServer> _customServers = [];
   Set<String> _deletedIds = <String>{};
   Set<String> _pinnedIds = <String>{};
+  List<String> _manualOrder = <String>[];
 
   String? _selectedSubId;
   VpnServer? _selected;
@@ -86,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _bootstrap();
   }
 
@@ -93,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadDeletedAndPinned();
     await _loadCustomServers();
     await _loadServerNameOverrides();
+    await _loadManualOrder();
     if (!mounted) return;
     _rebuildServerList();
     await _loadPings();
@@ -380,6 +384,54 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.setString(_pinnedKey, jsonEncode(_pinnedIds.toList()));
   }
 
+  Future<void> _loadManualOrder() async {
+    final prefs = await SharedPreferences.getInstance();
+    _manualOrder = prefs.getStringList(_orderKey) ?? <String>[];
+  }
+
+  Future<void> _saveManualOrder() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_orderKey, _manualOrder);
+  }
+
+  Future<void> _onReorder(int oldIndex, int newIndex) async {
+    if (newIndex > oldIndex) newIndex -= 1;
+    setState(() {
+      final item = _servers.removeAt(oldIndex);
+      _servers.insert(newIndex, item);
+      _manualOrder = _servers.map((s) => s.id).toList();
+    });
+    await _saveManualOrder();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      _syncRealConnectionState();
+    }
+  }
+
+  Future<void> _syncRealConnectionState() async {
+    if (!mounted || _connecting) return;
+    try {
+      var alive = V2RayEngine.isConnected;
+      if (alive && _active?.isAether == true) {
+        alive = await AetherService.syncStatus();
+      }
+      if (!mounted) return;
+      if (alive && !_connected) {
+        setState(() {
+          _connected = true;
+          if (_active == null && _selected != null) _active = _selected;
+          _status = _t('متصل', 'Connected');
+        });
+      } else if (!alive && _connected) {
+        _markDisconnected(_t('اتصال قطع شد', 'Connection lost'));
+      }
+    } catch (_) {}
+  }
+
   // ------------------------------------------------------------- list
 
   void _rebuildServerList() {
@@ -420,7 +472,20 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     _servers = list;
-    _sortCurrentServers();
+    if (_manualOrder.isNotEmpty) {
+      final pos = <String, int>{};
+      for (var i = 0; i < _manualOrder.length; i++) {
+        pos[_manualOrder[i]] = i;
+      }
+      _servers.sort((a, b) {
+        final ai = pos[a.id] ?? 9999999;
+        final bi = pos[b.id] ?? 9999999;
+        if (ai != bi) return ai.compareTo(bi);
+        return 0;
+      });
+    } else {
+      _sortCurrentServers();
+    }
     setState(() {});
   }
 
@@ -842,6 +907,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _toggleSort() {
     _sortAscending = true;
+    _manualOrder = [];
+    // ignore: unawaited_futures
+    _saveManualOrder();
     _sortCurrentServers();
     setState(() => _servers = List<VpnServer>.from(_servers));
     _showMsg(_t('سرورها مرتب شدند', 'Servers sorted'));
@@ -1234,60 +1302,83 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildServerList() {
     return Expanded(
-      child: ListView.builder(
-        controller: _listScrollController,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemExtent: 78.0,
-        itemCount: _servers.length + 1,
-        itemBuilder: (context, index) {
-          if (index == 0) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${_t("سرورها", "Servers")} (${_servers.length})',
+                  style: TextStyle(
+                    color: AppColors.muted(context),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (_testing)
                   Text(
-                    '${_t("سرورها", "Servers")} (${_servers.length})',
+                    '$_tested / $_total',
                     style: TextStyle(
-                      color: AppColors.muted(context),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                        color: AppColors.muted2(context), fontSize: 10),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ReorderableListView.builder(
+              scrollController: _listScrollController,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: _servers.length,
+              onReorder: _onReorder,
+              buildDefaultDragHandles: false,
+              proxyDecorator: (child, index, animation) {
+                return Material(
+                  color: Colors.transparent,
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(14),
+                  child: child,
+                );
+              },
+              itemBuilder: (context, index) {
+                final server = _servers[index];
+                final tileKey =
+                    _tileKeys.putIfAbsent(server.id, () => GlobalKey());
+                return ReorderableDelayedDragStartListener(
+                  key: ValueKey('reorder_${server.id}'),
+                  index: index,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: SizedBox(
+                      height: 74,
+                      child: ServerTile(
+                        key: tileKey,
+                        server: server,
+                        selected: _selected?.id == server.id,
+                        active: _connected && _active?.id == server.id,
+                        onTap: () async {
+                          setState(() => _selected = server);
+                          await SettingsService.setLastServer(server.id);
+                        },
+                        onDelete: _customServers.any((s) => s.id == server.id)
+                            ? () => _deleteServer(server)
+                            : null,
+                        onPin: () => _togglePin(server),
+                        onShare: _customServers.any((s) => s.id == server.id)
+                            ? () => _shareServer(server)
+                            : null,
+                        onEdit: () => _editServerName(server),
+                        onTest: () => _testOne(server),
+                      ),
                     ),
                   ),
-                  if (_testing)
-                    Text(
-                      '$_tested / $_total',
-                      style: TextStyle(
-                          color: AppColors.muted2(context), fontSize: 10),
-                    ),
-                ],
-              ),
-            );
-          }
-
-          final server = _servers[index - 1];
-          final tileKey =
-              _tileKeys.putIfAbsent(server.id, () => GlobalKey());
-          return ServerTile(
-            key: tileKey,
-            server: server,
-            selected: _selected?.id == server.id,
-            active: _connected && _active?.id == server.id,
-            onTap: () async {
-              setState(() => _selected = server);
-              await SettingsService.setLastServer(server.id);
-            },
-            onDelete: _customServers.any((s) => s.id == server.id)
-                ? () => _deleteServer(server)
-                : null,
-            onPin: () => _togglePin(server),
-            onShare: _customServers.any((s) => s.id == server.id)
-                ? () => _shareServer(server)
-                : null,
-            onEdit: () => _editServerName(server),
-            onTest: () => _testOne(server),
-          );
-        },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1319,6 +1410,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
     _session?.cancel();
     _searchController.dispose();
