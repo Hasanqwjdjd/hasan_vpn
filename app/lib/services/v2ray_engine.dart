@@ -242,6 +242,12 @@ class V2RayEngine {
     try {
       await init();
 
+      // اطمینان از بسته بودن تونل قبلی قبل از شروع تونل جدید
+      try {
+        await _engine.stopVless();
+      } catch (_) {}
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+
       bool proxyOnly = forceProxyOnly ?? false;
       if (forceProxyOnly == null) {
         try {
