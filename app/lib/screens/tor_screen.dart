@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/server.dart';
 import '../services/app_colors.dart';
 import '../services/tor_service.dart';
+import '../services/v2ray_engine.dart';
 
 class TorScreen extends StatefulWidget {
   final String language;
@@ -33,6 +36,8 @@ class _TorScreenState extends State<TorScreen> {
   int _socksPort = 0;
   String? _error;
   Timer? _pollTimer;
+  bool _routingThroughVpn = false;
+  bool _routing = false;
 
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
@@ -87,16 +92,119 @@ class _TorScreenState extends State<TorScreen> {
           _bootstrapMsg = msg;
           _socksPort = port;
           _error = (err == null || err.isEmpty) ? null : err;
-          if (!running && _connecting) _connecting = false;
+          if (!running) {
+            if (_connecting) _connecting = false;
+            if (_routingThroughVpn) {
+              _routingThroughVpn = false;
+              // stop Xray routing as well
+              unawaited(V2RayEngine.disconnect());
+            }
+          }
         });
       }
     } catch (_) {}
+  }
+
+  /// کانفیگ Xray برای روت ترافیک از طریق Tor.
+  /// inbound: SOCKS روی 10808 → outbound: SOCKS به 127.0.0.1:9050
+  String _buildTorXrayConfig() {
+    final cfg = <String, dynamic>{
+      'inbounds': [
+        {
+          'tag': 'socks-in',
+          'port': 10808,
+          'listen': '127.0.0.1',
+          'protocol': 'socks',
+          'settings': {
+            'auth': 'noauth',
+            'udp': true,
+            'address': '127.0.0.1',
+          },
+          'sniffing': {
+            'enabled': true,
+            'destOverride': ['http', 'tls', 'quic'],
+          },
+        },
+      ],
+      'outbounds': [
+        {
+          'tag': 'tor-out',
+          'protocol': 'socks',
+          'settings': {
+            'servers': [
+              {
+                'address': '127.0.0.1',
+                'port': _socksPort > 0 ? _socksPort : 9050,
+              },
+            ],
+          },
+        },
+        {
+          'tag': 'direct',
+          'protocol': 'freedom',
+        },
+      ],
+      'routing': {
+        'domainStrategy': 'AsIs',
+        'rules': [],
+      },
+    };
+    return jsonEncode(cfg);
+  }
+
+  /// بعد از Bootstrap کامل، Xray را با SOCKS Tor راه می‌اندازیم تا
+  /// کل ترافیک گوشی از Tor رد شود و VPN icon ظاهر شود.
+  Future<void> _startVpnRouting() async {
+    if (_routingThroughVpn || _routing) return;
+    setState(() => _routing = true);
+    try {
+      // یک سرور جعلی می‌سازیم فقط برای نمایش در Telemetry
+      final fakeServer = VpnServer(
+        id: 'tor_${DateTime.now().millisecondsSinceEpoch}',
+        name: 'Tor',
+        flag: '🧅',
+        shareLink: 'xrayjson://tor',
+        protocol: VpnProtocol.xrayJson,
+        host: '127.0.0.1',
+        port: _socksPort > 0 ? _socksPort : 9050,
+        isDeletable: false,
+      );
+      final ok = await V2RayEngine.startConfig(
+        remark: 'Tor',
+        config: _buildTorXrayConfig(),
+        server: fakeServer,
+      );
+      if (!mounted) return;
+      setState(() {
+        _routingThroughVpn = ok;
+        _routing = false;
+        if (!ok) {
+          _error = 'VPN routing failed: ${V2RayEngine.lastError ?? "unknown"}';
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _routing = false;
+        _error = 'VPN routing error: $e';
+      });
+    }
+  }
+
+  Future<void> _stopVpnRouting() async {
+    if (!_routingThroughVpn) return;
+    try {
+      await V2RayEngine.disconnect();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _routingThroughVpn = false);
   }
 
   Future<void> _toggle() async {
     if (_connecting) return;
     if (_running) {
       setState(() => _connecting = true);
+      await _stopVpnRouting();
       await TorService.stop();
       if (!mounted) return;
       setState(() {
@@ -128,6 +236,8 @@ class _TorScreenState extends State<TorScreen> {
         _running = true;
         _socksPort = (r['socksPort'] as num?)?.toInt() ?? 9050;
       });
+      // بعد از اینکه Tor بالا آمد، ترافیک را از آن رد کن
+      unawaited(_startVpnRouting());
     }
   }
 
