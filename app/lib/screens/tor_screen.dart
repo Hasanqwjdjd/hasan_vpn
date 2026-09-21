@@ -5,8 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
-import '../models/aether_profile.dart';
-import '../models/server.dart';
 import '../services/app_colors.dart';
 import '../services/tor_service.dart';
 import '../services/tor_sni_presets.dart';
@@ -14,8 +12,7 @@ import '../services/v2ray_engine.dart';
 
 class TorScreen extends StatefulWidget {
   final String language;
-  final Function(VpnServer)? onServerAdded;
-  const TorScreen({super.key, this.language = 'fa', this.onServerAdded});
+  const TorScreen({super.key, this.language = 'fa'});
 
   @override
   State<TorScreen> createState() => _TorScreenState();
@@ -32,15 +29,6 @@ class _TorScreenState extends State<TorScreen> {
   ];
 
   String _bridgeType = 'obfs4';
-  String _mode = 'real'; // 'real' | 'stealth'
-
-  // ---- State برای Tor Stealth (از AddConfig منتقل شده)
-  String _aetherProtocol = 'masque';
-  String _aetherIp = 'v4';
-  final TextEditingController _stealthPeerCtrl = TextEditingController();
-  final TextEditingController _stealthNameCtrl = TextEditingController();
-  static final RegExp _peerRegex =
-      RegExp(r'^(\[[0-9a-fA-F:.]+\]|[0-9.]+):\d{1,5}$');
   String _selectedSni = TorSniPresets.defaultSni;
   List<String> _customBridges = [];
   bool _running = false;
@@ -66,8 +54,6 @@ class _TorScreenState extends State<TorScreen> {
   @override
   void dispose() {
     _pollTimer?.cancel();
-    _stealthPeerCtrl.dispose();
-    _stealthNameCtrl.dispose();
     super.dispose();
   }
 
@@ -442,284 +428,6 @@ class _TorScreenState extends State<TorScreen> {
     );
   }
 
-  // -------------------------------------------------------------- Stealth
-
-  void _addStealthServer() {
-    final peer = _stealthPeerCtrl.text.trim();
-    if (peer.isNotEmpty && !_peerRegex.hasMatch(peer)) {
-      _showSnack(_t('آدرس Endpoint باید ip:port باشد',
-          'Endpoint must be ip:port'));
-      return;
-    }
-    final profile = AetherProfile(
-      protocol: _aetherProtocol,
-      scan: 'stealth',
-      noize: 'aggressive',
-      ip: _aetherIp,
-      peer: peer,
-      quickReconnect: false,
-      blockQuic: true,
-      perf: 'medium',
-    );
-    final typed = _stealthNameCtrl.text.trim();
-    final name = typed.isNotEmpty ? typed : 'Tor Stealth · ${profile.summary}';
-    final server = VpnServer(
-      id: 'tor_stealth_${DateTime.now().millisecondsSinceEpoch}',
-      name: name,
-      flag: '🧅',
-      shareLink: profile.toLink(),
-      protocol: VpnProtocol.aether,
-      host: peer.isNotEmpty ? peer.split(':').first : 'stealth-auto',
-      port: 0,
-      isDeletable: true,
-    );
-    widget.onServerAdded?.call(server);
-    _showSnack(_t('سرور Tor Stealth اضافه شد', 'Tor Stealth server added'));
-  }
-
-  void _showSnack(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
-    );
-  }
-
-  Widget _modeSwitcher() {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.surface(context),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border(context)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _mode = 'real'),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _mode == 'real'
-                      ? AppColors.accent.withOpacity(0.18)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.security,
-                        size: 16,
-                        color: _mode == 'real'
-                            ? AppColors.accent
-                            : AppColors.muted(context)),
-                    const SizedBox(width: 6),
-                    Text(
-                      _t('Tor واقعی', 'Real Tor'),
-                      style: TextStyle(
-                        color: _mode == 'real'
-                            ? AppColors.accent
-                            : AppColors.muted(context),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _mode = 'stealth'),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _mode == 'stealth'
-                      ? const Color(0xFFEF5350).withOpacity(0.18)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.visibility_off,
-                        size: 16,
-                        color: _mode == 'stealth'
-                            ? const Color(0xFFEF5350)
-                            : AppColors.muted(context)),
-                    const SizedBox(width: 6),
-                    Text(
-                      _t('Tor Stealth', 'Tor Stealth'),
-                      style: TextStyle(
-                        color: _mode == 'stealth'
-                            ? const Color(0xFFEF5350)
-                            : AppColors.muted(context),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStealthForm() {
-    const red = Color(0xFFEF5350);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: red.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: red.withOpacity(0.35)),
-          ),
-          child: Text(
-            _t(
-              'حالت Tor Stealth از مسیر stealth هسته Aether با پنهان‌کاری قوی استفاده می‌کند (نه شبکه رسمی Tor). برای فیلترینگ خیلی سخت مناسب است.',
-              'Tor Stealth uses Aether stealth path with strong obfuscation (not the official Tor network). Best for heavy filtering.',
-            ),
-            style: TextStyle(
-                color: AppColors.muted(context), fontSize: 12, height: 1.5),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(_t('پروتکل پایه', 'Base protocol'),
-            style: TextStyle(
-                color: AppColors.muted(context),
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final p in const ['masque', 'masque_h2', 'wg', 'mim'])
-              ChoiceChip(
-                label: Text(p.toUpperCase()),
-                selected: _aetherProtocol == p,
-                selectedColor: red.withOpacity(0.25),
-                labelStyle: TextStyle(
-                  color: _aetherProtocol == p
-                      ? red
-                      : AppColors.muted(context),
-                  fontSize: 12,
-                ),
-                onSelected: (_) => setState(() => _aetherProtocol = p),
-              ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Text(_t('نسخه IP', 'IP version'),
-            style: TextStyle(
-                color: AppColors.muted(context),
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          children: [
-            for (final ip in const ['v4', 'v6', 'both'])
-              ChoiceChip(
-                label: Text(ip == 'both' ? _t('هر دو', 'Both') : ip.toUpperCase()),
-                selected: _aetherIp == ip,
-                selectedColor: red.withOpacity(0.25),
-                labelStyle: TextStyle(
-                  color: _aetherIp == ip ? red : AppColors.muted(context),
-                  fontSize: 12,
-                ),
-                onSelected: (_) => setState(() => _aetherIp = ip),
-              ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Text(_t('Endpoint دستی (اختیاری)', 'Manual endpoint (optional)'),
-            style: TextStyle(
-                color: AppColors.muted(context),
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _stealthPeerCtrl,
-          style: TextStyle(color: AppColors.fg(context), fontSize: 13),
-          decoration: InputDecoration(
-            hintText: '162.159.192.1:2408',
-            hintStyle: TextStyle(color: AppColors.muted2(context)),
-            filled: true,
-            fillColor: AppColors.surface(context),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: red, width: 1.5),
-            ),
-          ),
-        ),
-        const SizedBox(height: 14),
-        Text(_t('نام (اختیاری)', 'Name (optional)'),
-            style: TextStyle(
-                color: AppColors.muted(context),
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _stealthNameCtrl,
-          style: TextStyle(color: AppColors.fg(context)),
-          decoration: InputDecoration(
-            hintText: _t('مثال: Tor Stealth من', 'e.g. My Tor Stealth'),
-            hintStyle: TextStyle(color: AppColors.muted2(context)),
-            filled: true,
-            fillColor: AppColors.surface(context),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: red, width: 1.5),
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: ElevatedButton(
-            onPressed: _addStealthServer,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: red,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-            child: Text(
-              _t('افزودن سرور Tor Stealth', 'Add Tor Stealth server'),
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -735,9 +443,6 @@ class _TorScreenState extends State<TorScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _modeSwitcher(),
-            const SizedBox(height: 16),
-            if (_mode == 'real') ...[
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -1003,10 +708,6 @@ class _TorScreenState extends State<TorScreen> {
                   ],
                 ),
               ),
-            ],
-            ] else ...[
-              _buildStealthForm(),
-            ],
           ],
         ),
       ),
