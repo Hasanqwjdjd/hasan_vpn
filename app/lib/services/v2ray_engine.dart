@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_vless/flutter_vless.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import 'settings_service.dart';
@@ -13,7 +14,8 @@ import 'xray_settings.dart';
 class V2RayEngine {
   V2RayEngine._();
 
-  static const String delayUrl = 'http://cp.cloudflare.com/generate_204';
+  static const String _defaultDelayUrl = 'http://cp.cloudflare.com/generate_204';
+  static String delayUrl = _defaultDelayUrl;
 
   static bool _initialized = false;
   static bool _connected = false;
@@ -25,6 +27,18 @@ class V2RayEngine {
 
   static int localSocksPort = 10808;
   static bool blockedAppsSupported = true;
+
+  /// آدرس تست تأخیر رو از تنظیمات می‌خونه.
+  static Future<void> loadDelayUrl() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('test_settings_v1');
+      if (raw == null) return;
+      final m = jsonDecode(raw) as Map;
+      final u = m['delayUrl']?.toString();
+      if (u != null && u.isNotEmpty) delayUrl = u;
+    } catch (_) {}
+  }
 
   static String _stateOf(dynamic status) {
     try {
@@ -90,9 +104,6 @@ class V2RayEngine {
 
   // ------------------------------------------------------- DNS injection
 
-  /// کانفیگ را با DNS انتخابی و queryStrategy مبتنی بر IPv4/IPv6 بازنویسی
-  /// می‌کند. فقط وقتی حالت «فقط پروکسی» باشد و DNS انتخاب شده باشد اعمال
-  /// می‌شود.
   static Future<String> _applyGameDns(String config) async {
     try {
       final mode = await SettingsService.getVpnMode();
@@ -108,7 +119,6 @@ class V2RayEngine {
 
       final map = Map<String, dynamic>.from(json);
 
-      // انتخاب DNS servers بر اساس ترجیح کاربر.
       final servers = <String>[];
       if (pref == 'ipv4') {
         servers.addAll(<String>[dns[0], dns[1]]);
@@ -148,14 +158,12 @@ class V2RayEngine {
       String remark = server.name;
 
       if (server.protocol == VpnProtocol.xrayJson) {
-        // کانفیگ کامل JSON (Patterniha و مشابه)
         final raw = XrayJson.extractJson(server.shareLink);
         if (raw == null || raw.trim().isEmpty) {
           lastError = 'invalid xray json config';
           return false;
         }
         config = raw;
-        // اگر inbound نداشت، یک socks محلی اضافه می‌کنیم تا افزونه کار کند
         config = _ensureLocalInbound(config);
       } else {
         final FlutterVlessURL parser = FlutterVless.parse(server.shareLink);
@@ -168,10 +176,11 @@ class V2RayEngine {
         return false;
       }
 
-      // تنظیمات هسته (sniffing / log / LAN / HTTP inbound)
-      config = await XraySettings.applyToConfig(config);
+      // برای xrayJson نباید XraySettings رو اعمال کنیم چون inbound خودش رو خراب می‌کنه.
+      if (server.protocol != VpnProtocol.xrayJson) {
+        config = await XraySettings.applyToConfig(config);
+      }
 
-      // در حالت فقط-پروکسی، DNS بازی رو تزریق می‌کنیم.
       config = await _applyGameDns(config);
 
       return await startConfig(
@@ -188,7 +197,6 @@ class V2RayEngine {
     }
   }
 
-  /// اگر کانفیگ inbound محلی نداشته باشد، یک SOCKS روی 10808 اضافه می‌کند.
   static String _ensureLocalInbound(String config) {
     try {
       final dynamic decoded = jsonDecode(config);
@@ -197,7 +205,6 @@ class V2RayEngine {
 
       final inbounds = map['inbounds'];
       if (inbounds is List && inbounds.isNotEmpty) {
-        // از قبل inbound دارد
         return config;
       }
 
@@ -329,9 +336,10 @@ class V2RayEngine {
     String? config = _fullConfigOf(server);
     if (config == null || config.trim().isEmpty) return -2;
 
-    // تنظیمات هسته + DNS بازی
     try {
-      config = await XraySettings.applyToConfig(config!);
+      if (server.protocol != VpnProtocol.xrayJson) {
+        config = await XraySettings.applyToConfig(config!);
+      }
       config = await _applyGameDns(config);
     } catch (_) {}
 
@@ -387,10 +395,13 @@ class V2RayEngine {
       final inbounds = json is Map ? json['inbounds'] : null;
       if (inbounds is List) {
         for (final inbound in inbounds) {
-          if (inbound is Map && inbound['protocol'] == 'socks') {
-            final raw = inbound['port'];
-            final port = raw is int ? raw : int.tryParse(raw.toString());
-            if (port != null && port > 0 && port <= 65535) return port;
+          if (inbound is Map) {
+            final proto = inbound['protocol']?.toString().toLowerCase() ?? '';
+            if (proto == 'socks' || proto == 'mixed' || proto == 'http') {
+              final raw = inbound['port'];
+              final port = raw is int ? raw : int.tryParse(raw.toString());
+              if (port != null && port > 0 && port <= 65535) return port;
+            }
           }
         }
       }
