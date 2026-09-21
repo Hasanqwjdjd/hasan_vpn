@@ -19,6 +19,7 @@ class MainActivity : FlutterActivity() {
     private val psiphonChannel = "com.hasan.hasan_vpn/psiphon"
     private val deviceChannel = "com.hasan.hasan_vpn/device"
     private val torChannel = "com.hasan.hasan_vpn/tor"
+    private val monitorChannel = "com.hasan.hasan_vpn/monitor"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -118,6 +119,21 @@ class MainActivity : FlutterActivity() {
                     "stop" -> {
                         TorService.stopWithContext(applicationContext)
                         result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, monitorChannel)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "snapshot" -> {
+                        try {
+                            val snap = LiveMonitorService.snapshot(applicationContext)
+                            result.success(snap)
+                        } catch (e: Exception) {
+                            result.error("monitor_error", e.message, null)
+                        }
                     }
                     else -> result.notImplemented()
                 }

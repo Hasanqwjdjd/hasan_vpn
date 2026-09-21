@@ -145,6 +145,7 @@ jobs:
           cp -f android-extra/kotlin/SafeLog.kt "$KT_DIR/SafeLog.kt"
           cp -f android-extra/kotlin/TorService.kt "$KT_DIR/TorService.kt"
           cp -f android-extra/kotlin/TorForegroundService.kt "$KT_DIR/TorForegroundService.kt"
+          cp -f android-extra/kotlin/LiveMonitorService.kt "$KT_DIR/LiveMonitorService.kt"
           if [ -d android-extra/psiphon ] && [ "$(find android-extra/psiphon -name '*.aar' | wc -l)" -gt 0 ]; then
             echo "Using real Psiphon AAR"
             cp -f android-extra/kotlin/PsiphonService.kt "$KT_DIR/PsiphonService.kt"

@@ -1,6 +1,6 @@
 /// لیست SNIهای پیش‌فرض برای پل‌های Tor (obfs4/snowflake/meek/webtunnel).
-/// این SNIها باعث می‌شوند ترافیک Tor شبیه یک سایت معتبر یا داخلی
-/// به‌نظر برسد و DPI آن را مسدود نکند.
+/// این SNIها باعث می‌شوند ترافیک Tor شبیه ترافیک یک سایت معتبر یا
+/// داخلی به‌نظر برسد و DPI آن را مسدود نکند.
 class TorSniPresets {
   TorSniPresets._();
 
@@ -139,6 +139,7 @@ class TorSniPresets {
     'dl2.sermoviedown.pw',
     'dls2.iran-gamecenter-host.com',
     'dic.b-amooz.com',
+    '2059.ir',
   ];
 
   /// همه‌ی SNIها (ترکیب generic و iranian).
