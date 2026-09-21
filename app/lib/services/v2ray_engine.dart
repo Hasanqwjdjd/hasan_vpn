@@ -258,6 +258,13 @@ class V2RayEngine {
       try { await _engine.stopVless(); } catch (_) {}
       await Future<void>.delayed(const Duration(milliseconds: 700));
 
+      // تونل قبلی رو کاملاً ببند (۳ تلاش)
+      for (var i = 0; i < 3; i++) {
+        try { await _engine.stopVless(); } catch (_) {}
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 1000));
+
       bool proxyOnly = forceProxyOnly ?? false;
       if (forceProxyOnly == null) {
         try {

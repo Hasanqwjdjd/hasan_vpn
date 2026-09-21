@@ -247,6 +247,13 @@ class ServerTile extends StatelessWidget {
                         : onTest,
                   ),
 
+                if (onShare != null)
+                  _smallIcon(
+                    icon: Icons.share_outlined,
+                    color: AppColors.muted(context),
+                    onPressed: onShare,
+                  ),
+
                 if (onEdit != null)
                   _smallIcon(
                     icon: Icons.edit_outlined,

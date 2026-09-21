@@ -84,58 +84,84 @@ class _SettingsScreenState extends State<SettingsScreen> {
         headers: {'Accept': 'application/vnd.github+json'},
       ).timeout(const Duration(seconds: 15));
 
-      if (resp.statusCode == 200) {
-        final data = jsonDecode(resp.body);
-        final rawTag = (data['tag_name'] ?? '').toString();
-        final tag = rawTag.replaceAll('v', '').split('.').take(3).join('.');
-        final url = data['html_url'] ?? '';
-
-        final cmp = _compareVersion(tag, SettingsService.currentVersion);
-        final isNewer = cmp > 0;
-
-        if (!mounted) return;
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: AppColors.elevated(ctx),
-            title: Text(
-              isNewer
-                  ? _t('بروزرسانی موجود است', 'Update Available')
-                  : _t('برنامه بروز است', 'App is up to date'),
-              style: TextStyle(color: AppColors.fg(ctx)),
-            ),
-            content: Text(
-              isNewer
-                  ? _t(
-                      'نسخه فعلی: ${SettingsService.currentVersion}\nنسخه جدید: $tag',
-                      'Current: ${SettingsService.currentVersion}\nNew: $tag')
-                  : _t(
-                      'نسخه فعلی: ${SettingsService.currentVersion}\nشما آخرین نسخه را دارید ✅',
-                      'Current: ${SettingsService.currentVersion}\nYou have the latest version ✅'),
-              style: TextStyle(color: AppColors.muted(ctx), height: 1.7),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(_t('بستن', 'Close'),
-                    style: TextStyle(color: AppColors.muted(ctx))),
-              ),
-              if (isNewer && url.isNotEmpty)
-                TextButton(
-                  onPressed: () async {
-                    Navigator.pop(ctx);
-                    await _openUrl(url);
-                  },
-                  child: Text(_t('دانلود', 'Download'),
-                      style: const TextStyle(color: AppColors.accent)),
-                ),
-            ],
-          ),
-        );
-      } else {
+      if (resp.statusCode != 200) {
         _showMsg(_t('گیت‌هاب پاسخ نداد (${resp.statusCode})',
             'GitHub did not respond (${resp.statusCode})'));
+        return;
       }
+
+      final data = jsonDecode(resp.body);
+      final rawTag = (data['tag_name'] ?? '').toString();
+      final tag = rawTag.replaceAll('v', '').split('.').take(3).join('.');
+      final assets = (data['assets'] as List?) ?? const [];
+
+      String? apkUrl;
+      String? apkName;
+      for (final a in assets) {
+        final name = (a['name'] ?? '').toString();
+        final url = (a['browser_download_url'] ?? '').toString();
+        if (!name.endsWith('.apk')) continue;
+        if (name.contains('-32bit') || name.contains('-x86_64')) continue;
+        apkUrl = url;
+        apkName = name;
+        break;
+      }
+
+      final cmp = _compareVersion(tag, SettingsService.currentVersion);
+      final isNewer = cmp > 0;
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.elevated(ctx),
+          title: Text(
+            isNewer
+                ? _t('بروزرسانی موجود است', 'Update Available')
+                : _t('برنامه بروز است', 'App is up to date'),
+            style: TextStyle(color: AppColors.fg(ctx)),
+          ),
+          content: Text(
+            isNewer
+                ? _t(
+                    'نسخه فعلی: ${SettingsService.currentVersion}
+'
+                    'نسخه جدید: $tag
+
+'
+                    'با زدن دکمه دانلود، فایل نصبی مستقیماً دانلود می‌شود.',
+                    'Current: ${SettingsService.currentVersion}
+'
+                    'New: $tag
+
+'
+                    'Tap Download to fetch the installer directly.',
+                  )
+                : _t(
+                    'نسخه فعلی: ${SettingsService.currentVersion}
+شما آخرین نسخه را دارید ✅',
+                    'Current: ${SettingsService.currentVersion}
+You have the latest version ✅'),
+            style: TextStyle(color: AppColors.muted(ctx), height: 1.7),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(_t('بستن', 'Close'),
+                  style: TextStyle(color: AppColors.muted(ctx))),
+            ),
+            if (isNewer && apkUrl != null)
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await _openUrl(apkUrl!);
+                },
+                child: Text(_t('دانلود مستقیم', 'Direct download'),
+                    style: const TextStyle(color: AppColors.accent)),
+              ),
+          ],
+        ),
+      );
     } catch (e) {
       _showMsg(_t('خطا در بررسی بروزرسانی', 'Error checking for update'));
     } finally {

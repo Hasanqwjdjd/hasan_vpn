@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../models/subscription.dart';
 import '../services/subscription_service.dart';
 import '../services/app_colors.dart';
@@ -233,6 +235,67 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
   }
 
+  void _shareSub(Subscription sub) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.elevated(ctx),
+        title: Text(
+          _t('اشتراک‌گذاری اشتراک', 'Share Subscription'),
+          style: TextStyle(color: AppColors.fg(ctx)),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: QrImageView(
+                data: sub.url,
+                version: QrVersions.auto,
+                size: 220,
+                backgroundColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SelectableText(
+              sub.url,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.fg(ctx),
+                fontSize: 11,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: sub.url));
+              Navigator.pop(ctx);
+              _showMsg(_t('کپی شد', 'Copied'));
+            },
+            child: Text(
+              _t('کپی', 'Copy'),
+              style: TextStyle(color: AppColors.muted(ctx)),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              _t('بستن', 'Close'),
+              style: const TextStyle(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -318,13 +381,24 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                               onPressed: () => _refresh(s),
                             ),
                           const SizedBox(width: 6),
-                          IconButton(
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            icon: const Icon(Icons.delete_outline,
-                                color: AppColors.danger, size: 18),
-                            onPressed: () => _delete(s),
-                          ),
+                          if (!s.isDefault)
+                            IconButton(
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              icon: Icon(Icons.share_outlined,
+                                  color: AppColors.muted(context), size: 18),
+                              onPressed: () => _shareSub(s),
+                            ),
+                          if (!s.isDefault) ...[
+                            const SizedBox(width: 6),
+                            IconButton(
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              icon: const Icon(Icons.delete_outline,
+                                  color: AppColors.danger, size: 18),
+                              onPressed: () => _delete(s),
+                            ),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 4),
