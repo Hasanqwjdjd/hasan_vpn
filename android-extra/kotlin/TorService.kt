@@ -42,46 +42,53 @@ object TorService {
             bootstrapMessage = "شروع..."
 
             try {
+                val nativeDir = context.applicationInfo.nativeLibraryDir
                 val filesDir = context.filesDir
                 val torDir = File(filesDir, "tor")
                 if (!torDir.exists()) torDir.mkdirs()
                 val dataDir = File(torDir, "data")
                 if (!dataDir.exists()) dataDir.mkdirs()
 
-                // ۱. کپی باینری‌ها از nativeLibraryDir
-                val torBin = copyBin(context, "libtor.so", torDir)
-                val obfs4Bin = copyBin(context, "libobfs4proxy.so", torDir)
-                val snowflakeBin = copyBin(context, "libsnowflake.so", torDir)
-                val conjureBin = copyBin(context, "libconjure.so", torDir)
-                val dnsttBin = copyBin(context, "libdnstt.so", torDir)
-
-                if (torBin == null || !torBin.exists()) {
-                    lastError = "libtor.so پیدا نشد"
+                // ۱. باینری Tor را مستقیما از nativeLibraryDir اجرا می‌کنیم
+                //    (چون Android 10+ اجازه اجرای از filesDir را نمی‌دهد)
+                val torBinPath = File(nativeDir, "libtor.so").absolutePath
+                if (!File(torBinPath).exists()) {
+                    lastError = "libtor.so در nativeLibraryDir نیست"
                     return mapOf("ok" to false, "error" to lastError!!)
                 }
 
-                // ۲. ساخت torrc
+                // ۲. مسیر پلاگین‌ها هم از nativeLibraryDir
+                val obfs4Path = File(nativeDir, "libobfs4proxy.so").absolutePath
+                val snowflakePath = File(nativeDir, "libsnowflake.so").absolutePath
+                val conjurePath = File(nativeDir, "libconjure.so").absolutePath
+                val dnsttPath = File(nativeDir, "libdnstt.so").absolutePath
+
+                // ۳. ساخت torrc
                 val torrc = File(torDir, "torrc")
                 val torrcText = buildTorrc(
-                    torDir, dataDir,
+                    dataDir,
                     bridgeType,
                     customBridges,
-                    obfs4Bin, snowflakeBin, conjureBin, dnsttBin,
+                    obfs4Path.takeIf { File(it).exists() },
+                    snowflakePath.takeIf { File(it).exists() },
+                    conjurePath.takeIf { File(it).exists() },
+                    dnsttPath.takeIf { File(it).exists() },
                 )
                 torrc.writeText(torrcText)
+                SafeLog.d(TAG, "torrc content:\n$torrcText")
 
-                // ۳. اجرای Tor
-                val pb = ProcessBuilder(torBin.absolutePath, "-f", torrc.absolutePath)
+                // ۴. اجرا از nativeLibraryDir با محیط کاری torDir
+                val pb = ProcessBuilder(torBinPath, "-f", torrc.absolutePath)
                 pb.directory(torDir)
                 pb.redirectErrorStream(true)
                 pb.environment()["HOME"] = torDir.absolutePath
                 pb.environment()["TOR_HOME"] = torDir.absolutePath
-                pb.environment()["LD_LIBRARY_PATH"] = context.applicationInfo.nativeLibraryDir
+                pb.environment()["LD_LIBRARY_PATH"] = nativeDir
                 val proc = pb.start()
                 torProcess = proc
                 running = true
 
-                // ۴. خواندن لاگ در ترد جداگانه
+                // ۵. خواندن لاگ
                 logThread = Thread {
                     try {
                         val reader = BufferedReader(InputStreamReader(proc.inputStream))
@@ -89,26 +96,20 @@ object TorService {
                         val bootstrapRegex = Regex("Bootstrapped (\\d+)%")
                         while (reader.readLine().also { line = it } != null) {
                             val l = line ?: continue
-                            if (l.contains("[notice]")) {
-                                val m = bootstrapRegex.find(l)
-                                if (m != null) {
-                                    bootstrapPercent = m.groupValues[1].toIntOrNull() ?: 0
-                                    bootstrapMessage = l.substringAfter("):").trim()
-                                    if (bootstrapPercent >= 100) {
-                                        bootstrapMessage = "آماده"
-                                    }
-                                }
+                            SafeLog.d(TAG, "[tor] $l")
+                            val m = bootstrapRegex.find(l)
+                            if (m != null) {
+                                bootstrapPercent = m.groupValues[1].toIntOrNull() ?: 0
+                                bootstrapMessage = l.substringAfter("):").trim()
+                                if (bootstrapPercent >= 100) bootstrapMessage = "آماده"
                             }
                         }
                     } catch (_: Exception) {}
-                    // اگر پروسه تمام شد، وضعیت را آپدیت کن
                     try { proc.waitFor() } catch (_: Exception) {}
                     running = false
                 }.also { it.isDaemon = true; it.start() }
 
-                // ۵. کمی صبر کن تا Tor شروع کند
-                Thread.sleep(500)
-
+                Thread.sleep(300)
                 return mapOf("ok" to true, "socksPort" to socksPort)
             } catch (e: Throwable) {
                 lastError = e.message ?: e.toString()
@@ -174,11 +175,10 @@ object TorService {
 
     /** ساخت محتوای torrc. */
     private fun buildTorrc(
-        torDir: File,
         dataDir: File,
         bridgeType: String,
         customBridges: List<String>?,
-        obfs4: File?, snowflake: File?, conjure: File?, dnstt: File?,
+        obfs4Path: String?, snowflakePath: String?, conjurePath: String?, dnsttPath: String?,
     ): String {
         val sb = StringBuilder()
         sb.appendLine("SocksPort $socksPort")
@@ -192,39 +192,39 @@ object TorService {
                 // بدون پل
             }
             "obfs4" -> {
-                if (obfs4 != null) {
+                if (obfs4Path != null) {
                     sb.appendLine("UseBridges 1")
-                    sb.appendLine("ClientTransportPlugin obfs4 exec ${obfs4.absolutePath}")
-                    sb.appendLine("ClientTransportPlugin obfs3 exec ${obfs4.absolutePath}")
-                    sb.appendLine("ClientTransportPlugin scramblesuit exec ${obfs4.absolutePath}")
+                    sb.appendLine("ClientTransportPlugin obfs4 exec ${obfs4Path}")
+                    sb.appendLine("ClientTransportPlugin obfs3 exec ${obfs4Path}")
+                    sb.appendLine("ClientTransportPlugin scramblesuit exec ${obfs4Path}")
                     customBridges?.forEach { sb.appendLine("Bridge $it") }
                 }
             }
             "meek_lite" -> {
-                if (obfs4 != null) {
+                if (obfs4Path != null) {
                     sb.appendLine("UseBridges 1")
-                    sb.appendLine("ClientTransportPlugin meek_lite exec ${obfs4.absolutePath}")
+                    sb.appendLine("ClientTransportPlugin meek_lite exec ${obfs4Path}")
                     customBridges?.forEach { sb.appendLine("Bridge $it") }
                 }
             }
             "snowflake" -> {
-                if (snowflake != null) {
+                if (snowflakePath != null) {
                     sb.appendLine("UseBridges 1")
-                    sb.appendLine("ClientTransportPlugin snowflake exec ${snowflake.absolutePath}")
+                    sb.appendLine("ClientTransportPlugin snowflake exec ${snowflakePath}")
                     sb.appendLine("Bridge snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72")
                 }
             }
             "conjure" -> {
-                if (conjure != null) {
+                if (conjurePath != null) {
                     sb.appendLine("UseBridges 1")
-                    sb.appendLine("ClientTransportPlugin conjure exec ${conjure.absolutePath}")
+                    sb.appendLine("ClientTransportPlugin conjure exec ${conjurePath}")
                     customBridges?.forEach { sb.appendLine("Bridge $it") }
                 }
             }
             "dnstt" -> {
-                if (dnstt != null) {
+                if (dnsttPath != null) {
                     sb.appendLine("UseBridges 1")
-                    sb.appendLine("ClientTransportPlugin dnstt exec ${dnstt.absolutePath}")
+                    sb.appendLine("ClientTransportPlugin dnstt exec ${dnsttPath}")
                     customBridges?.forEach { sb.appendLine("Bridge $it") }
                 }
             }
