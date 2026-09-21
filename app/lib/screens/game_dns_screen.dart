@@ -739,11 +739,12 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                   onTap: () => _editDns(dns),
                 ),
                 if (_customIndexOf(dns) != null)
-                  _smallIcon(
-                    icon: Icons.share_outlined,
-                    color: AppColors.muted(context),
-                    onTap: () => _shareDns(dns),
-                  ),
+                if (_customIndexOf(dns) != null)
+                    _smallIcon(
+                      icon: Icons.share_outlined,
+                      color: AppColors.muted(context),
+                      onTap: () => _shareDns(dns),
+                    ),
                 _smallIcon(
                   icon: Icons.delete_outline,
                   color: AppColors.danger,

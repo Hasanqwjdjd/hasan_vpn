@@ -598,6 +598,36 @@ class _HomeScreenState extends State<HomeScreen> {
     _showMsg(_t('${toDelete.length} تکراری حذف شد', '${toDelete.length} duplicates deleted'));
   }
 
+  void _deleteDuplicates() {
+    final seen = <String>{};
+    final toDelete = <VpnServer>[];
+    for (final s in _servers) {
+      final key = s.shareLink.trim();
+      if (seen.contains(key)) {
+        toDelete.add(s);
+      } else {
+        seen.add(key);
+      }
+    }
+    if (toDelete.isEmpty) {
+      _showMsg(_t('تکراری‌ای نیست', 'No duplicates'));
+      return;
+    }
+    for (final s in toDelete) {
+      _deletedIds.add(s.id);
+      _customServers.removeWhere((item) => item.id == s.id);
+    }
+    if (_selected != null && _deletedIds.contains(_selected!.id)) {
+      _selected = null;
+    }
+    _rebuildServerList();
+    _saveDeleted();
+    _saveCustomServers();
+    _savePings();
+    _showMsg(_t('\${toDelete.length} تکراری حذف شد',
+        '\${toDelete.length} duplicates deleted'));
+  }
+
   void _deleteInvalid() {
     final toDelete = _servers
         .where((s) =>
@@ -917,6 +947,16 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               ListTile(
                 leading: Icon(Icons.content_copy, color: AppColors.muted(context)),
+                title: Text(_t('حذف تکراری‌ها', 'Delete duplicates'),
+                    style: TextStyle(color: AppColors.fg(context))),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _deleteDuplicates();
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.content_copy,
+                    color: AppColors.muted(context)),
                 title: Text(_t('حذف تکراری‌ها', 'Delete duplicates'),
                     style: TextStyle(color: AppColors.fg(context))),
                 onTap: () {
