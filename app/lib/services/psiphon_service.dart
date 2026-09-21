@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../models/server.dart';
 import 'aether_service.dart';
+import 'psiphon_auto.dart';
 import 'v2ray_engine.dart';
 
 typedef PsiphonProgress = void Function(String message);
@@ -35,52 +36,28 @@ class PsiphonService {
   static bool get isConnected => _connected;
   static VpnServer? get current => _current;
 
-  /// کانفیگ پیش‌فرض — همان الگوی bepass-org/warp-plus (Cfon/Psiphon در Oblivion).
-  /// SponsorId و PropagationChannelId در warp-plus برابر FFFFFFFFFFFFFFFF است؛
-  /// اتصال با RemoteServerListUrl + کلید امضا کار می‌کند.
-  static const String _oblivionRemoteServerListUrl =
-      'https://s3.amazonaws.com//psiphon/web/mjr4-p23r-puwl/server_list_compressed';
-
-  static const String _oblivionRemoteServerListSigKey =
-      'MIICIDANBgkqhkiG9w0BAQEFAAOCAg0AMIICCAKCAgEAt7Ls+/39r+T6zNW7GiVpJfzq/'
-      'xvL9SBH5rIFnk0RXYEYavax3WS6HOD35eTAqn8AniOwiH+DOkvgSKF2caqk/y1dfq47P'
-      'dymtwzp9ikpB1C5OfAysXzBiwVJlCdajBKvBZDerV1cMvRzCKvKwRmvDmHgphQQ7WfXI'
-      'GbRbmmk6opMBh3roE42KcotLFtqp0RRwLtcBRNtCdsrVsjiI1Lqz/lH+T61sGjSjQ3CH'
-      'MuZYSQJZo/KrvzgQXpkaCTdbObxHqb6/+i1qaVOfEsvjoiyzTxJADvSytVtcTjijhPEV'
-      '6XskJVHE1Zgl+7rATr/pDQkw6DPCNBS1+Y6fy7GstZALQXwEDN/qhQI9kWkHijT8ns+i'
-      '1vGg00Mk/6J75arLhqcodWsdeG/M/moWgqQAnlZAGVtJI1OgeF5fsPpXu4kctOfuZlGj'
-      'VZXQNW34aOzm8r8S0eVZitPlbhcPiR4gT/aSMz/wd8lZlzZYsje/Jr8u/YtlwjjreZrG'
-      'RmG8KMOzukV3lLmMppXFMvl4bxv6YFEmIuTsOhbLTwFgh7KYNjodLj/LsqRVfwz31PgW'
-      'QFTEPICV7GCvgVlPRxnofqKSjgTWI4mxDhBpVcATvaoBl1L/6WLbFvBsoAUBItWwctO2'
-      'xalKxF5szhGm8lccoc5MZr8kfE0uxMgsxz4er68iCID+rsCAQM=';
-
+  /// کانفیگ پیش‌فرض (پروفایل اول حالت خودکار). SponsorId / Channel /
+  /// Region اگر داده شوند جایگزین می‌شوند.
   static String defaultConfigJson({
     String sponsorId = '',
     String propagationChannelId = '',
     String egressRegion = '',
   }) {
-    final map = <String, dynamic>{
-      // همان مقادیر bepass-org/warp-plus/psiphon/p.go
-      'SponsorId':
-          sponsorId.isEmpty ? 'FFFFFFFFFFFFFFFF' : sponsorId,
-      'PropagationChannelId': propagationChannelId.isEmpty
-          ? 'FFFFFFFFFFFFFFFF'
+    final base = PsiphonAuto.profiles.first;
+    final profile = PsiphonProfile(
+      id: 'custom',
+      sponsorId: sponsorId.isEmpty ? base.sponsorId : sponsorId,
+      channelId: propagationChannelId.isEmpty
+          ? base.channelId
           : propagationChannelId,
-      'RemoteServerListUrl': _oblivionRemoteServerListUrl,
-      'RemoteServerListSignaturePublicKey': _oblivionRemoteServerListSigKey,
-      'RemoteServerListDownloadFilename': 'remote_server_list',
-      'ClientPlatform': 'Android_4.0.4_com.hasan.hasan_vpn',
-      'ClientVersion': '1',
-      'LocalSocksProxyPort': 0,
-      'LocalHttpProxyPort': 0,
-      'DisableLocalHTTPProxy': true,
-      'EgressRegion': egressRegion,
-      'ConnectionWorkerPoolSize': 8,
-      'EstablishTunnelTimeoutSeconds': 60,
-      'NetworkID': 'hasan_vpn',
-      'AllowDefaultDNSResolverWithBindToDevice': true,
-    };
-    return jsonEncode(map);
+    );
+    return jsonEncode(
+      PsiphonAuto.buildConfig(
+        profile,
+        region: egressRegion,
+        establishTimeoutSec: 60,
+      ),
+    );
   }
 
   static Future<Map<String, dynamic>> status() async {
@@ -144,35 +121,74 @@ class PsiphonService {
         return false;
       }
 
-      // کانفیگ از shareLink: psiphon://config?json=base64 یا JSON خام
-      final config = _configFromServer(server);
-      onProgress?.call('Psiphon · connecting');
-
-      final result = await _channel.invokeMapMethod<String, dynamic>('start', {
-        'config': config,
-        'timeoutSec': 90,
-      });
-
-      if (cancelled()) {
-        await stop();
-        lastError = 'cancelled';
-        return false;
+      // حالت خودکار: چند تلاش با پروفایل/پروتکل‌های مختلف.
+      // حالت دستی: فقط یک تلاش با همان کانفیگی که کاربر داده.
+      final List<PsiphonAttempt> attempts;
+      if (isAutoLink(server.shareLink)) {
+        attempts = await PsiphonAuto.attempts(
+          region: regionOfLink(server.shareLink),
+        );
+      } else {
+        attempts = <PsiphonAttempt>[
+          PsiphonAttempt(
+            label: 'manual',
+            profileId: 'manual',
+            mode: 'manual',
+            configJson: _configFromServer(server),
+            timeoutSec: 90,
+          ),
+        ];
       }
 
-      if (result == null || result['ok'] != true) {
-        lastError = result?['error']?.toString() ??
+      int port = 0;
+      String? failure;
+      for (var i = 0; i < attempts.length; i++) {
+        if (cancelled()) {
+          await stop();
+          lastError = 'cancelled';
+          return false;
+        }
+
+        final a = attempts[i];
+        final counter =
+            attempts.length > 1 ? ' ${i + 1}/${attempts.length}' : '';
+        onProgress?.call('Psiphon · connecting (${a.label})$counter');
+
+        final result = await _channel.invokeMapMethod<String, dynamic>('start', {
+          'config': a.configJson,
+          'timeoutSec': a.timeoutSec,
+        });
+
+        if (cancelled()) {
+          await stop();
+          lastError = 'cancelled';
+          return false;
+        }
+
+        final p = (result?['socksPort'] as num?)?.toInt() ?? 0;
+        if (result != null && result['ok'] == true && p > 0) {
+          port = p;
+          lastRegion = result['region']?.toString();
+          if (a.mode != 'manual') {
+            // ignore: unawaited_futures
+            PsiphonAuto.rememberSuccess(a);
+          }
+          // فهرست کشورهایی که هسته گزارش می‌دهد کمی دیرتر می‌رسد.
+          // ignore: unawaited_futures
+          _cacheRegionsLater();
+          break;
+        }
+
+        failure = result?['error']?.toString() ??
             'Psiphon failed — SponsorId نامعتبر یا شبکه در دسترس نیست';
-        return false;
+        await stop();
       }
 
-      final port = (result['socksPort'] as num?)?.toInt() ?? 0;
       if (port <= 0) {
-        lastError = 'Psiphon SOCKS port is 0';
-        await stop();
+        lastError = failure ?? 'Psiphon SOCKS port is 0';
         return false;
       }
       _socksPort = port;
-      lastRegion = result['region']?.toString();
 
       onProgress?.call('Psiphon · VPN ($port)');
       final xrayConfig = AetherService.buildXrayConfig(socksPort: port, blockQuic: true);
@@ -199,6 +215,14 @@ class PsiphonService {
       await stop();
       return false;
     }
+  }
+
+  static Future<void> _cacheRegionsLater() async {
+    try {
+      await Future<void>.delayed(const Duration(seconds: 4));
+      final s = await status();
+      await PsiphonAuto.cacheRegions(s['regions']);
+    } catch (_) {}
   }
 
   static String _configFromServer(VpnServer server) {
@@ -231,6 +255,45 @@ class PsiphonService {
       } catch (_) {}
     }
     return defaultConfigJson();
+  }
+
+  /// لینک «خودکار»: psiphon://auto?region=DE (region اختیاری).
+  static String toAutoLink({String region = ''}) {
+    final r = PsiphonAuto.normalizeRegion(region);
+    return Uri(
+      scheme: 'psiphon',
+      host: 'auto',
+      queryParameters: r.isEmpty ? null : <String, String>{'region': r},
+    ).toString();
+  }
+
+  /// true اگر این سرور باید با حالت خودکار وصل شود.
+  /// لینک‌های قدیمی بدون SponsorId/Channel/JSON هم خودکار حساب می‌شوند.
+  static bool isAutoLink(String link) {
+    final l = link.trim();
+    if (l.startsWith('{')) return false;
+    if (!l.toLowerCase().startsWith('psiphon://')) return true;
+    try {
+      final uri = Uri.parse(l);
+      if (uri.host.toLowerCase() == 'auto') return true;
+      final q = uri.queryParameters;
+      final hasManual = (q['config'] ?? '').isNotEmpty ||
+          (q['json'] ?? '').isNotEmpty ||
+          (q['sponsor'] ?? '').isNotEmpty ||
+          (q['channel'] ?? '').isNotEmpty;
+      return !hasManual;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static String regionOfLink(String link) {
+    try {
+      final uri = Uri.parse(link.trim());
+      return PsiphonAuto.normalizeRegion(uri.queryParameters['region'] ?? '');
+    } catch (_) {
+      return '';
+    }
   }
 
   static String toShareLink({

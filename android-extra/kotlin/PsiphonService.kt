@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * پل بومی Psiphon با AAR رسمی (ca.psiphon:psiphontunnel).
  *   start(configJson) -> Map { ok, socksPort, httpPort, error }
  *   stop()            -> Unit
- *   status()          -> Map { running, socksPort, httpPort, region, error, libraryPresent }
+ *   status()          -> Map { running, socksPort, httpPort, region, regions, error, libraryPresent }
  */
 object PsiphonService {
     private const val TAG = "PsiphonService"
@@ -24,6 +24,7 @@ object PsiphonService {
     @Volatile private var running = false
     @Volatile private var lastError: String? = null
     @Volatile private var region: String? = null
+    @Volatile private var regions: List<String> = emptyList()
     private val socksPort = AtomicInteger(0)
     private val httpPort = AtomicInteger(0)
 
@@ -34,6 +35,7 @@ object PsiphonService {
         "socksPort" to socksPort.get(),
         "httpPort" to httpPort.get(),
         "region" to region,
+        "regions" to regions,
         "error" to lastError,
         "libraryPresent" to true,
     )
@@ -53,7 +55,7 @@ object PsiphonService {
             try {
                 val t = PsiphonTunnel.newPsiphonTunnel(host)
                 tunnel = t
-                t.startTunneling("")
+                t.startTunneling(loadEmbeddedServerEntries(context))
             } catch (e: Throwable) {
                 Log.e(TAG, "start failed", e)
                 lastError = e.message ?: e.toString()
@@ -86,6 +88,18 @@ object PsiphonService {
 
         running = true
         return status().toMutableMap().apply { put("ok", true) }
+    }
+
+    /**
+     * لیست سرورهای توکار (اختیاری): اگر فایل assets/server_entries.txt در بیلد
+     * باشد به هسته داده می‌شود تا بدون دانلود لیست سرور هم بتواند شروع کند.
+     * نبودنش مشکلی ایجاد نمی‌کند.
+     */
+    private fun loadEmbeddedServerEntries(context: Context): String = try {
+        context.applicationContext.assets.open("server_entries.txt")
+            .bufferedReader().use { it.readText().trim() }
+    } catch (_: Throwable) {
+        ""
     }
 
     fun stop(context: Context? = null) {
@@ -152,6 +166,15 @@ object PsiphonService {
 
         override fun onUpstreamProxyError(message: String?) {
             failReason = message
+        }
+
+        override fun onAvailableEgressRegions(regions: MutableList<String>?) {
+            val clean = regions.orEmpty()
+                .map { it.trim().uppercase() }
+                .filter { it.length == 2 && it.all { c -> c in 'A'..'Z' } }
+                .distinct()
+                .sorted()
+            if (clean.isNotEmpty()) PsiphonService.regions = clean
         }
 
         override fun onConnectedServerRegion(region: String?) {

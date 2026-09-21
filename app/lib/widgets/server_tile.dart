@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/aether_profile.dart';
 import '../models/server.dart';
 import '../services/app_colors.dart';
+import '../services/psiphon_service.dart';
 
 class ServerTile extends StatelessWidget {
   final VpnServer server;
@@ -31,7 +32,11 @@ class ServerTile extends StatelessWidget {
 
   String get _caption {
     if (server.protocol == VpnProtocol.psiphon) {
-      return 'PSIPHON · Real';
+      if (PsiphonService.isAutoLink(server.shareLink)) {
+        final r = PsiphonService.regionOfLink(server.shareLink);
+        return r.isEmpty ? 'PSIPHON · Auto' : 'PSIPHON · Auto · $r';
+      }
+      return 'PSIPHON · Manual';
     }
     if (server.isAether) {
       final summary = AetherProfile.fromLink(server.shareLink).summary;

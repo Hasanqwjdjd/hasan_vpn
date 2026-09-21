@@ -71,6 +71,16 @@ jobs:
           rm -f build_src/android/app/src/main/java/com/hasan/hasan_vpn/MainActivity.java 2>/dev/null || true
           ls -la "$KT_DIR"
 
+      - name: Psiphon embedded server list (optional)
+        run: |
+          if [ -f android-extra/assets/server_entries.txt ]; then
+            mkdir -p build_src/android/app/src/main/assets
+            cp -f android-extra/assets/server_entries.txt build_src/android/app/src/main/assets/server_entries.txt
+            echo "Embedded Psiphon server list included"
+          else
+            echo "No android-extra/assets/server_entries.txt - Psiphon will download its server list"
+          fi
+
       - name: Install Aether native binaries (jniLibs)
         run: |
           set -e

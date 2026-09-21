@@ -11,6 +11,7 @@ object PsiphonService {
         "socksPort" to 0,
         "httpPort" to 0,
         "region" to null,
+        "regions" to emptyList<String>(),
         "error" to "Psiphon AAR is not bundled in this build",
         "libraryPresent" to false,
     )

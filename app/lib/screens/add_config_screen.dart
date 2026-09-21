@@ -4,6 +4,7 @@ import '../models/aether_profile.dart';
 import '../models/server.dart';
 import '../services/app_colors.dart';
 import '../services/link_parser.dart';
+import '../services/psiphon_auto.dart';
 import '../services/psiphon_service.dart';
 import '../services/xray_json.dart';
 import 'qr_scan_screen.dart';
@@ -43,6 +44,13 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _psiphonSponsorController = TextEditingController();
   final TextEditingController _psiphonChannelController = TextEditingController();
   final TextEditingController _psiphonConfigController = TextEditingController();
+
+  /// سایفون: true = برنامه خودش SponsorId/Channel/پروتکل را انتخاب می‌کند.
+  bool _psiphonAuto = true;
+
+  /// کشور خروجی سایفون؛ '' = خودکار (سریع‌ترین).
+  String _psiphonRegion = '';
+  List<String> _psiphonRegions = PsiphonAuto.fallbackRegions;
   final TextEditingController _aetherUpstreamController =
       TextEditingController();
 
@@ -50,6 +58,10 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   void initState() {
     super.initState();
     _isFa = widget.language == 'fa';
+    PsiphonAuto.loadRegions().then((list) {
+      if (!mounted) return;
+      setState(() => _psiphonRegions = list);
+    });
   }
 
   String _t(String fa, String en) => _isFa ? fa : en;
@@ -333,33 +345,41 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   }
 
 
-  /// Siphon = مسیر Gool (WARP داخل WARP) برای عوض‌کردن IP خروجی
   /// سایفون واقعی (کتابخانهٔ ca.psiphon)
+  ///  - حالت خودکار: فقط کشور (اختیاری)؛ بقیه را برنامه خودش انتخاب می‌کند.
+  ///  - حالت دستی: SponsorId / Channel / JSON.
   void _addSiphonServer() {
-    final sponsor = _psiphonSponsorController.text.trim();
-    final channel = _psiphonChannelController.text.trim();
-    final raw = _psiphonConfigController.text.trim();
-    final region = _aetherPeerController.text.trim(); // reuse optional region field
-
     final String share;
-    if (raw.startsWith('{')) {
-      share = PsiphonService.toShareLink(rawJson: raw);
+    final String defaultName;
+
+    if (_psiphonAuto) {
+      share = PsiphonService.toAutoLink(region: _psiphonRegion);
+      defaultName = _psiphonRegion.isEmpty
+          ? 'Psiphon · Auto'
+          : 'Psiphon · Auto · $_psiphonRegion';
     } else {
-      share = PsiphonService.toShareLink(
-        sponsorId: sponsor,
-        channelId: channel,
-        region: region,
-      );
+      final sponsor = _psiphonSponsorController.text.trim();
+      final channel = _psiphonChannelController.text.trim();
+      final raw = _psiphonConfigController.text.trim();
+      final region = _aetherPeerController.text.trim(); // فیلد منطقهٔ دستی
+
+      if (raw.startsWith('{')) {
+        share = PsiphonService.toShareLink(rawJson: raw);
+      } else {
+        share = PsiphonService.toShareLink(
+          sponsorId: sponsor,
+          channelId: channel,
+          region: region,
+        );
+      }
+      defaultName = 'Psiphon · Manual';
     }
 
-    final name = _nameController.text.trim().isNotEmpty
-        ? _nameController.text.trim()
-        : 'Psiphon · Real';
-
+    final typed = _nameController.text.trim();
     final server = VpnServer(
       id: 'psiphon_${DateTime.now().millisecondsSinceEpoch}',
-      name: name,
-      flag: '💧',
+      name: typed.isNotEmpty ? typed : defaultName,
+      flag: _psiphonAuto ? PsiphonAuto.flagEmoji(_psiphonRegion) : '💧',
       shareLink: share,
       protocol: VpnProtocol.psiphon,
       host: 'psiphon-network',
@@ -369,36 +389,77 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
 
     widget.onServerAdded(server);
     Navigator.pop(context);
-    _showMsg(_t(
-      'سایفون واقعی اضافه شد — برای اتصال SponsorId معتبر لازم است',
-      'Real Psiphon added — valid SponsorId required to connect',
-    ));
+    _showMsg(_psiphonAuto
+        ? _t('سایفون خودکار اضافه شد — وصل شو',
+            'Automatic Psiphon added — connect')
+        : _t('سایفون دستی اضافه شد', 'Manual Psiphon added'));
+  }
+
+  InputDecoration _siphonDecoration(String hint, {double hintSize = 13}) {
+    OutlineInputBorder border(Color c, [double w = 1]) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: c, width: w),
+        );
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(color: AppColors.muted2(context), fontSize: hintSize),
+      filled: true,
+      fillColor: AppColors.surface(context),
+      border: border(AppColors.border(context)),
+      enabledBorder: border(AppColors.border(context)),
+      focusedBorder: border(const Color(0xFF26A69A), 1.5),
+    );
+  }
+
+  Widget _siphonLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: AppColors.muted(context),
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
   }
 
   Widget _buildSiphonForm() {
+    const teal = Color(0xFF26A69A);
+    final regionItems = <String>['', ..._psiphonRegions];
+    if (!regionItems.contains(_psiphonRegion)) {
+      regionItems.add(_psiphonRegion);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: const Color(0xFF26A69A).withOpacity(0.08),
+            color: teal.withOpacity(0.08),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF26A69A).withOpacity(0.35)),
+            border: Border.all(color: teal.withOpacity(0.35)),
           ),
           child: Text(
-            _t(
-              'سایفون واقعی با کتابخانهٔ رسمی + تنظیمات bepass-org/warp-plus '
-              '(همان Cfon در Oblivion) کار می‌کند.\n'
-              'اگر SponsorId را خالی بگذاری، همان مقادیر Oblivion '
-              '(FFFFFFFFFFFFFFFF + لیست سرور رسمی) استفاده می‌شود.\n'
-              'در صورت نیاز می‌توانی Sponsor/Channel یا JSON کامل را جایگزین کنی.',
-              'Real Psiphon uses the official library + bepass-org/warp-plus '
-              'settings (same as Oblivion Cfon).\n'
-              'Leave SponsorId empty to use Oblivion defaults '
-              '(FFFFFFFFFFFFFFFF + official server list).\n'
-              'Optionally override with your own Sponsor/Channel or full JSON.',
-            ),
+            _psiphonAuto
+                ? _t(
+                    'حالت خودکار: برنامه خودش SponsorId، کانال، مجموعهٔ پروتکل '
+                    'و مهلت اتصال را انتخاب می‌کند و کانفیگ را می‌سازد. اگر یک '
+                    'ترکیب وصل نشد، خودکار سراغ ترکیب بعدی می‌رود و ترکیبِ '
+                    'موفق را برای دفعهٔ بعد یادش می‌ماند.',
+                    'Automatic mode: the app picks SponsorId, channel, protocol '
+                    'set and timeouts, and builds the config itself. If one '
+                    'combination fails it tries the next, and remembers the '
+                    'one that worked.',
+                  )
+                : _t(
+                    'حالت دستی: SponsorId / Channel یا JSON کامل را خودت بده. '
+                    'خالی بگذاری، مقادیر پیش‌فرض Oblivion استفاده می‌شود.',
+                    'Manual mode: provide your own SponsorId / Channel or a '
+                    'full JSON. Leave empty to use the Oblivion defaults.',
+                  ),
             style: TextStyle(
               color: AppColors.muted(context),
               fontSize: 12,
@@ -406,166 +467,101 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface(context),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border(context)),
+          ),
+          child: SwitchListTile(
+            value: _psiphonAuto,
+            activeColor: teal,
+            onChanged: (v) => setState(() => _psiphonAuto = v),
+            title: Text(
+              _t('خودکار (پیشنهادی)', 'Automatic (recommended)'),
+              style: TextStyle(
+                color: AppColors.fg(context),
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            subtitle: Text(
+              _t('SponsorId و بقیهٔ گزینه‌ها را برنامه انتخاب کند',
+                  'Let the app choose SponsorId and the other options'),
+              style: TextStyle(color: AppColors.muted(context), fontSize: 12),
+            ),
+          ),
+        ),
         const SizedBox(height: 16),
-        Text(
-          _t('SponsorId', 'SponsorId'),
-          style: TextStyle(
-              color: AppColors.muted(context),
-              fontSize: 13,
-              fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _psiphonSponsorController,
-          style: TextStyle(color: AppColors.fg(context), fontSize: 13),
-          decoration: InputDecoration(
-            hintText: 'خالی = پیش‌فرض Oblivion (FFFFFFFFFFFFFFFF)',
-            hintStyle: TextStyle(color: AppColors.muted2(context)),
-            filled: true,
-            fillColor: AppColors.surface(context),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
+        if (_psiphonAuto) ...[
+          _siphonLabel(_t('کشور خروجی', 'Exit country')),
+          DropdownButtonFormField<String>(
+            value: _psiphonRegion,
+            isExpanded: true,
+            dropdownColor: AppColors.surface(context),
+            style: TextStyle(color: AppColors.fg(context), fontSize: 14),
+            decoration: _siphonDecoration(''),
+            items: [
+              for (final r in regionItems)
+                DropdownMenuItem<String>(
+                  value: r,
+                  child: Text(PsiphonAuto.regionLabel(r, fa: _isFa)),
+                ),
+            ],
+            onChanged: (v) => setState(() => _psiphonRegion = v ?? ''),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _t(
+              'روی «خودکار» بگذاری، Psiphon سریع‌ترین خروجی را انتخاب می‌کند. '
+              'فهرست کشورها بعد از اولین اتصال از خود Psiphon به‌روز می‌شود.',
+              'On "Auto", Psiphon picks the fastest exit. The country list '
+              'is refreshed from Psiphon after the first connection.',
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFF26A69A), width: 1.5),
+            style: TextStyle(color: AppColors.muted2(context), fontSize: 11),
+          ),
+        ] else ...[
+          _siphonLabel('SponsorId'),
+          TextField(
+            controller: _psiphonSponsorController,
+            style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+            decoration: _siphonDecoration(
+                'خالی = پیش‌فرض Oblivion (FFFFFFFFFFFFFFFF)'),
+          ),
+          const SizedBox(height: 12),
+          _siphonLabel('PropagationChannelId'),
+          TextField(
+            controller: _psiphonChannelController,
+            style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+            decoration: _siphonDecoration('Channel ID'),
+          ),
+          const SizedBox(height: 12),
+          _siphonLabel(_t('منطقه خروجی (اختیاری)', 'Egress region (optional)')),
+          TextField(
+            controller: _aetherPeerController,
+            style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+            decoration: _siphonDecoration('US, DE, SG, ... یا خالی'),
+          ),
+          const SizedBox(height: 12),
+          _siphonLabel(_t('یا کانفیگ JSON کامل', 'Or full JSON config')),
+          TextField(
+            controller: _psiphonConfigController,
+            maxLines: 4,
+            style: TextStyle(color: AppColors.fg(context), fontSize: 12),
+            decoration: _siphonDecoration(
+              '{ "SponsorId": "...", "PropagationChannelId": "..." }',
+              hintSize: 11,
             ),
           ),
-        ),
+        ],
         const SizedBox(height: 12),
-        Text(
-          _t('PropagationChannelId', 'PropagationChannelId'),
-          style: TextStyle(
-              color: AppColors.muted(context),
-              fontSize: 13,
-              fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _psiphonChannelController,
-          style: TextStyle(color: AppColors.fg(context), fontSize: 13),
-          decoration: InputDecoration(
-            hintText: 'Channel ID',
-            hintStyle: TextStyle(color: AppColors.muted2(context)),
-            filled: true,
-            fillColor: AppColors.surface(context),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFF26A69A), width: 1.5),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          _t('منطقه خروجی (اختیاری)', 'Egress region (optional)'),
-          style: TextStyle(
-              color: AppColors.muted(context),
-              fontSize: 13,
-              fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _aetherPeerController,
-          style: TextStyle(color: AppColors.fg(context), fontSize: 13),
-          decoration: InputDecoration(
-            hintText: 'US, DE, SG, ... یا خالی',
-            hintStyle: TextStyle(color: AppColors.muted2(context)),
-            filled: true,
-            fillColor: AppColors.surface(context),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFF26A69A), width: 1.5),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          _t('یا کانفیگ JSON کامل', 'Or full JSON config'),
-          style: TextStyle(
-              color: AppColors.muted(context),
-              fontSize: 13,
-              fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _psiphonConfigController,
-          maxLines: 4,
-          style: TextStyle(color: AppColors.fg(context), fontSize: 12),
-          decoration: InputDecoration(
-            hintText: '{ "SponsorId": "...", "PropagationChannelId": "..." }',
-            hintStyle: TextStyle(color: AppColors.muted2(context), fontSize: 11),
-            filled: true,
-            fillColor: AppColors.surface(context),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFF26A69A), width: 1.5),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          _t('نام (اختیاری)', 'Name (optional)'),
-          style: TextStyle(
-              color: AppColors.muted(context),
-              fontSize: 13,
-              fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
+        _siphonLabel(_t('نام (اختیاری)', 'Name (optional)')),
         TextField(
           controller: _nameController,
           style: TextStyle(color: AppColors.fg(context)),
-          decoration: InputDecoration(
-            hintText: _t('مثال: سایفون من', 'e.g. My Psiphon'),
-            hintStyle: TextStyle(color: AppColors.muted2(context)),
-            filled: true,
-            fillColor: AppColors.surface(context),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFF26A69A), width: 1.5),
-            ),
-          ),
+          decoration:
+              _siphonDecoration(_t('مثال: سایفون من', 'e.g. My Psiphon')),
         ),
         const SizedBox(height: 16),
         SizedBox(
@@ -574,14 +570,16 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
           child: ElevatedButton(
             onPressed: _addSiphonServer,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF26A69A),
+              backgroundColor: teal,
               foregroundColor: Colors.black,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
             ),
             child: Text(
-              _t('افزودن سایفون واقعی', 'Add real Psiphon'),
+              _psiphonAuto
+                  ? _t('افزودن سایفون خودکار', 'Add automatic Psiphon')
+                  : _t('افزودن سایفون دستی', 'Add manual Psiphon'),
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
