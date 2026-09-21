@@ -96,21 +96,33 @@ jobs:
           cp -r app/lib/. build_src/lib/
           cp app/pubspec.yaml build_src/pubspec.yaml
           cp hasan.keystore build_src/android/app/hasan.keystore
-          # Add Aliyun mirrors to settings.gradle to avoid Maven Central 429 errors
+          # Patch settings.gradle: bump Kotlin + AGP + add Aliyun mirrors
           python3 << 'PYEOF'
           path = "build_src/android/settings.gradle"
           with open(path, "r") as f:
               text = f.read()
+
+          # 1) Bump Kotlin plugin from 1.8.22 to 2.1.0 (required by flutter_vless)
+          text = text.replace(
+              'org.jetbrains.kotlin.android" version "1.8.22"',
+              'org.jetbrains.kotlin.android" version "2.1.0"'
+          )
+          # 2) Bump AGP from 8.1.0 to 8.7.0 for Kotlin 2.1 compatibility
+          text = text.replace(
+              'com.android.application" version "8.1.0"',
+              'com.android.application" version "8.7.0"'
+          )
+          # 3) Add Aliyun mirrors before first google() to avoid Maven Central 429
           mirrors = '''        maven { url "https://maven.aliyun.com/repository/google" }
                   maven { url "https://maven.aliyun.com/repository/public" }
                   maven { url "https://maven.aliyun.com/repository/gradle-plugin" }
                   '''
-          # Insert aliyun mirrors before the first google() in pluginManagement
           if 'maven.aliyun.com' not in text:
               text = text.replace('google()', mirrors + '        google()', 1)
+
           with open(path, "w") as f:
               f.write(text)
-          print("✅ settings.gradle patched with Aliyun mirrors")
+          print("✅ settings.gradle patched (Kotlin 2.1.0, AGP 8.7.0, Aliyun mirrors)")
           PYEOF
           cat build_src/android/settings.gradle
 
@@ -208,6 +220,7 @@ jobs:
 
               kotlinOptions {
                   jvmTarget = "17"
+                  freeCompilerArgs += ["-Xskip-metadata-version-check"]
               }
 
               signingConfigs {
