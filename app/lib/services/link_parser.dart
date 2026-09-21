@@ -401,16 +401,14 @@ class LinkParser {
     return '🌐';
   }
 
+
+
   /// جایگزینی SNI و Host در لینک‌های اشتراک‌گذاری برای جعل نام سرور.
-  /// برای VLESS/Trojan/Hysteria2: پارامتر sni و host در query جایگزین می‌شود.
-  /// برای Vmess: پارامتر sni در JSON (پس از base64 decode) جایگزین می‌شود.
   static String applySniOverride(String rawLink, String newSni) {
     final link = rawLink.trim();
     final sni = newSni.trim();
     if (sni.isEmpty || link.isEmpty) return link;
-
     try {
-      // اگر JSON خام است، فیلد serverName در TLS settings جایگزین شود
       if (XrayJson.looksLike(link)) {
         final decoded = jsonDecode(link);
         if (decoded is Map) {
@@ -432,113 +430,18 @@ class LinkParser {
         }
         return link;
       }
-
       final sep = link.indexOf('://');
       if (sep <= 0) return link;
       final scheme = link.substring(0, sep).toLowerCase();
-
       if (scheme == 'vmess') {
         return _applySniToVmess(link, sni);
       }
-
-      // برای بقیه URIها: query string را دستکاری می‌کنیم
       final uri = Uri.tryParse(link);
       if (uri == null) return link;
       final q = Map<String, String>.from(uri.queryParameters);
       q['sni'] = sni;
       q['host'] = sni;
       q['peer'] = sni;
-      // serverName برای grpc/reality
-      if (q.containsKey('serviceName')) {
-        // دست نمی‌زنیم
-      }
-      final newUri = uri.replace(queryParameters: q);
-      return newUri.toString();
-    } catch (_) {
-      return link;
-    }
-  }
-
-  static String _applySniToVmess(String link, String sni) {
-    try {
-      final body = link.substring('vmess://'.length);
-      final hashIdx = body.indexOf('#');
-      String b64;
-      String fragment = '';
-      if (hashIdx >= 0) {
-        b64 = body.substring(0, hashIdx);
-        fragment = body.substring(hashIdx);
-      } else {
-        b64 = body;
-      }
-      final normalized = base64.normalize(
-        b64.replaceAll('-', '+').replaceAll('_', '/'),
-      );
-      final decoded = utf8.decode(base64.decode(normalized));
-      final json = jsonDecode(decoded);
-      if (json is! Map) return link;
-      final m = Map<String, dynamic>.from(json);
-      m['sni'] = sni;
-      m['host'] = sni;
-      final re = base64.encode(utf8.encode(jsonEncode(m))).replaceAll('=', '');
-      return 'vmess://$re$fragment';
-    } catch (_) {
-      return link;
-    }
-  }
-
-
-  /// جایگزینی SNI و Host در لینک‌های اشتراک‌گذاری برای جعل نام سرور.
-  /// برای VLESS/Trojan/Hysteria2: پارامتر sni و host در query جایگزین می‌شود.
-  /// برای Vmess: پارامتر sni در JSON (پس از base64 decode) جایگزین می‌شود.
-  static String applySniOverride(String rawLink, String newSni) {
-    final link = rawLink.trim();
-    final sni = newSni.trim();
-    if (sni.isEmpty || link.isEmpty) return link;
-
-    try {
-      // اگر JSON خام است، فیلد serverName در TLS settings جایگزین شود
-      if (XrayJson.looksLike(link)) {
-        final decoded = jsonDecode(link);
-        if (decoded is Map) {
-          final m = Map<String, dynamic>.from(decoded);
-          final outbounds = m['outbounds'];
-          if (outbounds is List) {
-            for (final ob in outbounds) {
-              if (ob is! Map) continue;
-              final stream = ob['streamSettings'];
-              if (stream is Map) {
-                final tls = stream['tlsSettings'];
-                if (tls is Map) tls['serverName'] = sni;
-                final reality = stream['realitySettings'];
-                if (reality is Map) reality['serverName'] = sni;
-              }
-            }
-          }
-          return jsonEncode(m);
-        }
-        return link;
-      }
-
-      final sep = link.indexOf('://');
-      if (sep <= 0) return link;
-      final scheme = link.substring(0, sep).toLowerCase();
-
-      if (scheme == 'vmess') {
-        return _applySniToVmess(link, sni);
-      }
-
-      // برای بقیه URIها: query string را دستکاری می‌کنیم
-      final uri = Uri.tryParse(link);
-      if (uri == null) return link;
-      final q = Map<String, String>.from(uri.queryParameters);
-      q['sni'] = sni;
-      q['host'] = sni;
-      q['peer'] = sni;
-      // serverName برای grpc/reality
-      if (q.containsKey('serviceName')) {
-        // دست نمی‌زنیم
-      }
       final newUri = uri.replace(queryParameters: q);
       return newUri.toString();
     } catch (_) {
