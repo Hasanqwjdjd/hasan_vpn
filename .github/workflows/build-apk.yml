@@ -96,6 +96,13 @@ jobs:
           cp -r app/lib/. build_src/lib/
           cp app/pubspec.yaml build_src/pubspec.yaml
           cp hasan.keystore build_src/android/app/hasan.keystore
+
+          # Patch gradle-wrapper.properties: bump Gradle from 8.3 to 8.9
+          WRAPPER="build_src/android/gradle/wrapper/gradle-wrapper.properties"
+          sed -i 's|gradle-8.3-all.zip|gradle-8.9-all.zip|g; s|gradle-8.3-bin.zip|gradle-8.9-all.zip|g' "$WRAPPER"
+          echo "----- gradle-wrapper.properties -----"
+          cat "$WRAPPER"
+
           # Patch settings.gradle: bump Kotlin + AGP + add Aliyun mirrors
           python3 << 'PYEOF'
           path = "build_src/android/settings.gradle"
