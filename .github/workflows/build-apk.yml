@@ -27,12 +27,54 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Setup Gradle mirrors and retry
+        run: |
+          mkdir -p ~/.gradle
+          cat > ~/.gradle/init.gradle << 'EOF'
+          allprojects {
+              buildscript {
+                  repositories {
+                      maven { url 'https://maven.aliyun.com/repository/public' }
+                      maven { url 'https://maven.aliyun.com/repository/google' }
+                      maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+                      google()
+                      mavenCentral()
+                  }
+              }
+              repositories {
+                  maven { url 'https://maven.aliyun.com/repository/public' }
+                  maven { url 'https://maven.aliyun.com/repository/google' }
+                  maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+                  google()
+                  mavenCentral()
+              }
+          }
+          settingsEvaluated { settings ->
+              settings.pluginManagement {
+                  repositories {
+                      maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+                      maven { url 'https://maven.aliyun.com/repository/public' }
+                      google()
+                      mavenCentral()
+                      gradlePluginPortal()
+                  }
+              }
+          }
+          EOF
+          cat > ~/.gradle/gradle.properties << 'EOF'
+          systemProp.org.gradle.internal.repository.max.retries=10
+          systemProp.org.gradle.internal.repository.initial.backoff=1000
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g
+          org.gradle.parallel=true
+          org.gradle.caching=true
+          EOF
+          echo "✅ Gradle mirrors and retry settings configured"
+
       - name: Compute app version
         id: appver
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # تعداد Releaseهای موجود را می‌شماریم تا از ۱ شروع شود
           COUNT=$(gh release list --limit 200 --json tagName --jq 'length' 2>/dev/null || echo 0)
           if [ -z "$COUNT" ] || [ "$COUNT" = "null" ]; then COUNT=0; fi
           NEXT=$((COUNT + 1))
