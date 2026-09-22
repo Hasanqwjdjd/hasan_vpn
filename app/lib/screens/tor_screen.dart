@@ -9,6 +9,7 @@ import '../models/server.dart';
 import '../services/app_colors.dart';
 import '../services/home_widget_service.dart';
 import '../services/network_prober.dart';
+import '../services/socks_probe.dart';
 import '../services/tor_bridges.dart';
 import '../services/tor_service.dart';
 import '../services/tor_sni_presets.dart';
@@ -49,6 +50,7 @@ class _TorScreenState extends State<TorScreen> {
   bool _connecting = false;
   int _bootstrap = 0;
   String _bootstrapMsg = '';
+  int? _torPing;
   int _socksPort = 0;
   String? _error;
   Timer? _pollTimer;
@@ -427,6 +429,11 @@ class _TorScreenState extends State<TorScreen> {
           _bootstrapMsg = _t('در حال Bootstrap…', 'Bootstrapping…');
           _error = null;
         });
+        // ذخیره بریج موفق تا دفعه بعد خودکار انتخاب شود
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('tor_bridge_type', bt);
+        } catch (_) {}
         _snack(_t(
           'با $bt وصل شد (fallback خودکار)',
           'Connected with $bt (auto-fallback)',
@@ -435,6 +442,25 @@ class _TorScreenState extends State<TorScreen> {
       }
     }
     return false;
+  }
+
+  /// پینگ خودکار بعد از اتصال موفق Tor.
+  /// از طریق SOCKS محلی به gstatic/cloudflare وصل می‌شود.
+  Future<void> _autoPingAfterConnect() async {
+    if (!mounted || !_running || _socksPort <= 0) return;
+    try {
+      final r = await SocksProbe.measure(
+        port: _socksPort,
+        samples: 3,
+        timeout: const Duration(seconds: 8),
+      );
+      if (!mounted) return;
+      if (r.ok && r.ms != null && r.ms! > 0) {
+        setState(() {
+          _torPing = r.ms;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _toggle() async {
