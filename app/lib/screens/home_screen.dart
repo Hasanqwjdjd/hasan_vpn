@@ -18,7 +18,6 @@ import '../services/v2ray_engine.dart';
 import '../widgets/server_tile.dart';
 import 'add_config_screen.dart';
 import 'announcements_screen.dart';
-import 'live_monitor_screen.dart';
 import 'tor_screen.dart';
 import 'qr_share_screen.dart';
 
@@ -979,26 +978,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 onTap: () {
                   Navigator.pop(sheetContext);
                   _openAddConfig();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.monitor_heart_outlined,
-                    color: AppColors.accent),
-                title: Text(_t('مانیتور زنده', 'Live Monitor'),
-                    style: TextStyle(color: AppColors.fg(context))),
-                subtitle: Text(
-                  _t('نمایش مصرف CPU، حافظه و سرعت شبکه',
-                      'Show CPU, memory and network usage'),
-                  style: TextStyle(color: AppColors.muted2(context), fontSize: 11),
-                ),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => LiveMonitorScreen(language: widget.language),
-                    ),
-                  );
                 },
               ),
               ListTile(

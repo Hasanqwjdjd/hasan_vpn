@@ -6,8 +6,10 @@ import '../services/app_colors.dart';
 import '../services/link_parser.dart';
 import '../services/psiphon_auto.dart';
 import '../services/psiphon_service.dart';
+import '../services/tor_sni_presets.dart';
 import '../services/xray_json.dart';
 import 'qr_scan_screen.dart';
+import 'tor_screen.dart';
 
 class AddConfigScreen extends StatefulWidget {
   final String language;
@@ -27,6 +29,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _linkController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _sniController = TextEditingController();
+  bool _sniEnabled = false;
   bool _isFa = true;
   String _selectedType = 'manual'; // manual | aether | oblivion | siphon | tor
 
@@ -73,6 +76,158 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
+  /// دیالوگ انتخاب SNI جعلی — لیست کامل مثل عکس‌های برنامهٔ مرجع
+  /// دیالوگ انتخاب SNI — وقتی فعال است حتماً یکی باید انتخاب شود.
+  /// لیست کامل (همهٔ دامنه‌های قبلی برنامه + دامنه‌های عکس) بدون حذف.
+  Future<void> _showSniPicker() async {
+    // اگر خالی بود، پیش‌فرض را می‌گذاریم تا همیشه یک مقدار معتبر داشته باشیم
+    var selected = _sniController.text.trim();
+    if (selected.isEmpty) selected = TorSniPresets.defaultSni;
+
+    final customController = TextEditingController(text: selected);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppColors.surface(ctx),
+              title: Text(
+                _t('جعل نشانگر نام سرور', 'Spoof Server Name Indicator'),
+                style: TextStyle(color: AppColors.fg(ctx), fontSize: 16),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: MediaQuery.of(ctx).size.height * 0.55,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _t(
+                        'یک مورد را انتخاب کنید (الزامی)',
+                        'Select one item (required)',
+                      ),
+                      style: TextStyle(
+                          color: AppColors.muted2(ctx), fontSize: 11),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: customController,
+                      style: TextStyle(color: AppColors.fg(ctx), fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: _t(
+                            'یا دامنهٔ دلخواه بنویسید…',
+                            'Or type a custom domain…'),
+                        hintStyle:
+                            TextStyle(color: AppColors.muted2(ctx)),
+                        filled: true,
+                        fillColor: AppColors.bg(ctx),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide:
+                              BorderSide(color: AppColors.border(ctx)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide:
+                              BorderSide(color: AppColors.border(ctx)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                              color: AppColors.accent, width: 1.5),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                      ),
+                      onChanged: (v) {
+                        final t = v.trim();
+                        if (t.isNotEmpty) {
+                          setDialogState(() => selected = t);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: TorSniPresets.all.length,
+                        separatorBuilder: (_, __) => Divider(
+                          height: 1,
+                          color: AppColors.border(ctx),
+                        ),
+                        itemBuilder: (context, i) {
+                          final sni = TorSniPresets.all[i];
+                          final isSelected = sni == selected;
+                          return ListTile(
+                            dense: true,
+                            contentPadding:
+                                const EdgeInsets.symmetric(horizontal: 4),
+                            leading: Icon(
+                              isSelected
+                                  ? Icons.radio_button_checked
+                                  : Icons.radio_button_off,
+                              color: isSelected
+                                  ? AppColors.accent
+                                  : AppColors.muted2(ctx),
+                              size: 20,
+                            ),
+                            title: Text(
+                              sni,
+                              style: TextStyle(
+                                color: isSelected
+                                    ? AppColors.accent
+                                    : AppColors.fg(ctx),
+                                fontSize: 13,
+                                fontWeight: isSelected
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                            onTap: () {
+                              setDialogState(() {
+                                selected = sni;
+                                customController.text = sni;
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text(_t('لغو', 'Cancel'),
+                      style: TextStyle(color: AppColors.muted(ctx))),
+                ),
+                TextButton(
+                  onPressed: () {
+                    // حتماً یک مقدار غیرخالی برگردان
+                    final value = selected.trim().isNotEmpty
+                        ? selected.trim()
+                        : TorSniPresets.defaultSni;
+                    Navigator.pop(ctx, value);
+                  },
+                  child: Text(_t('تأیید', 'OK'),
+                      style: const TextStyle(color: AppColors.accent)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result != null && result.isNotEmpty && mounted) {
+      setState(() {
+        _sniController.text = result;
+        _sniEnabled = true; // اگر از دیالوگ انتخاب شد، سوئیچ هم روشن بماند
+      });
+    }
+  }
+
   void _addFromLink() {
     final text = _linkController.text.trim();
     if (text.isEmpty) {
@@ -84,8 +239,12 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     final stamp = DateTime.now().millisecondsSinceEpoch;
     var added = 0;
 
-    // SNI جعلی (اختیاری)
-    final sniOverride = _sniController.text.trim();
+    // SNI جعلی — فقط وقتی سوئیچ روشن باشد؛ اگر روشن باشد حتماً یک مقدار معتبر
+    final sniOverride = _sniEnabled
+        ? (_sniController.text.trim().isEmpty
+            ? TorSniPresets.defaultSni
+            : _sniController.text.trim())
+        : '';
 
     // کانفیگ کامل JSON (Patterniha و مشابه)
     if (XrayJson.looksLike(text)) {
@@ -289,13 +448,19 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     ];
 
     for (final e in engines) {
+      // host معنادار تا در لیست «host = host» یا خالی دیده نشود
+      final hostLabel = e.id.startsWith('tor_')
+          ? 'stealth-auto'
+          : e.id.startsWith('siphon_')
+              ? 'gool-auto'
+              : 'warp-auto';
       widget.onServerAdded(VpnServer(
         id: e.id,
         name: e.name,
         flag: e.flag,
         shareLink: e.profile.toLink(),
         protocol: VpnProtocol.aether,
-        host: 'auto',
+        host: hostLabel,
         port: 0,
         isDeletable: true,
       ));
@@ -647,6 +812,80 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // ---- شبکهٔ رسمی Tor (با پل‌های رایگان) ----
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.surface(context),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.accent.withOpacity(0.5)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Text('🧅', style: TextStyle(fontSize: 20)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _t('شبکهٔ رسمی Tor', 'Official Tor Network'),
+                      style: TextStyle(
+                        color: AppColors.fg(context),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _t(
+                  'اتصال واقعی از طریق libtor با پل‌های رایگان '
+                  '(obfs4، snowflake، meek و …). سرورهای رایگان هر نوع نمایش داده می‌شوند.',
+                  'Real connection via libtor with free bridges '
+                  '(obfs4, snowflake, meek, …). Free bridges per type are shown.',
+                ),
+                style: TextStyle(
+                  color: AppColors.muted(context),
+                  fontSize: 12,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            TorScreen(language: widget.language),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.security, size: 18),
+                  label: Text(
+                    _t('باز کردن تنظیمات Tor و پل‌های رایگان',
+                        'Open Tor settings & free bridges'),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        // ---- حالت Stealth روی Aether (نه Tor واقعی) ----
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -656,11 +895,10 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
           ),
           child: Text(
             _t(
-              'حالت Tor در این برنامه از مسیر stealth هسته Aether با پنهان‌کاری '
-              'قوی استفاده می‌کند (نه شبکهٔ رسمی Tor). برای فیلترینگ خیلی سخت '
-              'مناسب است؛ اتصال کندتر از Oblivion خواهد بود.',
-              'Tor mode here uses Aether stealth path with strong obfuscation '
-              '(not the official Tor network). Best for heavy filtering; slower than Oblivion.',
+              'حالت Tor · Stealth در این بخش از مسیر stealth هسته Aether استفاده '
+              'می‌کند (نه شبکهٔ رسمی Tor). برای فیلترینگ خیلی سخت مناسب است.',
+              'Tor · Stealth here uses Aether stealth path '
+              '(not the official Tor network). Best for heavy filtering.',
             ),
             style: TextStyle(
               color: AppColors.muted(context),
@@ -671,7 +909,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         ),
         const SizedBox(height: 16),
         Text(
-          _t('پروتکل پایه', 'Base protocol'),
+          _t('پروتکل پایه (Stealth)', 'Base protocol (Stealth)'),
           style: TextStyle(
               color: AppColors.muted(context),
               fontSize: 13,
@@ -1592,49 +1830,99 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                 ),
               ),
               const SizedBox(height: 14),
-              Text(
-                _t('جعل SNI / نام سرور (اختیاری)',
-                    'Spoof SNI / server name (optional)'),
-                style: TextStyle(
-                  color: AppColors.muted(context),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+              // ---- جعل نشانگر نام سرور (SNI Spoof) ----
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.surface(context),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.border(context)),
                 ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _sniController,
-                style: TextStyle(color: AppColors.fg(context), fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'certum.pl',
-                  hintStyle: TextStyle(color: AppColors.muted2(context)),
-                  prefixIcon: Icon(Icons.security,
-                      color: AppColors.accent, size: 18),
-                  filled: true,
-                  fillColor: AppColors.surface(context),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: AppColors.border(context)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: AppColors.border(context)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: AppColors.accent, width: 1.5),
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        _t('جعل نشانگر نام سرور', 'Spoof Server Name Indicator'),
+                        style: TextStyle(
+                          color: AppColors.fg(context),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: Text(
+                        _t(
+                          'اگر SNI مسدود است، دامنهٔ جعلی انتخاب کنید',
+                          'If SNI is blocked, pick a spoofed domain',
+                        ),
+                        style: TextStyle(
+                            color: AppColors.muted2(context), fontSize: 11),
+                      ),
+                      value: _sniEnabled,
+                      activeColor: AppColors.accent,
+                      onChanged: (v) {
+                        setState(() {
+                          _sniEnabled = v;
+                          if (v && _sniController.text.trim().isEmpty) {
+                            _sniController.text = TorSniPresets.defaultSni;
+                          }
+                        });
+                      },
+                    ),
+                    if (_sniEnabled) ...[
+                      const SizedBox(height: 4),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () => _showSniPicker(),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: AppColors.bg(context),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                                color: AppColors.border(context)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.security,
+                                  color: AppColors.accent, size: 18),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _sniController.text.trim().isEmpty
+                                      ? TorSniPresets.defaultSni
+                                      : _sniController.text.trim(),
+                                  style: TextStyle(
+                                    color: AppColors.fg(context),
+                                    fontSize: 13,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Icon(Icons.chevron_left,
+                                  color: AppColors.muted2(context), size: 20),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _t(
+                          'از این مورد تنها اگر نمی‌توانید به TOR متصل شوید استفاده کنید. ممکن است باعث عدم اتصال بعضی سرورها شود.',
+                          'Use only if you cannot connect. May break some servers.',
+                        ),
+                        style: TextStyle(
+                            color: AppColors.muted2(context),
+                            fontSize: 11,
+                            height: 1.4),
+                      ),
+                    ],
+                  ],
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                _t(
-                  'اگر ISP شما SNI را مسدود می‌کند، یک دامنه معمولی (مثل certum.pl یا google.com) وارد کنید. توجه: ممکن است باعث عدم اتصال بعضی سرورها شود.',
-                  'If your ISP blocks SNI, enter a common domain (e.g. certum.pl or google.com). Note: may break some servers.',
-                ),
-                style: TextStyle(
-                    color: AppColors.muted2(context), fontSize: 11, height: 1.5),
               ),
               const SizedBox(height: 24),
               SizedBox(

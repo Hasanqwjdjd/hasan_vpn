@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import '../services/app_colors.dart';
+import '../services/tor_bridges.dart';
 import '../services/tor_service.dart';
 import '../services/tor_sni_presets.dart';
 import '../services/v2ray_engine.dart';
@@ -86,6 +87,7 @@ class _TorScreenState extends State<TorScreen> {
       final msg = s['bootstrapMessage']?.toString() ?? '';
       final port = (s['socksPort'] as num?)?.toInt() ?? 0;
       final err = s['error']?.toString();
+      final prevBootstrap = _bootstrap;
       if (running != _running ||
           bp != _bootstrap ||
           msg != _bootstrapMsg ||
@@ -97,15 +99,26 @@ class _TorScreenState extends State<TorScreen> {
           _bootstrapMsg = msg;
           _socksPort = port;
           _error = (err == null || err.isEmpty) ? null : err;
+          // بعد از بالا آمدن Tor، حالت «در حال اتصال» را تمام کن
+          if (running && bp > 0) {
+            _connecting = false;
+          }
           if (!running) {
-            if (_connecting) _connecting = false;
+            _connecting = false;
             if (_routingThroughVpn) {
               _routingThroughVpn = false;
-              // stop Xray routing as well
               unawaited(V2RayEngine.disconnect());
             }
           }
         });
+        // روتینگ VPN فقط بعد از Bootstrap کامل (نه بلافاصله بعد از start)
+        if (running &&
+            bp >= 100 &&
+            prevBootstrap < 100 &&
+            !_routingThroughVpn &&
+            !_routing) {
+          unawaited(_startVpnRouting());
+        }
       }
     } catch (_) {}
   }
@@ -226,25 +239,48 @@ class _TorScreenState extends State<TorScreen> {
       _bootstrapMsg = _t('شروع...', 'Starting...');
       _error = null;
     });
+    // اگر کاربر پل شخصی نگذاشته، پل‌های رایگان همان نوع را بفرست
+    // (قبلاً برای obfs4 هیچ Bridgeای نمی‌رفت و اتصال خراب می‌شد)
+    final bridgesToUse = _customBridges.isNotEmpty
+        ? _customBridges
+        : TorBridges.forType(_bridgeType, sni: _selectedSni);
     final r = await TorService.start(
       bridgeType: _bridgeType,
-      customBridges: _customBridges.isEmpty ? null : _customBridges,
+      customBridges: bridgesToUse.isEmpty ? null : bridgesToUse,
       sni: _selectedSni,
     );
     if (!mounted) return;
     if (r['ok'] != true) {
       setState(() {
         _connecting = false;
-        _error = r['error']?.toString() ?? 'unknown error';
+        _error = _localizeError(r['error']?.toString() ?? 'unknown error');
       });
     } else {
       setState(() {
         _running = true;
+        _connecting = false; // دکمه دیگر روی «در حال اتصال» گیر نکند
         _socksPort = (r['socksPort'] as num?)?.toInt() ?? 9050;
+        _bootstrapMsg = _t('در حال Bootstrap…', 'Bootstrapping…');
       });
-      // بعد از اینکه Tor بالا آمد، ترافیک را از آن رد کن
-      unawaited(_startVpnRouting());
+      // روتینگ VPN را _poll بعد از رسیدن به ۱۰۰٪ شروع می‌کند
     }
+  }
+
+  String _localizeError(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('already') || lower.contains('running')) {
+      return _t('Tor از قبل در حال اجراست', 'Tor is already running');
+    }
+    if (lower.contains('permission') || lower.contains('denied')) {
+      return _t('دسترسی کافی نیست', 'Permission denied');
+    }
+    if (lower.contains('binary') || lower.contains('libtor') || lower.contains('not found')) {
+      return _t('باینری Tor پیدا نشد', 'Tor binary not found');
+    }
+    if (lower.contains('timeout')) {
+      return _t('زمان اتصال تمام شد', 'Connection timed out');
+    }
+    return raw;
   }
 
   Future<void> _addBridge() async {
@@ -473,10 +509,117 @@ class _TorScreenState extends State<TorScreen> {
             _bridgeSelector(),
             const SizedBox(height: 16),
 
+            // ---- پل‌های رایگان هر نوع (قابل مشاهده برای کاربر) ----
+            if (TorBridges.hasFree(_bridgeType)) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _t(
+                      'پل‌های رایگان (${TorBridges.forType(_bridgeType, sni: _selectedSni).length})',
+                      'Free bridges (${TorBridges.forType(_bridgeType, sni: _selectedSni).length})',
+                    ),
+                    style: TextStyle(
+                      color: AppColors.muted(context),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      final free = TorBridges.forType(
+                          _bridgeType, sni: _selectedSni);
+                      setState(() {
+                        for (final b in free) {
+                          if (!_customBridges.contains(b)) {
+                            _customBridges.add(b);
+                          }
+                        }
+                      });
+                      _savePrefs();
+                    },
+                    icon: const Icon(Icons.download_outlined,
+                        color: AppColors.accent, size: 18),
+                    label: Text(
+                      _t('افزودن همه', 'Add all'),
+                      style: const TextStyle(color: AppColors.accent),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _t(
+                  'این پل‌ها رایگان‌اند و به‌صورت خودکار استفاده می‌شوند اگر پل شخصی نگذارید.',
+                  'These free bridges are used automatically if you add no custom ones.',
+                ),
+                style: TextStyle(
+                    color: AppColors.muted2(context), fontSize: 11),
+              ),
+              const SizedBox(height: 8),
+              for (final b in TorBridges.forType(
+                  _bridgeType, sni: _selectedSni))
+                Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface(context),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.border(context)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.lock_open,
+                          color: AppColors.accent, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Directionality(
+                          textDirection: TextDirection.ltr,
+                          child: Text(
+                            TorBridges.shortLabel(b),
+                            style: TextStyle(
+                              color: AppColors.fg(context),
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          _customBridges.contains(b)
+                              ? Icons.check_circle
+                              : Icons.add_circle_outline,
+                          color: _customBridges.contains(b)
+                              ? Colors.green
+                              : AppColors.accent,
+                          size: 20,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            if (_customBridges.contains(b)) {
+                              _customBridges.remove(b);
+                            } else {
+                              _customBridges.add(b);
+                            }
+                          });
+                          _savePrefs();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 16),
+            ],
+
+            // ---- پل‌های شخصی ----
             if (_bridgeType == 'obfs4' ||
                 _bridgeType == 'meek_lite' ||
                 _bridgeType == 'conjure' ||
-                _bridgeType == 'dnstt') ...[
+                _bridgeType == 'dnstt' ||
+                _bridgeType == 'snowflake') ...[
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -503,8 +646,8 @@ class _TorScreenState extends State<TorScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text(
                     _t(
-                      'بدون پل شخصی، از پل‌های پیش‌فرض استفاده می‌شود (ممکن است مسدود باشند).',
-                      'Without custom bridges, default bridges are used (may be blocked).',
+                      'بدون پل شخصی، از پل‌های رایگان بالا استفاده می‌شود.',
+                      'Without custom bridges, free bridges above are used.',
                     ),
                     style: TextStyle(
                         color: AppColors.muted2(context), fontSize: 11),
@@ -602,7 +745,8 @@ class _TorScreenState extends State<TorScreen> {
             Center(child: _connectButton()),
             const SizedBox(height: 20),
 
-            if (_bootstrapMsg.isNotEmpty && _connecting)
+            // پیشرفت Bootstrap — هم هنگام connecting و هم تا رسیدن به ۱۰۰٪
+            if ((_connecting || _running) && _bootstrap < 100)
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -641,17 +785,19 @@ class _TorScreenState extends State<TorScreen> {
                       color: AppColors.accent,
                       backgroundColor: AppColors.border(context),
                     ),
-                    const SizedBox(height: 8),
-                    Directionality(
-                      textDirection: TextDirection.ltr,
-                      child: Text(
-                        _bootstrapMsg,
-                        style: TextStyle(
-                            color: AppColors.muted2(context),
-                            fontSize: 11,
-                            fontFamily: 'monospace'),
+                    if (_bootstrapMsg.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: Text(
+                          _bootstrapMsg,
+                          style: TextStyle(
+                              color: AppColors.muted2(context),
+                              fontSize: 11,
+                              fontFamily: 'monospace'),
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -673,14 +819,21 @@ class _TorScreenState extends State<TorScreen> {
                     Expanded(
                       child: Text(
                         _error!,
-                        style:
-                            const TextStyle(color: AppColors.danger, fontSize: 12),
+                        style: const TextStyle(
+                            color: AppColors.danger, fontSize: 12),
                       ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close,
+                          color: AppColors.danger, size: 18),
+                      onPressed: () => setState(() => _error = null),
+                      tooltip: _t('بستن', 'Dismiss'),
                     ),
                   ],
                 ),
               ),
 
+            // وضعیت نهایی اتصال
             if (_running && _bootstrap >= 100)
               Container(
                 margin: const EdgeInsets.only(top: 12),
@@ -690,20 +843,42 @@ class _TorScreenState extends State<TorScreen> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: AppColors.accent),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.check_circle,
-                        color: AppColors.accent, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _t(
-                          'متصل به Tor · پورت SOCKS: $_socksPort',
-                          'Connected to Tor · SOCKS port: $_socksPort',
+                    Row(
+                      children: [
+                        const Icon(Icons.check_circle,
+                            color: AppColors.accent, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _t(
+                              'متصل به Tor · پورت SOCKS: $_socksPort',
+                              'Connected to Tor · SOCKS port: $_socksPort',
+                            ),
+                            style: const TextStyle(
+                                color: AppColors.accent, fontSize: 12),
+                          ),
                         ),
-                        style: const TextStyle(
-                            color: AppColors.accent, fontSize: 12),
-                      ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _routingThroughVpn
+                          ? _t(
+                              'ترافیک دستگاه از طریق Tor رد می‌شود (آیکون VPN فعال)',
+                              'Device traffic is routed via Tor (VPN icon on)',
+                            )
+                          : _routing
+                              ? _t('در حال راه‌اندازی روتینگ VPN…',
+                                  'Starting VPN routing…')
+                              : _t(
+                                  'روتینگ VPN هنوز فعال نشده — چند لحظه صبر کنید',
+                                  'VPN routing not active yet — wait a moment',
+                                ),
+                      style: TextStyle(
+                          color: AppColors.muted2(context), fontSize: 11),
                     ),
                   ],
                 ),

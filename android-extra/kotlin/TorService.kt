@@ -215,7 +215,14 @@ object TorService {
                     sb.appendLine("ClientTransportPlugin obfs4 exec ${obfs4Path}")
                     sb.appendLine("ClientTransportPlugin obfs3 exec ${obfs4Path}")
                     sb.appendLine("ClientTransportPlugin scramblesuit exec ${obfs4Path}")
-                    customBridges?.forEach { sb.appendLine("Bridge $it") }
+                    // اگر پل شخصی نبود، از پل‌های رایگان پیش‌فرض استفاده کن
+                    // (قبلاً بدون Bridge، Tor با UseBridges=1 گیر می‌کرد)
+                    val bridges = if (!customBridges.isNullOrEmpty()) {
+                        customBridges
+                    } else {
+                        defaultObfs4Bridges
+                    }
+                    bridges.forEach { sb.appendLine("Bridge $it") }
                 }
             }
             "meek_lite" -> {
@@ -225,8 +232,7 @@ object TorService {
                     if (!customBridges.isNullOrEmpty()) {
                         customBridges.forEach { sb.appendLine("Bridge $it") }
                     } else {
-                        // اگر پل شخصی نده، از SNI برای ساخت پل use می‌کنیم
-                        val host = sni ?: "certum.pl"
+                        val host = if (!sni.isNullOrEmpty()) sni!! else "certum.pl"
                         sb.appendLine("Bridge meek_lite 192.0.2.2:443 url=https://$host/ front=$host")
                     }
                 }
@@ -236,24 +242,50 @@ object TorService {
                     sb.appendLine("UseBridges 1")
                     val frontArg = if (!sni.isNullOrEmpty()) " -front=$sni" else ""
                     sb.appendLine("ClientTransportPlugin snowflake exec ${snowflakePath}$frontArg")
-                    sb.appendLine("Bridge snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72")
+                    if (!customBridges.isNullOrEmpty()) {
+                        customBridges.forEach { sb.appendLine("Bridge $it") }
+                    } else {
+                        sb.appendLine("Bridge snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72")
+                    }
                 }
             }
             "conjure" -> {
                 if (conjurePath != null) {
                     sb.appendLine("UseBridges 1")
                     sb.appendLine("ClientTransportPlugin conjure exec ${conjurePath}")
-                    customBridges?.forEach { sb.appendLine("Bridge $it") }
+                    val bridges = if (!customBridges.isNullOrEmpty()) {
+                        customBridges
+                    } else {
+                        listOf("conjure 192.0.2.3:80")
+                    }
+                    bridges.forEach { sb.appendLine("Bridge $it") }
                 }
             }
             "dnstt" -> {
                 if (dnsttPath != null) {
                     sb.appendLine("UseBridges 1")
                     sb.appendLine("ClientTransportPlugin dnstt exec ${dnsttPath}")
-                    customBridges?.forEach { sb.appendLine("Bridge $it") }
+                    val bridges = if (!customBridges.isNullOrEmpty()) {
+                        customBridges
+                    } else {
+                        listOf("dnstt t.cdn.ns.fbcdn.net")
+                    }
+                    bridges.forEach { sb.appendLine("Bridge $it") }
                 }
             }
         }
         return sb.toString()
     }
+
+    /** پل‌های obfs4 رایگان پیش‌فرض (Tor Project) */
+    private val defaultObfs4Bridges = listOf(
+        "obfs4 85.31.186.98:443 011F2599C0E9B27EE74B353155E244813763C3E5 cert=ayq0XzCwhpdysn5o0EyDUbmSOx3X/oTEbzDMvczHOdBJKlvIdHHLJGkZARtT4dcBFArPPg iat-mode=0",
+        "obfs4 85.31.186.26:443 91A6354697E6B02A386312F68D82CF86824D3606 cert=PBwr+S8JTVoY5s2ZoU4crfN3+7iRHvBkthvS7X6nJDMqLmRU+aGWDsBqsjt8tgALri8DA iat-mode=0",
+        "obfs4 193.11.166.194:27015 2D82C2E354D531A68469ADF7F878FA6060C6BEB4 cert=4TLQPJrTSaDffMK7Nbao6LC7G9OW/NHkUwIdjLSS3KYf0Nv4/nQiiI8dY2TcsQx01NniOg iat-mode=0",
+        "obfs4 193.11.166.194:27020 86AC7B8D43B3F0A5B7EC1B0D3D22AC2ABDC1BF76 cert=hn+QhFuKUvNJKZQZoqk0pWXBjNq9NbqmxTBna0e+7OxsSJqhvz0j7BF9+YyRzTXj9wW4Ig iat-mode=0",
+        "obfs4 193.11.166.194:27025 1AE2AC633B43DFE098342A6951ADFA3B523137D2 cert=H7dp/KfIY8kJsKtv1hnPYFxnDM1hF2t4A2UgAp/1KzXQjVo1Z+zkd4CJxZ3N3jq5LZCFIA iat-mode=0",
+        "obfs4 209.148.46.65:443 74FAD13168806246602538555B9351E037946476 cert=ssH+9rP8dG2NLDN2XuFw63hWP/zAYy2N6MzYqTgxfDQ iat-mode=0",
+        "obfs4 146.57.248.225:22 10A6CD36A537FCE513A322361547444B393989F0 cert=K1gDtDAIcUfeLqbstggjIw2rtgI3xdX2xmnFTIqqpAH8mLuVKhM1WT3S40/b9aU2vz75XQ iat-mode=0",
+        "obfs4 45.145.95.6:27015 C5B7CD6946FF10C5B3E89691A7D3F2C122D2117C cert=TD7PbUO0/0k6xYHMvW7T2wEbmTm6x2D5aQh5v4mQzqE iat-mode=0",
+    )
 }

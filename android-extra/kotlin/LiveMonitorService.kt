@@ -1,6 +1,8 @@
 package com.hasan.hasan_vpn
 
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.BatteryManager
 import android.net.TrafficStats
 import java.io.File
@@ -125,31 +127,45 @@ object LiveMonitorService {
         return (usedKb / 1024) to (totalKb / 1024)
     }
 
-    /** حرارت باتری از thermal zone یا sysfs. */
+    /**
+     * حرارت باتری: اول از sticky Intent (دقیق‌ترین و بدون permission)،
+     * اگر نشد از thermal_zone ها میانگین بگیر.
+     */
     private fun readBatteryTemperature(context: Context): Double {
+        // روش استاندارد Android: EXTRA_TEMPERATURE در ACTION_BATTERY_CHANGED
+        // واحد آن tenths of a degree Celsius است (مثلاً 320 = 32.0°C)
         try {
-            val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
-            if (bm != null) {
-                val t = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-                // این property حرارت نمی‌دهد؛ از Intent استفاده می‌کنیم
+            val intent = context.registerReceiver(
+                null,
+                IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+            )
+            if (intent != null) {
+                val tenths = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1)
+                if (tenths > 0) {
+                    return tenths / 10.0
+                }
             }
         } catch (_: Throwable) {}
 
-        // راه ساده: از thermal_zone ها میانگین بگیریم (تخمینی)
+        // Fallback: میانگین چند thermal_zone
         try {
             val base = File("/sys/class/thermal")
             if (!base.exists()) return 0.0
             val zones = base.listFiles { f -> f.name.startsWith("thermal_zone") } ?: return 0.0
             var sum = 0.0
             var count = 0
-            for (z in zones.take(6)) {
+            for (z in zones.take(8)) {
                 try {
                     val tempFile = File(z, "temp")
                     if (tempFile.exists()) {
                         val raw = tempFile.readText().trim().toLongOrNull() ?: continue
+                        // بیشتر دستگاه‌ها milli-Celsius می‌دهند
                         val celsius = if (raw > 1000) raw / 1000.0 else raw.toDouble()
-                        sum += celsius
-                        count++
+                        // فیلتر مقادیر غیرمنطقی
+                        if (celsius in 10.0..80.0) {
+                            sum += celsius
+                            count++
+                        }
                     }
                 } catch (_: Throwable) {}
             }
@@ -159,3 +175,4 @@ object LiveMonitorService {
         }
     }
 }
+

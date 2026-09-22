@@ -8,6 +8,7 @@ import '../services/settings_service.dart';
 import '../services/update_service.dart';
 import 'announcements_screen.dart';
 import 'game_dns_screen.dart';
+import 'live_monitor_screen.dart';
 import 'test_settings_screen.dart';
 import 'xray_settings_screen.dart';
 
@@ -323,6 +324,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       MaterialPageRoute(
                         builder: (_) =>
                             AnnouncementsScreen(language: _lang),
+                      ),
+                    );
+                  },
+                ),
+                Divider(height: 1, color: AppColors.border(context)),
+                _navRow(
+                  context,
+                  icon: Icons.monitor_heart_outlined,
+                  title: _t('مانیتور زنده', 'Live Monitor'),
+                  subtitle: _t(
+                    'مصرف CPU، حافظه، باتری، حرارت و سرعت شبکه',
+                    'CPU, memory, battery, temp and network speed',
+                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            LiveMonitorScreen(language: _lang),
                       ),
                     );
                   },
