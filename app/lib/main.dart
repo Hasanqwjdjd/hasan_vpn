@@ -17,54 +17,61 @@ import 'screens/subscriptions_screen.dart';
 import 'screens/settings_screen.dart';
 
 /// Entry point برای اجرا از ویجت ۱×۱ در پس‌زمینه (بدون UI).
-/// این تابع توسط FlutterEngine بدون Activity اجرا می‌شود.
+/// این تابع توسط WidgetHeadlessActivity اجرا می‌شود — یک Activity واقعی
+/// (اما با تم Theme.Translucent.NoDisplay، پس هرگز روی صفحه رندر نمی‌شود)
+/// که به همین دلیل، برخلاف یک FlutterEngine کاملاً headless، پلاگین
+/// flutter_vless را با یک Activity متصل واقعی تغذیه می‌کند و درخواست
+/// مجوز VPN آن به‌درستی کار می‌کند.
 @pragma('vm:entry-point')
 Future<void> widgetHeadlessMain() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   const channel = MethodChannel('com.hasan.hasan_vpn/widget_headless');
 
-  // گوش دادن به درخواست‌های اتصال از Kotlin
-  channel.setMethodCallHandler((call) async {
-    if (call.method == 'connectFromWidget') {
-      final args = call.arguments as Map?;
-      if (args == null) return {'ok': false, 'error': 'no args'};
+  Map? args;
+  try {
+    args = await channel.invokeMethod<Map>('getHeadlessArgs');
+  } catch (_) {}
 
-      final type = args['type']?.toString() ?? 'server';
-      final payload = args['payload']?.toString() ?? '';
-      final title = args['title']?.toString() ?? '';
+  final type = args?['type']?.toString() ?? 'server';
+  final payload = args?['payload']?.toString() ?? '';
+  final title = args?['title']?.toString() ?? '';
+  final action = args?['action']?.toString() ?? 'connect';
 
-      if (payload.isEmpty) return {'ok': false, 'error': 'empty payload'};
+  bool ok = false;
+  String? error;
 
-      try {
-        // ساخت VpnServer از payload (shareLink)
-        VpnServer? server;
-        if (type == 'server') {
-          server = _buildServerFromShareLink(payload, title);
-        }
-        if (server == null) {
-          return {'ok': false, 'error': 'cannot build server from payload'};
-        }
-
-        // اتصال از طریق موتور VPN موجود
+  try {
+    if (action == 'disconnect') {
+      await V2RayEngine.init();
+      await V2RayEngine.disconnect();
+      ok = true;
+    } else if (payload.isNotEmpty) {
+      VpnServer? server;
+      if (type == 'server') {
+        server = _buildServerFromShareLink(payload, title);
+      }
+      if (server == null) {
+        error = 'cannot build server from payload';
+      } else {
         await V2RayEngine.init();
-        final ok = await V2RayEngine.startConfig(
+        ok = await V2RayEngine.startConfig(
           remark: server.displayName,
           config: server.shareLink,
           server: server,
         );
-
-        return {'ok': ok};
-      } catch (e) {
-        return {'ok': false, 'error': e.toString()};
+        if (!ok) error = V2RayEngine.lastError;
       }
+    } else {
+      error = 'empty payload';
     }
-    return null;
-  });
+  } catch (e) {
+    ok = false;
+    error = e.toString();
+  }
 
-  // علامت‌گذاری که آماده‌ایم
   try {
-    await channel.invokeMethod('headlessReady');
+    await channel.invokeMethod('headlessDone', {'ok': ok, 'error': error});
   } catch (_) {}
 }
 

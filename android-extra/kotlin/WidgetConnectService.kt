@@ -6,27 +6,32 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
-import android.net.VpnService
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.embedding.engine.dart.DartExecutor
-import io.flutter.embedding.engine.loader.FlutterLoader
-import io.flutter.plugin.common.MethodChannel
-import io.flutter.plugins.GeneratedPluginRegistrant
 
 /**
- * سرویس اتصال از ویجت ۱×۱ — کاملاً بدون UI (v2rayNG-style headless).
+ * سرویس دیسپچر برای ویجت ۱×۱ — یک نوتیفیکیشن foreground نشان می‌دهد و
+ * تصمیم می‌گیرد که باید «وصل» یا «قطع» انجام شود (toggle)، سپس کار واقعی
+ * را به WidgetHeadlessActivity (نامرئی، بدون فلش) می‌سپارد.
+ *
+ * این سرویس دیگر خودش FlutterEngine نمی‌سازد — چون یک FlutterEngine بدون
+ * Activity متصل نمی‌تواند درخواست مجوز VPN پلاگین flutter_vless را هندل
+ * کند. به‌جایش WidgetHeadlessActivity (که واقعاً FlutterActivity است، فقط
+ * با تم Theme.Translucent.NoDisplay) این کار را انجام می‌دهد.
  *
  * جریان:
  * 1) ویجت روی این سرویس کلیک می‌کند
- * 2) startForeground با نوتیفیکیشن کم‌اهمیت
- * 3) FlutterEngine headless ساخته می‌شود (بدون Activity)
- * 4) entry point "widgetHeadlessMain" از Dart اجرا می‌شود
- * 5) از طریق MethodChannel درخواست اتصال ارسال می‌شود
- * 6) نتیجه گرفته می‌شود و سرویس بعد از مدتی خودش را می‌بندد
+ * 2) startForeground با نوتیفیکیشن «در حال اتصال…» یا «در حال قطع…»
+ * 3) وضعیت فعلی VPN از طریق ConnectivityManager (نه Dart) خوانده می‌شود —
+ *    چون هر بار یک isolate/Engine تازه اجرا می‌شود و state درون‌حافظه‌ای
+ *    Dart بین اجراها baقی نمی‌ماند؛ ConnectivityManager تنها منبع واقعی و
+ *    قابل‌اعتماد وضعیت VPN است.
+ * 4) WidgetHeadlessActivity نامرئی باز می‌شود با action=connect یا disconnect
+ * 5) نتیجه از طریق callback برمی‌گردد → نوتیفیکیشن به‌روز و سرویس بسته می‌شود
  *
  * نیاز به Manifest:
  * <service
@@ -36,11 +41,6 @@ import io.flutter.plugins.GeneratedPluginRegistrant
  */
 class WidgetConnectService : Service() {
 
-    private var engine: FlutterEngine? = null
-    private var channel: MethodChannel? = null
-    private var engineReady = false
-    private var pendingConnect: Map<String, String>? = null
-    private var lastAttempt: Triple<String, String, String>? = null
     private val handler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -50,10 +50,6 @@ class WidgetConnectService : Service() {
         val origPayload = intent?.getStringExtra(EXTRA_PAYLOAD) ?: ""
         val origTitle = intent?.getStringExtra(EXTRA_TITLE) ?: ""
         val widgetId = intent?.getIntExtra(EXTRA_WIDGET_ID, -1) ?: -1
-
-        try {
-            startFgQuiet()
-        } catch (_: Exception) {}
 
         // اگر از ویجت اومده، binding مخصوص همون ویجت رو بخون
         var type = origType
@@ -77,182 +73,102 @@ class WidgetConnectService : Service() {
             return START_NOT_STICKY
         }
 
-        // پیش‌بررسی: اگر مجوز VPN هنوز داده نشده (یا لغو شده)، موتور headless
-        // بدون Activity قادر به نمایش دیالوگ سیستمی نیست و قطعاً شکست
-        // می‌خورد → مستقیم سراغ Activity شفاف برو (سناریوی ۶ در تست‌ها).
-        if (VpnService.prepare(applicationContext) != null) {
-            launchTransparentFallback(type, payload, title)
-            return START_NOT_STICKY
-        }
+        // Toggle: اگه الان یک VPN فعاله → این تپ یعنی قطع؛ وگرنه یعنی وصل.
+        val action = if (isVpnConnected()) ACTION_DISCONNECT else ACTION_CONNECT
 
-        // اگر موتور آماده است، مستقیم درخواست بفرست
-        if (engineReady && channel != null) {
-            sendConnect(type, payload, title)
-        } else {
-            // در غیر این صورت ذخیره کن تا وقتی آماده شد ارسال شود
-            pendingConnect = mapOf(
-                "type" to type,
-                "payload" to payload,
-                "title" to title,
-            )
-            startHeadlessEngine()
-        }
+        try {
+            startFgQuiet(action)
+        } catch (_: Exception) {}
 
-        // سرویس حداکثر ۱۵ ثانیه زنده باشد
-        handler.postDelayed({ stopSoon() }, 15000)
+        launchHeadless(type, payload, title, action)
+
+        // سرویس حداکثر ۲۰ ثانیه زنده بماند (کمی بیشتر از قبل، چون این‌بار
+        // واقعاً یک اتصال VPN واقعی از طریق Activity متصل کامل می‌شود).
+        handler.postDelayed({ stopSoon() }, 20000)
 
         return START_NOT_STICKY
     }
 
-    private fun startHeadlessEngine() {
-        try {
-            val loader = FlutterLoader()
-            loader.startInitialization(applicationContext)
-            loader.ensureInitializationComplete(applicationContext, null)
+    /// آیا الان یک تونل VPN فعال روی دستگاه برقرار است؟ (منبع حقیقت واحد،
+    /// مستقل از هر state داخلی Dart که بین اجراهای headless پایدار نیست.)
+    private fun isVpnConnected(): Boolean {
+        return try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return false
+            val active = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(active) ?: return false
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        } catch (_: Exception) {
+            false
+        }
+    }
 
-            engine = FlutterEngine(applicationContext).also { e ->
-                // ثبت پلاگین‌های Flutter (auto-generated)
-                try {
-                    GeneratedPluginRegistrant.registerWith(e)
-                } catch (_: Exception) {}
-
-                channel = MethodChannel(
-                    e.dartExecutor.binaryMessenger,
-                    "com.hasan.hasan_vpn/widget_headless",
-                ).also { ch ->
-                    ch.setMethodCallHandler { call, result ->
-                        when (call.method) {
-                            "headlessReady" -> {
-                                engineReady = true
-                                pendingConnect?.let { p ->
-                                    sendConnect(
-                                        p["type"] ?: "server",
-                                        p["payload"] ?: "",
-                                        p["title"] ?: "",
-                                    )
-                                    pendingConnect = null
-                                }
-                                result.success(true)
-                            }
-                            "connectResult" -> {
-                                val ok = call.argument<Boolean>("ok") ?: false
-                                val err = call.argument<String>("error")
-                                if (!ok && err != null) {
-                                    SafeLog.d("WidgetConnect", "connect failed: $err")
-                                }
-                                result.success(true)
-                                if (!ok) {
-                                    lastAttempt?.let { (t, p, ti) -> launchTransparentFallback(t, p, ti) }
-                                } else {
-                                    updateFgNotification(true)
-                                    handler.postDelayed({ stopSoon() }, 3000)
-                                }
-                            }
-                            else -> result.notImplemented()
-                        }
-                    }
+    /// اجرای واقعی وصل/قطع را به Activity نامرئی می‌سپارد.
+    private fun launchHeadless(type: String, payload: String, title: String, action: String) {
+        WidgetHeadlessActivity.pendingResult = { ok, err ->
+            handler.post {
+                if (!ok && err != null) {
+                    SafeLog.d("WidgetConnect", "$action failed: $err")
                 }
-
-                // اجرای entry point سفارشی
-                try {
-                    val bundlePath = loader.findAppBundlePath()
-                    val entrypoint = DartExecutor.DartEntrypoint(
-                        bundlePath,
-                        "widgetHeadlessMain",
-                    )
-                    e.dartExecutor.executeDartEntrypoint(entrypoint)
-                } catch (ex: Exception) {
-                    SafeLog.d("WidgetConnect", "entrypoint failed: ${ex.message}")
-                    stopSoon()
-                }
+                updateFgNotification(action, ok)
+                handler.postDelayed({ stopSoon() }, 3000)
             }
-        } catch (ex: Exception) {
-            SafeLog.d("WidgetConnect", "engine start failed: ${ex.message}")
-            stopSoon()
         }
-    }
-
-    private fun sendConnect(type: String, payload: String, title: String) {
-        lastAttempt = Triple(type, payload, title)
         try {
-            channel?.invokeMethod(
-                "connectFromWidget",
-                mapOf(
-                    "type" to type,
-                    "payload" to payload,
-                    "title" to title,
-                ),
-                object : MethodChannel.Result {
-                    override fun success(result: Any?) {
-                        val ok = (result as? Map<*, *>)?.get("ok") == true
-                        if (!ok) {
-                            // موتور headless (بدون Activity) اغلب به دلیل
-                            // نبود ActivityPluginBinding در flutter_vless
-                            // شکست می‌خورد → به Activity شفاف سوییچ کن
-                            // (Option B — همان رفتار v2rayNG).
-                            SafeLog.d("WidgetConnect", "headless connect failed, falling back")
-                            launchTransparentFallback(type, payload, title)
-                            return
-                        }
-                        updateFgNotification(true)
-                        handler.postDelayed({ stopSoon() }, 3000)
-                    }
-                    override fun error(code: String, msg: String?, details: Any?) {
-                        SafeLog.d("WidgetConnect", "headless connect error: $code $msg")
-                        launchTransparentFallback(type, payload, title)
-                    }
-                    override fun notImplemented() {
-                        launchTransparentFallback(type, payload, title)
-                    }
-                },
-            )
-        } catch (ex: Exception) {
-            SafeLog.d("WidgetConnect", "sendConnect failed: ${ex.message}")
-            launchTransparentFallback(type, payload, title)
-        }
-    }
-
-    /// اگر اتصال headless شکست بخورد (یا مجوز VPN نباشد)، همان مسیر
-    /// اثبات‌شده‌ی ویجت‌های قدیمی را با یک Activity شفاف (بدون UI قابل‌مشاهده)
-    /// اجرا کن — دقیقاً رفتار v2rayNG.
-    private fun launchTransparentFallback(type: String, payload: String, title: String) {
-        try {
-            val launch = Intent(this, WidgetBgConnectActivity::class.java).apply {
-                putExtra("widget_type", type)
-                putExtra("widget_payload", payload)
-                putExtra("widget_title", title)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+            val launch = Intent(this, WidgetHeadlessActivity::class.java).apply {
+                putExtra(WidgetHeadlessActivity.EXTRA_TYPE, type)
+                putExtra(WidgetHeadlessActivity.EXTRA_PAYLOAD, payload)
+                putExtra(WidgetHeadlessActivity.EXTRA_TITLE, title)
+                putExtra(WidgetHeadlessActivity.EXTRA_ACTION, action)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION or
+                        Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
+                        Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS,
+                )
             }
             startActivity(launch)
         } catch (ex: Exception) {
-            SafeLog.d("WidgetConnect", "transparent fallback failed: ${ex.message}")
-            updateFgNotification(false)
+            SafeLog.d("WidgetConnect", "launch headless activity failed: ${ex.message}")
+            WidgetHeadlessActivity.pendingResult = null
+            updateFgNotification(action, false)
+            handler.postDelayed({ stopSoon() }, 3000)
         }
-        stopSoon()
     }
 
-    private fun updateFgNotification(ok: Boolean) {
+    private fun updateFgNotification(action: String, ok: Boolean) {
         try {
             val nm = getSystemService(NotificationManager::class.java) ?: return
-            val channelId = "widget_connect_quiet"
-            val n: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                Notification.Builder(this, channelId)
-                    .setContentTitle("Hasan VPN")
-                    .setContentText(if (ok) "Connected" else "Connect failed")
-                    .setSmallIcon(android.R.drawable.ic_lock_lock)
-                    .setOngoing(ok)
-                    .build()
-            } else {
-                @Suppress("DEPRECATION")
-                Notification.Builder(this)
-                    .setContentTitle("Hasan VPN")
-                    .setContentText(if (ok) "Connected" else "Connect failed")
-                    .setSmallIcon(android.R.drawable.ic_lock_lock)
-                    .setOngoing(ok)
-                    .build()
+            val text = when {
+                action == ACTION_CONNECT && ok -> "Connected"
+                action == ACTION_CONNECT && !ok -> "Connect failed"
+                action == ACTION_DISCONNECT && ok -> "Disconnected"
+                else -> "Disconnect failed"
             }
+            val ongoing = action == ACTION_CONNECT && ok
+            val n = buildNotification(text, ongoing)
             nm.notify(4245, n)
         } catch (_: Exception) {}
+    }
+
+    private fun buildNotification(text: String, ongoing: Boolean): Notification {
+        val channelId = "widget_connect_quiet"
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, channelId)
+                .setContentTitle("Hasan VPN")
+                .setContentText(text)
+                .setSmallIcon(android.R.drawable.ic_lock_lock)
+                .setOngoing(ongoing)
+                .build()
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+                .setContentTitle("Hasan VPN")
+                .setContentText(text)
+                .setSmallIcon(android.R.drawable.ic_lock_lock)
+                .setOngoing(ongoing)
+                .build()
+        }
     }
 
     private fun stopSoon() {
@@ -265,14 +181,7 @@ class WidgetConnectService : Service() {
     }
 
     override fun onDestroy() {
-        try {
-            channel?.setMethodCallHandler(null)
-        } catch (_: Exception) {}
-        try {
-            engine?.destroy()
-        } catch (_: Exception) {}
-        engine = null
-        channel = null
+        WidgetHeadlessActivity.pendingResult = null
         super.onDestroy()
     }
 
@@ -309,7 +218,7 @@ class WidgetConnectService : Service() {
         stopSoon()
     }
 
-    private fun startFgQuiet() {
+    private fun startFgQuiet(action: String) {
         val channelId = "widget_connect_quiet"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = getSystemService(NotificationManager::class.java)
@@ -323,22 +232,8 @@ class WidgetConnectService : Service() {
             }
             nm?.createNotificationChannel(ch)
         }
-        val n: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, channelId)
-                .setContentTitle("Hasan VPN")
-                .setContentText("Connecting…")
-                .setSmallIcon(android.R.drawable.ic_lock_lock)
-                .setOngoing(true)
-                .build()
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-                .setContentTitle("Hasan VPN")
-                .setContentText("Connecting…")
-                .setSmallIcon(android.R.drawable.ic_lock_lock)
-                .setOngoing(true)
-                .build()
-        }
+        val text = if (action == ACTION_CONNECT) "Connecting…" else "Disconnecting…"
+        val n = buildNotification(text, true)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 4245,
@@ -355,6 +250,9 @@ class WidgetConnectService : Service() {
         const val EXTRA_PAYLOAD = "payload"
         const val EXTRA_TITLE = "title"
         const val EXTRA_WIDGET_ID = "widget_id"
+
+        const val ACTION_CONNECT = "connect"
+        const val ACTION_DISCONNECT = "disconnect"
 
         fun start(context: Context, type: String, payload: String, title: String, widgetId: Int = -1) {
             val i = Intent(context, WidgetConnectService::class.java).apply {
