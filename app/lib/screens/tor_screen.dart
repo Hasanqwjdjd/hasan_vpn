@@ -392,6 +392,51 @@ class _TorScreenState extends State<TorScreen> {
     );
   }
 
+  /// وقتی اتصال fail شد، خودکار بریج‌های جایگزین را تست می‌کند.
+  /// ترتیب fallback: از بریج فعلی → obfs4 → snowflake
+  Future<bool> _tryFallbackChain(List<String> chain) async {
+    for (final bt in chain) {
+      if (!mounted) return false;
+      setState(() {
+        _bootstrapMsg = _t('در حال تلاش با $bt...', 'Trying with $bt...');
+        _bridgeType = bt;
+      });
+      var bridgesToUse = _bridgesForConnect();
+      if (bt == 'dnstt') {
+        final line = _buildDnsttBridgeLine();
+        if (line != null) {
+          bridgesToUse = [line, ...bridgesToUse.where((b) => b != line)];
+        }
+      }
+      Map<String, dynamic> r;
+      try {
+        r = await TorService.start(
+          bridgeType: bt,
+          customBridges: bridgesToUse.isEmpty ? null : bridgesToUse,
+          sni: _sniEnabled ? _selectedSni : null,
+        );
+      } catch (_) {
+        continue;
+      }
+      if (!mounted) return true;
+      if (r['ok'] == true) {
+        setState(() {
+          _running = true;
+          _connecting = false;
+          _socksPort = (r['socksPort'] as num?)?.toInt() ?? 9050;
+          _bootstrapMsg = _t('در حال Bootstrap…', 'Bootstrapping…');
+          _error = null;
+        });
+        _snack(_t(
+          'با $bt وصل شد (fallback خودکار)',
+          'Connected with $bt (auto-fallback)',
+        ));
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<void> _toggle() async {
     if (_connecting) return;
     if (_running) {
@@ -437,6 +482,30 @@ class _TorScreenState extends State<TorScreen> {
     );
     if (!mounted) return;
     if (r['ok'] != true) {
+      // ─── Auto-fallback: اگر بریج فعلی fail شد، خودکار بقیه را تست کن ───
+      final failed = _bridgeType;
+      List<String> fallback = <String>[];
+      if (failed == 'conjure') {
+        fallback = <String>['obfs4', 'snowflake'];
+      } else if (failed == 'snowflake') {
+        fallback = <String>['obfs4'];
+      } else if (failed == 'dnstt') {
+        fallback = <String>['obfs4', 'snowflake'];
+      } else if (failed == 'meek_lite') {
+        fallback = <String>['obfs4', 'snowflake'];
+      }
+
+      if (fallback.isNotEmpty) {
+        setState(() {
+          _bootstrapMsg = _t(
+            '$failed کار نکرد — تلاش با ${fallback.first}...',
+            '$failed failed — trying ${fallback.first}...',
+          );
+        });
+        final ok = await _tryFallbackChain(fallback);
+        if (ok) return;
+      }
+
       setState(() {
         _connecting = false;
         _running = false;
