@@ -1400,23 +1400,6 @@ class _TorScreenState extends State<TorScreen> {
                         },
                       ),
                       IconButton(
-                        icon: const Icon(Icons.widgets_outlined,
-                            color: AppColors.accent, size: 18),
-                        tooltip: _t('ویجت صفحهٔ اصلی', 'Home widget'),
-                        onPressed: () async {
-                          await HomeWidgetService.pin(
-                            type: 'tor',
-                            title: TorBridges.shortLabel(b),
-                            subtitle: _bridgeType,
-                            payload: b,
-                          );
-                          _snack(_t(
-                            'به ویجت اضافه شد',
-                            'Added to home widget',
-                          ));
-                        },
-                      ),
-                      IconButton(
                         icon: Icon(
                           _customBridges.contains(b)
                               ? Icons.check_circle
