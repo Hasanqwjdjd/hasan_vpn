@@ -367,7 +367,7 @@ jobs:
 
               <activity
                   android:name="com.hasan.hasan_vpn.WidgetHeadlessActivity"
-                  android:theme="@android:style/Theme.Translucent.NoDisplay"
+                  android:theme="@style/Theme.HasanVPN.NoDisplay"
                   android:excludeFromRecents="true"
                   android:taskAffinity=""
                   android:exported="false"
