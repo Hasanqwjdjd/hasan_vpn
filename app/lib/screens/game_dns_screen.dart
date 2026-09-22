@@ -231,19 +231,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     );
   }
 
-  Future<void> _pinDnsToHome(GameDns dns) async {
-    await HomeWidgetService.pin(
-      type: 'dns',
-      title: dns.name,
-      subtitle: dns.primary,
-      payload: '${dns.primary}|${dns.secondary}',
-    );
-    if (!mounted) return;
-    _showMsg(_t(
-      'به ویجت صفحهٔ اصلی اضافه شد — از صفحهٔ اصلی ویجت Hasan را اضافه کنید',
-      'Pinned to home widget — add Hasan widget from home screen',
-    ));
-  }
+
 
   Future<void> _clear() async {
     await SettingsService.clearGameDns();
@@ -937,11 +925,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                   icon: Icons.edit_outlined,
                   color: AppColors.muted(context),
                   onTap: () => _editDns(dns),
-                ),
-                _smallIcon(
-                  icon: Icons.widgets_outlined,
-                  color: AppColors.accent,
-                  onTap: () => _pinDnsToHome(dns),
                 ),
                 if (_customIndexOf(dns) != null)
                     _smallIcon(

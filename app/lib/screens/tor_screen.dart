@@ -170,38 +170,135 @@ class _TorScreenState extends State<TorScreen> {
     }
   }
 
-  Future<void> _showSniListDialog() async {
-    final ctrl = TextEditingController(
-      text: [
-        'play.googleapis.com',
-        'drive.google.com',
-        'cdn.ampproject.org',
-        'api.github.com',
-        'ajax.aspnetcdn.com',
-        'verizon.com',
-        'eset.com',
-        if (!TorSniPresets.all.contains(_selectedSni)) _selectedSni,
-      ].join(', '),
+
+  /// دیالوگ انتخاب SNI: لیست کامل presets + گزینهٔ دلخواه
+  Future<void> _showSniPickerDialog() async {
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        String filter = '';
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            final filtered = TorSniPresets.all
+                .where((s) => s.toLowerCase().contains(filter.toLowerCase()))
+                .toList();
+            return AlertDialog(
+              backgroundColor: AppColors.elevated(ctx),
+              title: Text(
+                _t('جعل نشانگر نام سرور', 'Server name indication'),
+                style: TextStyle(color: AppColors.fg(ctx), fontSize: 16),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 420,
+                child: Column(
+                  children: [
+                    // جستجو
+                    TextField(
+                      style: TextStyle(color: AppColors.fg(ctx), fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: _t('جستجو در لیست…', 'Search…'),
+                        hintStyle: TextStyle(color: AppColors.muted2(ctx)),
+                        isDense: true,
+                        prefixIcon: Icon(Icons.search, size: 18,
+                            color: AppColors.muted2(ctx)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onChanged: (v) => setLocal(() => filter = v),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _t('${filtered.length} دامنه — یکی را انتخاب کنید',
+                          '${filtered.length} domains — pick one'),
+                      style: TextStyle(
+                          color: AppColors.muted2(ctx), fontSize: 11),
+                    ),
+                    const SizedBox(height: 4),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: filtered.length,
+                        itemBuilder: (_, i) {
+                          final s = filtered[i];
+                          final sel = s == _selectedSni;
+                          return ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: Directionality(
+                              textDirection: TextDirection.ltr,
+                              child: Text(
+                                s,
+                                style: TextStyle(
+                                  color: sel
+                                      ? AppColors.accent
+                                      : AppColors.fg(ctx),
+                                  fontSize: 12,
+                                  fontFamily: 'monospace',
+                                  fontWeight: sel
+                                      ? FontWeight.w700
+                                      : FontWeight.w400,
+                                ),
+                              ),
+                            ),
+                            trailing: sel
+                                ? const Icon(Icons.check_circle,
+                                    color: AppColors.accent, size: 16)
+                                : null,
+                            onTap: () => Navigator.pop(ctx, s),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, null),
+                  child: Text(_t('لغو', 'Cancel'),
+                      style: TextStyle(color: AppColors.muted(ctx))),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    await _showSniCustomInput();
+                  },
+                  child: Text(_t('دلخواه…', 'Custom…'),
+                      style: const TextStyle(color: AppColors.accent)),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
+    if (picked != null && mounted) {
+      setState(() => _selectedSni = picked);
+      await _savePrefs();
+      _snack(_t('SNI: $picked', 'SNI: $picked'));
+    }
+  }
+
+  /// ورودی دستی برای SNI
+  Future<void> _showSniCustomInput() async {
+    final ctrl = TextEditingController(text: _selectedSni);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.elevated(ctx),
         title: Text(
-          _t('جعل نشانگر نام سرور', 'Server name indication'),
-          style: TextStyle(color: AppColors.fg(ctx)),
+          _t('SNI دلخواه', 'Custom SNI'),
+          style: TextStyle(color: AppColors.fg(ctx), fontSize: 15),
         ),
-        content: SingleChildScrollView(
-          child: TextField(
-            controller: ctrl,
-            maxLines: 8,
-            style: TextStyle(color: AppColors.fg(ctx), fontSize: 13),
-            decoration: InputDecoration(
-              hintText: 'domain1.com, domain2.com, ...',
-              hintStyle: TextStyle(color: AppColors.muted2(ctx)),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
+        content: TextField(
+          controller: ctrl,
+          style: TextStyle(color: AppColors.fg(ctx), fontSize: 13),
+          decoration: InputDecoration(
+            hintText: 'domain.com',
+            hintStyle: TextStyle(color: AppColors.muted2(ctx)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
             ),
           ),
         ),
@@ -213,20 +310,18 @@ class _TorScreenState extends State<TorScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('OK', style: TextStyle(color: AppColors.accent)),
+            child: const Text('OK',
+                style: TextStyle(color: AppColors.accent)),
           ),
         ],
       ),
     );
     if (ok != true || !mounted) return;
-    final parts = ctrl.text
-        .split(RegExp(r'[,;\s]+'))
-        .map((e) => e.trim())
-        .where((e) => e.contains('.'))
-        .toList();
-    if (parts.isNotEmpty) {
-      setState(() => _selectedSni = parts.first);
+    final v = ctrl.text.trim();
+    if (v.isNotEmpty && v.contains('.')) {
+      setState(() => _selectedSni = v);
       await _savePrefs();
+      _snack(_t('SNI: $v', 'SNI: $v'));
     }
   }
 
