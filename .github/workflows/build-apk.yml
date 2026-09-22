@@ -42,11 +42,12 @@ jobs:
       - name: Compute app version
         id: appver
         run: |
-          BASE=300
+          BASE=321
           N=$(( ${{ github.run_number }} - BASE ))
           if [ "$N" -lt 0 ]; then N=0; fi
-          RAW=$(awk "BEGIN {printf \"%.1f\", 1 + $N * 0.2}")
-          CLEAN=$(echo "$RAW" | sed 's/\.0$//')
+          MINOR=$(( 2 + N / 5 ))
+          PATCH=$(( (N % 5) * 2 ))
+          CLEAN="2.${MINOR}.${PATCH}"
           echo "version=$CLEAN" >> "$GITHUB_OUTPUT"
           echo "Computed version: $CLEAN (run: ${{ github.run_number }})"
 
