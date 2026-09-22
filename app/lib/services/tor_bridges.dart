@@ -105,19 +105,88 @@ class TorBridges {
     return bridgeLine;
   }
 
-  /// استخراج host و port از خط پل برای پینگ TCP.
-  /// مثال: `obfs4 85.31.186.98:443 FINGERPRINT cert=...`
+  /// استخراج host و port قابل‌پینگ از خط پل.
+  /// meek/snowflake با 192.0.2.x از front= یا url= دامنه را می‌گیرند.
   static ({String host, int port})? parseEndpoint(String bridgeLine) {
-    final parts = bridgeLine.trim().split(RegExp(r'\s+'));
+    final line = bridgeLine.trim();
+    if (line.isEmpty) return null;
+
+    final frontMatch =
+        RegExp(r'fronts?=([^\s]+)', caseSensitive: false).firstMatch(line);
+    if (frontMatch != null) {
+      final host = frontMatch.group(1)!.split(',').first.trim();
+      if (host.isNotEmpty && !host.startsWith('192.0.2.')) {
+        return (host: host, port: 443);
+      }
+    }
+
+    final urlMatch = RegExp(r'url=https?://([^/\s]+)', caseSensitive: false)
+        .firstMatch(line);
+    if (urlMatch != null) {
+      final host = urlMatch.group(1)!.split(':').first;
+      if (host.isNotEmpty && !host.startsWith('192.0.2.')) {
+        return (host: host, port: 443);
+      }
+    }
+
+    final parts = line.split(RegExp(r'\s+'));
     if (parts.length < 2) return null;
+    final type = parts[0].toLowerCase();
     final ep = parts[1];
-    // آدرس‌های ساختگی meek/snowflake قابل پینگ نیستند
-    if (ep.startsWith('192.0.2.')) return null;
+
+    if (type == 'dnstt' && !ep.contains(':') && ep.contains('.')) {
+      return (host: ep, port: 53);
+    }
+
+    if (ep.startsWith('192.0.2.')) {
+      if (type == 'snowflake') {
+        return (host: 'stun.l.google.com', port: 19302);
+      }
+      if (type == 'meek_lite' || type == 'meek') {
+        return (host: 'ajax.aspnetcdn.com', port: 443);
+      }
+      if (type == 'conjure') {
+        return (host: 'registration.refraction.network', port: 443);
+      }
+      return null;
+    }
+
     final colon = ep.lastIndexOf(':');
-    if (colon <= 0 || colon >= ep.length - 1) return null;
+    if (colon <= 0 || colon >= ep.length - 1) {
+      if (ep.contains('.')) return (host: ep, port: 443);
+      return null;
+    }
     final host = ep.substring(0, colon);
     final port = int.tryParse(ep.substring(colon + 1));
     if (host.isEmpty || port == null || port <= 0) return null;
     return (host: host, port: port);
+  }
+
+  /// استخر اضافی برای دکمه «پل‌های رایگان جدید».
+  static List<String> extraPool(String bridgeType) {
+    switch (bridgeType) {
+      case 'obfs4':
+        return const [
+          'obfs4 38.229.33.83:80 0CAD576E561AEE617D2137E67723A123A23A123B cert=iCsa3l3BbZv+2u9bvcpTNUVG4Esge/XabRocHl86p23Z/aMsM0Vuom9g4bbz2PlY9/oNzQ iat-mode=0',
+          'obfs4 37.218.245.14:38224 D9A82D2F9C2F65A18407B1D2B764F130847F8B5D cert=bjRaMvr/wWjJwG+SN5pRaqFHycJksMui9n7hMKqNpX0ZQfRyb9a5EwQ5N2N4YdX6bY0+1Q iat-mode=0',
+        ];
+      case 'meek_lite':
+        return meekFronts
+            .skip(3)
+            .map((h) =>
+                'meek_lite 192.0.2.2:443 url=https://$h/ front=$h')
+            .toList();
+      case 'snowflake':
+        return const [
+          'snowflake 192.0.2.6:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ fronts=ajax.aspnetcdn.com ice=stun:stun.l.google.com:19302',
+          'snowflake 192.0.2.7:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ fronts=www.google.com ice=stun:stun.voipgate.com:3478',
+        ];
+      case 'conjure':
+        return const [
+          'conjure 192.0.2.5:80 url=https://registration.refraction.network/api',
+        ];
+      default:
+        return const [];
+    }
   }
 }

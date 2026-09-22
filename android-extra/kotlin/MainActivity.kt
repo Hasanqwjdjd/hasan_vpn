@@ -115,6 +115,7 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "updateWidgets" -> { refreshAllWidgets(); result.success(true) }
                 "getInitialIntent" -> result.success(intentToMap(intent))
+                "getLaunchExtras" -> result.success(intentToMap(intent))
                 else -> result.notImplemented()
             }
         }
@@ -124,6 +125,7 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "updateWidgets" -> { refreshAllWidgets(); result.success(true) }
                 "getInitialIntent" -> result.success(intentToMap(intent))
+                "getLaunchExtras" -> result.success(intentToMap(intent))
                 else -> result.notImplemented()
             }
         }

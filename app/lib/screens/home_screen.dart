@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import '../models/subscription.dart';
+import '../models/aether_profile.dart';
 import '../services/aether_service.dart';
 import '../services/announcement_service.dart';
 import '../services/app_colors.dart';
@@ -16,6 +17,7 @@ import '../services/exit_ip_service.dart';
 import '../services/psiphon_service.dart';
 import '../services/v2ray_engine.dart';
 import '../services/home_widget_service.dart';
+import '../services/widget_connect_handler.dart';
 import '../widgets/server_tile.dart';
 import 'add_config_screen.dart';
 import 'announcements_screen.dart';
@@ -107,6 +109,79 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await V2RayEngine.loadDelayUrl();
     if (!mounted) return;
     _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _poll());
+    // ویجت صفحهٔ اصلی: درخواست معلق اتصال
+    WidgetConnectHandler.listen((req) {
+      // ignore: unawaited_futures
+      _handleWidgetRequest(req);
+    });
+    final pending = await WidgetConnectHandler.consumePending();
+    if (pending != null && mounted) {
+      await _handleWidgetRequest(pending);
+    }
+  }
+
+  /// اتصال از ویجت ۲×۱ / ۱×۱
+  Future<void> _handleWidgetRequest(WidgetConnectRequest req) async {
+    if (!mounted || req.payload.isEmpty) return;
+
+    if (req.type == 'dns') {
+      // payload: primary|secondary
+      final parts = req.payload.split('|');
+      final primary = parts.isNotEmpty ? parts[0].trim() : '';
+      final secondary = parts.length > 1 ? parts[1].trim() : '';
+      if (primary.isEmpty) return;
+      await SettingsService.setGameDns(primary, secondary);
+      if (!mounted) return;
+      _showMsg(_t(
+        'DNS بازی از ویجت: $primary',
+        'Game DNS from widget: $primary',
+      ));
+      // اگر VPN وصل است، DNS در کانفیگ بعدی اعمال می‌شود
+      return;
+    }
+
+    if (req.type == 'tor') {
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TorScreen(
+            language: widget.language,
+            initialBridgeLine: req.payload,
+            autoConnect: req.autoConnect,
+          ),
+        ),
+      );
+      return;
+    }
+
+    // server
+    final idx = _servers.indexWhere(
+      (s) => s.id == req.payload || s.shareLink == req.payload,
+    );
+    if (idx < 0) {
+      _showMsg(_t(
+        'سرور ویجت پیدا نشد',
+        'Widget server not found',
+      ));
+      return;
+    }
+    final server = _servers[idx];
+    setState(() => _selected = server);
+    await SettingsService.setLastServer(server.id);
+
+    if (!req.autoConnect) return;
+    if (_connected && _active?.id == server.id) {
+      _showMsg(_t('قبلاً متصل است', 'Already connected'));
+      return;
+    }
+    if (_connected) {
+      try {
+        await _disconnectAll();
+      } catch (_) {}
+      _markDisconnected(_t('آماده', 'Ready'));
+    }
+    if (!mounted) return;
+    await _toggleConnection();
   }
 
   @override
@@ -188,6 +263,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _editServerName(VpnServer server) async {
+    // Aether / Oblivion: فرم کامل تنظیمات
+    if (server.isAether) {
+      await _editAetherServer(server);
+      return;
+    }
     final ctrl = TextEditingController(text: server.displayName);
     final ok = await showDialog<bool>(
       context: context,
@@ -228,6 +308,188 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       server.nameOverride = newName;
     });
+  }
+
+  Future<void> _editAetherServer(VpnServer server) async {
+    final profile = AetherProfile.fromLink(server.shareLink);
+    var protocol = profile.protocol;
+    var scan = profile.scan;
+    var noize = profile.noize;
+    var ip = profile.ip;
+    final nameCtrl = TextEditingController(text: server.displayName);
+    final peerCtrl = TextEditingController(text: profile.peer);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            return AlertDialog(
+              backgroundColor: AppColors.elevated(ctx),
+              title: Text('AETHER',
+                  style: TextStyle(color: AppColors.fg(ctx))),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameCtrl,
+                      style: TextStyle(color: AppColors.fg(ctx)),
+                      decoration: InputDecoration(
+                        labelText: _t('ملاحظات / نام', 'Remark / name'),
+                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: protocol,
+                      dropdownColor: AppColors.elevated(ctx),
+                      decoration: InputDecoration(
+                        labelText: _t('پروتکل', 'Protocol'),
+                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                      ),
+                      items: AetherProfile.protocols
+                          .map((p) => DropdownMenuItem(
+                                value: p,
+                                child: Text(p,
+                                    style: TextStyle(
+                                        color: AppColors.fg(ctx))),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setLocal(() => protocol = v);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: scan,
+                      dropdownColor: AppColors.elevated(ctx),
+                      decoration: InputDecoration(
+                        labelText: _t('حالت اسکن', 'Scan mode'),
+                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                      ),
+                      items: AetherProfile.scans
+                          .map((p) => DropdownMenuItem(
+                                value: p,
+                                child: Text(p,
+                                    style: TextStyle(
+                                        color: AppColors.fg(ctx))),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setLocal(() => scan = v);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: noize,
+                      dropdownColor: AppColors.elevated(ctx),
+                      decoration: InputDecoration(
+                        labelText: _t('مبهم‌سازی', 'Noize'),
+                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                      ),
+                      items: AetherProfile.noizes
+                          .map((p) => DropdownMenuItem(
+                                value: p,
+                                child: Text(p,
+                                    style: TextStyle(
+                                        color: AppColors.fg(ctx))),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setLocal(() => noize = v);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: ip,
+                      dropdownColor: AppColors.elevated(ctx),
+                      decoration: InputDecoration(
+                        labelText: _t('نسخه IP', 'IP version'),
+                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                      ),
+                      items: AetherProfile.ips
+                          .map((p) => DropdownMenuItem(
+                                value: p,
+                                child: Text(p,
+                                    style: TextStyle(
+                                        color: AppColors.fg(ctx))),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setLocal(() => ip = v);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: peerCtrl,
+                      style: TextStyle(color: AppColors.fg(ctx)),
+                      decoration: InputDecoration(
+                        labelText:
+                            _t('نشانی (اختیاری ip:port)', 'Peer (optional)'),
+                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(_t('لغو', 'Cancel'),
+                      style: TextStyle(color: AppColors.muted(ctx))),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: Text(_t('ذخیره', 'Save'),
+                      style: const TextStyle(color: AppColors.accent)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (ok != true || !mounted) return;
+    final updated = AetherProfile(
+      protocol: protocol,
+      scan: scan,
+      noize: noize,
+      ip: ip,
+      dns: profile.dns,
+      peer: peerCtrl.text.trim(),
+      upstream: profile.upstream,
+      quickReconnect: profile.quickReconnect,
+      blockQuic: profile.blockQuic,
+      perf: profile.perf,
+    );
+    final newLink = updated.toLink();
+    final newName = nameCtrl.text.trim();
+    final peerHost = updated.peer.isNotEmpty
+        ? updated.peer.split(':').first
+        : server.host;
+    final next = server.copyWith(
+      name: newName.isNotEmpty ? newName : null,
+      shareLink: newLink,
+      host: peerHost,
+      nameOverride: newName.isNotEmpty ? newName : null,
+    );
+    final idx = _customServers.indexWhere((s) => s.id == server.id);
+    if (idx >= 0) {
+      _customServers[idx] = next;
+      await _saveCustomServers();
+    } else if (newName.isNotEmpty) {
+      await SettingsService.setServerNameOverride(server.id, newName);
+    }
+    if (!mounted) return;
+    setState(() {
+      final si = _servers.indexWhere((s) => s.id == server.id);
+      if (si >= 0) _servers[si] = next;
+      if (_selected?.id == server.id) _selected = next;
+      if (_active?.id == server.id) _active = next;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_t('تنظیمات Aether ذخیره شد', 'Aether saved'))),
+    );
   }
 
   // ----------------------------------------------------- last server
@@ -411,6 +673,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
       _syncRealConnectionState();
+      // ویجت ممکن است وقتی اپ در پس‌زمینه بوده extras نوشته باشد
+      // ignore: unawaited_futures
+      WidgetConnectHandler.consumePending().then((req) {
+        if (req != null && mounted) _handleWidgetRequest(req);
+      });
     }
   }
 

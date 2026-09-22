@@ -74,19 +74,28 @@ class VpnServer {
       ? name
       : nameOverride!;
 
-  /// کپی با نام/پرچم جدید (فیلدهای final را نمی‌شود مستقیم عوض کرد).
-  VpnServer copyWith({String? name, String? flag}) => VpnServer(
+  /// کپی با فیلدهای اختیاری جدید (فیلدهای final را نمی‌شود مستقیم عوض کرد).
+  VpnServer copyWith({
+    String? name,
+    String? flag,
+    String? shareLink,
+    String? host,
+    int? port,
+    String? nameOverride,
+    bool? isPinned,
+  }) =>
+      VpnServer(
         id: id,
         name: name ?? this.name,
         flag: flag ?? this.flag,
-        shareLink: shareLink,
+        shareLink: shareLink ?? this.shareLink,
         protocol: protocol,
-        host: host,
-        port: port,
+        host: host ?? this.host,
+        port: port ?? this.port,
         sniOrHost: sniOrHost,
         isDeletable: isDeletable,
-        isPinned: isPinned,
-        nameOverride: nameOverride,
+        isPinned: isPinned ?? this.isPinned,
+        nameOverride: nameOverride ?? this.nameOverride,
       );
 
   /// پاک‌کردن نتیجه‌ی تست قبلی.

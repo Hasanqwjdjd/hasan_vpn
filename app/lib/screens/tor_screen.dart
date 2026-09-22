@@ -16,7 +16,15 @@ import '../services/v2ray_engine.dart';
 
 class TorScreen extends StatefulWidget {
   final String language;
-  const TorScreen({super.key, this.language = 'fa'});
+  final String? initialBridgeLine;
+  final bool autoConnect;
+
+  const TorScreen({
+    super.key,
+    this.language = 'fa',
+    this.initialBridgeLine,
+    this.autoConnect = false,
+  });
 
   @override
   State<TorScreen> createState() => _TorScreenState();
@@ -50,6 +58,8 @@ class _TorScreenState extends State<TorScreen> {
   /// پینگ TCP هر خط پل (کلید = خود خط پل)
   final Map<String, int?> _bridgePings = {};
   bool _pingingBridges = false;
+  /// پل‌های رایگان اضافه از دکمه «جدید»
+  final List<String> _extraFreeBridges = [];
 
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
@@ -57,7 +67,25 @@ class _TorScreenState extends State<TorScreen> {
   @override
   void initState() {
     super.initState();
-    _loadPrefs();
+    _loadPrefs().then((_) async {
+      final line = widget.initialBridgeLine?.trim();
+      if (line != null && line.isNotEmpty) {
+        final type = line.split(RegExp(r'\s+')).first.toLowerCase();
+        if (!mounted) return;
+        setState(() {
+          if (_bridgeTypes.any((e) => e['id'] == type)) {
+            _bridgeType = type;
+          }
+          if (!_customBridges.contains(line)) {
+            _customBridges.insert(0, line);
+          }
+        });
+        await _savePrefs();
+      }
+      if (widget.autoConnect && mounted && !_running && !_connecting) {
+        await _toggle();
+      }
+    });
     _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
   }
 
@@ -882,6 +910,37 @@ class _TorScreenState extends State<TorScreen> {
                       icon: const Icon(Icons.speed,
                           color: AppColors.accent, size: 20),
                     ),
+                  TextButton(
+                    onPressed: () {
+                      final pool = TorBridges.extraPool(_bridgeType);
+                      if (pool.isEmpty) {
+                        _snack(_t(
+                          'استخر جدیدی برای این نوع نیست',
+                          'No extra pool for this type',
+                        ));
+                        return;
+                      }
+                      var n = 0;
+                      setState(() {
+                        for (final b in pool) {
+                          if (!_extraFreeBridges.contains(b) &&
+                              !TorBridges.forType(_bridgeType,
+                                      sni: _selectedSni)
+                                  .contains(b)) {
+                            _extraFreeBridges.add(b);
+                            n++;
+                          }
+                        }
+                      });
+                      _snack(n > 0
+                          ? _t('$n پل رایگان جدید', '$n new free bridges')
+                          : _t('پل جدیدی نبود', 'No new bridges'));
+                    },
+                    child: Text(
+                      _t('جدید', 'New'),
+                      style: const TextStyle(color: AppColors.accent, fontSize: 12),
+                    ),
+                  ),
                   TextButton.icon(
                     onPressed: _settingsLocked
                         ? () => _snack(_t(
@@ -889,8 +948,13 @@ class _TorScreenState extends State<TorScreen> {
                               'Disconnect first',
                             ))
                         : () {
-                            final free = TorBridges.forType(
-                                _bridgeType, sni: _selectedSni);
+                            final free = [
+                              ...TorBridges.forType(
+                                  _bridgeType, sni: _selectedSni),
+                              ..._extraFreeBridges.where((b) =>
+                                  b.startsWith(_bridgeType) ||
+                                  _bridgeType == 'meek_lite'),
+                            ];
                             var added = 0;
                             setState(() {
                               for (final b in free) {
@@ -926,8 +990,10 @@ class _TorScreenState extends State<TorScreen> {
                     color: AppColors.muted2(context), fontSize: 11),
               ),
               const SizedBox(height: 8),
-              for (final b in TorBridges.forType(
-                  _bridgeType, sni: _selectedSni))
+              for (final b in [
+                ...TorBridges.forType(_bridgeType, sni: _selectedSni),
+                ..._extraFreeBridges,
+              ])
                 Container(
                   margin: const EdgeInsets.only(bottom: 6),
                   padding: const EdgeInsets.symmetric(
