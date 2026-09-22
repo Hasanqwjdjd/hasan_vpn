@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.net.VpnService
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -39,6 +40,7 @@ class WidgetConnectService : Service() {
     private var channel: MethodChannel? = null
     private var engineReady = false
     private var pendingConnect: Map<String, String>? = null
+    private var lastAttempt: Triple<String, String, String>? = null
     private val handler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -72,6 +74,14 @@ class WidgetConnectService : Service() {
 
         if (payload.isEmpty()) {
             stopSoon()
+            return START_NOT_STICKY
+        }
+
+        // پیش‌بررسی: اگر مجوز VPN هنوز داده نشده (یا لغو شده)، موتور headless
+        // بدون Activity قادر به نمایش دیالوگ سیستمی نیست و قطعاً شکست
+        // می‌خورد → مستقیم سراغ Activity شفاف برو (سناریوی ۶ در تست‌ها).
+        if (VpnService.prepare(applicationContext) != null) {
+            launchTransparentFallback(type, payload, title)
             return START_NOT_STICKY
         }
 
@@ -130,10 +140,13 @@ class WidgetConnectService : Service() {
                                 if (!ok && err != null) {
                                     SafeLog.d("WidgetConnect", "connect failed: $err")
                                 }
-                                // نوتیفیکیشن موفق/ناموفق به‌روز کن
-                                updateFgNotification(ok)
                                 result.success(true)
-                                handler.postDelayed({ stopSoon() }, 3000)
+                                if (!ok) {
+                                    lastAttempt?.let { (t, p, ti) -> launchTransparentFallback(t, p, ti) }
+                                } else {
+                                    updateFgNotification(true)
+                                    handler.postDelayed({ stopSoon() }, 3000)
+                                }
                             }
                             else -> result.notImplemented()
                         }
@@ -160,6 +173,7 @@ class WidgetConnectService : Service() {
     }
 
     private fun sendConnect(type: String, payload: String, title: String) {
+        lastAttempt = Triple(type, payload, title)
         try {
             channel?.invokeMethod(
                 "connectFromWidget",
@@ -171,22 +185,50 @@ class WidgetConnectService : Service() {
                 object : MethodChannel.Result {
                     override fun success(result: Any?) {
                         val ok = (result as? Map<*, *>)?.get("ok") == true
-                        updateFgNotification(ok)
+                        if (!ok) {
+                            // موتور headless (بدون Activity) اغلب به دلیل
+                            // نبود ActivityPluginBinding در flutter_vless
+                            // شکست می‌خورد → به Activity شفاف سوییچ کن
+                            // (Option B — همان رفتار v2rayNG).
+                            SafeLog.d("WidgetConnect", "headless connect failed, falling back")
+                            launchTransparentFallback(type, payload, title)
+                            return
+                        }
+                        updateFgNotification(true)
                         handler.postDelayed({ stopSoon() }, 3000)
                     }
                     override fun error(code: String, msg: String?, details: Any?) {
-                        updateFgNotification(false)
-                        handler.postDelayed({ stopSoon() }, 3000)
+                        SafeLog.d("WidgetConnect", "headless connect error: $code $msg")
+                        launchTransparentFallback(type, payload, title)
                     }
                     override fun notImplemented() {
-                        handler.postDelayed({ stopSoon() }, 3000)
+                        launchTransparentFallback(type, payload, title)
                     }
                 },
             )
         } catch (ex: Exception) {
             SafeLog.d("WidgetConnect", "sendConnect failed: ${ex.message}")
-            stopSoon()
+            launchTransparentFallback(type, payload, title)
         }
+    }
+
+    /// اگر اتصال headless شکست بخورد (یا مجوز VPN نباشد)، همان مسیر
+    /// اثبات‌شده‌ی ویجت‌های قدیمی را با یک Activity شفاف (بدون UI قابل‌مشاهده)
+    /// اجرا کن — دقیقاً رفتار v2rayNG.
+    private fun launchTransparentFallback(type: String, payload: String, title: String) {
+        try {
+            val launch = Intent(this, WidgetBgConnectActivity::class.java).apply {
+                putExtra("widget_type", type)
+                putExtra("widget_payload", payload)
+                putExtra("widget_title", title)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+            }
+            startActivity(launch)
+        } catch (ex: Exception) {
+            SafeLog.d("WidgetConnect", "transparent fallback failed: ${ex.message}")
+            updateFgNotification(false)
+        }
+        stopSoon()
     }
 
     private fun updateFgNotification(ok: Boolean) {

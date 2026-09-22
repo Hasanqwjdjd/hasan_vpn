@@ -95,28 +95,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _t(String fa, String en) => _isFa ? fa : en;
 
   @override
-  /// بررسی می‌کند که آیا از intent جاری، درخواست انتخاب سرور برای ویجت آمده
+  /// بررسی می‌کند که آیا از intent جاری (cold start)، درخواست انتخاب سرور
+  /// برای ویجت آمده است.
   Future<void> _readWidgetSelectionIntent() async {
     try {
       const ch = MethodChannel('com.hasan.hasan_vpn/widget');
       final map = await ch.invokeMethod<Map>('getLaunchExtras');
       if (map != null && map['widget_needs_server'] == true) {
         final wid = (map['widget_id'] as num?)?.toInt();
-        if (wid != null && wid > 0) {
-          setState(() => _pendingWidgetId = wid);
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(_t(
-                'سرور مورد نظر برای این ویجت را انتخاب کنید',
-                'Choose the server for this widget',
-              )),
-              duration: const Duration(seconds: 5),
-            ),
-          );
-        }
+        if (wid != null && wid > 0) _activateWidgetSelection(wid);
       }
     } catch (_) {}
+  }
+
+  /// حالت انتخاب سرور برای یک ویجت خاص را فعال می‌کند و SnackBar نشان
+  /// می‌دهد. هم از cold-start (_readWidgetSelectionIntent) و هم از
+  /// warm-start — وقتی اپ از قبل در پس‌زمینه زنده بوده و MainActivity از
+  /// طریق onNewIntent پیام widget_needs_server را پوش می‌کند
+  /// (WidgetConnectHandler.listen → onNeedsServer) — صدا زده می‌شود.
+  void _activateWidgetSelection(int widgetId) {
+    if (!mounted) return;
+    setState(() => _pendingWidgetId = widgetId);
+    // Scaffold ممکن است هنوز کامل mount نشده باشد (به‌خصوص در cold start)؛
+    // نمایش SnackBar را به بعد از فریم جاری موکول می‌کنیم.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_t(
+            'سرور مورد نظر برای این ویجت را انتخاب کنید',
+            'Choose the server for this widget',
+          )),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    });
   }
 
   void initState() {
@@ -140,10 +153,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _poll());
     // ویجت صفحهٔ اصلی: درخواست معلق اتصال
-    WidgetConnectHandler.listen((req) {
-      // ignore: unawaited_futures
-      _handleWidgetRequest(req);
-    });
+    WidgetConnectHandler.listen(
+      (req) {
+        // ignore: unawaited_futures
+        _handleWidgetRequest(req);
+      },
+      onNeedsServer: (widgetId) => _activateWidgetSelection(widgetId),
+    );
     // ★ ابتدا بررسی انتخاب سرور برای ویجت (اگر pending server selection هست، اپ رو نبند)
     await _readWidgetSelectionIntent();
     if (_pendingWidgetId == null) {
@@ -761,6 +777,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       WidgetConnectHandler.consumePending().then((req) {
         if (req != null && mounted) _handleWidgetRequest(req);
       });
+      // باگ #1: اگر اپ از قبل زنده بوده و کاربر روی ویجتِ بدون binding
+      // زده، onNewIntent باید widget_needs_server را از طریق
+      // onNeedsServer پوش کرده باشد؛ این فراخوانی صرفاً یک fallback است
+      // برای مواردی که آن پیام به هر دلیلی از دست رفته باشد.
+      if (_pendingWidgetId == null) {
+        // ignore: unawaited_futures
+        _readWidgetSelectionIntent();
+      }
     }
   }
 

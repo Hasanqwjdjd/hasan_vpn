@@ -92,11 +92,26 @@ class WidgetConnectHandler {
   }
 
   /// ثبت listener برای وقتی MainActivity extras جدید می‌فرستد.
-  static void listen(void Function(WidgetConnectRequest req) onRequest) {
+  /// [onRequest] برای درخواست‌های اتصال معمولی (2×1 / 1×1 با binding).
+  /// [onNeedsServer] وقتی اپ از قبل باز/زنده است و ویجت ۱×۱ بدون binding
+  /// کلیک می‌شود؛ MainActivity این را از طریق onNewIntent پوش می‌کند اما
+  /// قبلاً این تابع widget_needs_server را نادیده می‌گرفت (باگ #1).
+  static void listen(
+    void Function(WidgetConnectRequest req) onRequest, {
+    void Function(int widgetId)? onNeedsServer,
+  }) {
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onWidgetIntent') {
         final args = call.arguments;
         if (args is Map) {
+          if (args['widget_needs_server'] == true) {
+            final wid = (args['widget_id'] as num?)?.toInt();
+            if (wid != null && wid > 0) {
+              onNeedsServer?.call(wid);
+            }
+            return null;
+          }
+
           final action = args['widget_action']?.toString() ?? 'connect';
           final payload = args['widget_payload']?.toString() ?? '';
           if (payload.isEmpty) return null;
