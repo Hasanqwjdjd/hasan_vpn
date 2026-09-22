@@ -1697,7 +1697,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             ? () => _deleteServer(server)
                             : null,
                         onPin: () => _togglePin(server),
-                        onHomeWidget: () => _pinServerToHome(server),
                         onShare: _customServers.any((s) => s.id == server.id)
                             ? () => _shareServer(server)
                             : null,

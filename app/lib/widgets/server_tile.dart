@@ -256,13 +256,6 @@ class ServerTile extends StatelessWidget {
                         : onTest,
                   ),
 
-                if (onHomeWidget != null)
-                  _smallIcon(
-                    icon: Icons.widgets_outlined,
-                    color: AppColors.accent,
-                    onPressed: onHomeWidget,
-                  ),
-
                 if (onShare != null)
                   _smallIcon(
                     icon: Icons.share_outlined,
