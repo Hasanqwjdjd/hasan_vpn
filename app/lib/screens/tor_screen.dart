@@ -585,8 +585,8 @@ class _TorScreenState extends State<TorScreen> {
         lower.contains('registration fail') ||
         lower.contains('libconjure')) {
       return _t(
-        'Conjure ثبت‌نام نشد — پل ساختگی یا شبکه refraction در دسترس نیست. obfs4 یا snowflake را امتحان کنید.',
-        'Conjure registration failed — dummy bridge or refraction unreachable. Try obfs4 or snowflake.',
+        'Conjure جواب نداد — به obfs4/snowflake سوئیچ می‌شود.',
+        'Conjure failed — switching to obfs4/snowflake.',
       );
     }
     if (lower.contains('exited') || lower.contains('exit')) {
@@ -922,11 +922,38 @@ class _TorScreenState extends State<TorScreen> {
                     if (active && _socksPort > 0)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          'SOCKS: $_socksPort',
-                          style: TextStyle(
-                              color: AppColors.muted2(context),
-                              fontSize: 10),
+                        child: Column(
+                          children: [
+                            Text(
+                              'SOCKS: $_socksPort',
+                              style: TextStyle(
+                                  color: AppColors.muted2(context),
+                                  fontSize: 10),
+                            ),
+                            if (_torPing != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  _t('پینگ: ${_torPing}ms',
+                                      'Ping: ${_torPing}ms'),
+                                  style: TextStyle(
+                                      color: AppColors.accent,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            if (_torPing == null && _running)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  _t('در حال اندازه‌گیری...',
+                                      'Measuring...'),
+                                  style: TextStyle(
+                                      color: AppColors.muted2(context),
+                                      fontSize: 9),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                   ],
