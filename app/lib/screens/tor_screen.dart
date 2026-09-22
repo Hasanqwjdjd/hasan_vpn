@@ -2,10 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import '../services/app_colors.dart';
+import '../services/home_widget_service.dart';
+import '../services/network_prober.dart';
 import '../services/tor_bridges.dart';
 import '../services/tor_service.dart';
 import '../services/tor_sni_presets.dart';
@@ -41,6 +44,10 @@ class _TorScreenState extends State<TorScreen> {
   Timer? _pollTimer;
   bool _routingThroughVpn = false;
   bool _routing = false;
+
+  /// پینگ TCP هر خط پل (کلید = خود خط پل)
+  final Map<String, int?> _bridgePings = {};
+  bool _pingingBridges = false;
 
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
@@ -96,9 +103,11 @@ class _TorScreenState extends State<TorScreen> {
         setState(() {
           _running = running;
           _bootstrap = bp;
-          _bootstrapMsg = msg;
+          _bootstrapMsg = _friendlyBootstrap(msg);
           _socksPort = port;
-          _error = (err == null || err.isEmpty) ? null : err;
+          _error = (err == null || err.isEmpty)
+              ? null
+              : _localizeError(err);
           // بعد از بالا آمدن Tor، حالت «در حال اتصال» را تمام کن
           if (running && bp > 0) {
             _connecting = false;
@@ -197,14 +206,15 @@ class _TorScreenState extends State<TorScreen> {
         _routingThroughVpn = ok;
         _routing = false;
         if (!ok) {
-          _error = 'VPN routing failed: ${V2RayEngine.lastError ?? "unknown"}';
+          _error = _localizeError(
+              'VPN routing failed: ${V2RayEngine.lastError ?? "unknown"}');
         }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _routing = false;
-        _error = 'VPN routing error: $e';
+        _error = _localizeError('VPN routing error: $e');
       });
     }
   }
@@ -218,10 +228,22 @@ class _TorScreenState extends State<TorScreen> {
     setState(() => _routingThroughVpn = false);
   }
 
+  bool get _settingsLocked => _running || _connecting;
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
+    );
+  }
+
   Future<void> _toggle() async {
     if (_connecting) return;
     if (_running) {
-      setState(() => _connecting = true);
+      setState(() {
+        _connecting = true;
+        _error = null;
+      });
       await _stopVpnRouting();
       await TorService.stop();
       if (!mounted) return;
@@ -230,7 +252,12 @@ class _TorScreenState extends State<TorScreen> {
         _connecting = false;
         _bootstrap = 0;
         _bootstrapMsg = '';
+        _socksPort = 0;
+        _routingThroughVpn = false;
+        _routing = false;
+        _error = null;
       });
+      _snack(_t('اتصال Tor قطع شد', 'Tor disconnected'));
       return;
     }
     setState(() {
@@ -239,11 +266,8 @@ class _TorScreenState extends State<TorScreen> {
       _bootstrapMsg = _t('شروع...', 'Starting...');
       _error = null;
     });
-    // اگر کاربر پل شخصی نگذاشته، پل‌های رایگان همان نوع را بفرست
-    // (قبلاً برای obfs4 هیچ Bridgeای نمی‌رفت و اتصال خراب می‌شد)
-    final bridgesToUse = _customBridges.isNotEmpty
-        ? _customBridges
-        : TorBridges.forType(_bridgeType, sni: _selectedSni);
+    // کم‌پینگ‌ترین پل‌ها (حداکثر ۴) برای سرعت بهتر
+    final bridgesToUse = _bridgesForConnect();
     final r = await TorService.start(
       bridgeType: _bridgeType,
       customBridges: bridgesToUse.isEmpty ? null : bridgesToUse,
@@ -253,16 +277,16 @@ class _TorScreenState extends State<TorScreen> {
     if (r['ok'] != true) {
       setState(() {
         _connecting = false;
+        _running = false;
         _error = _localizeError(r['error']?.toString() ?? 'unknown error');
       });
     } else {
       setState(() {
         _running = true;
-        _connecting = false; // دکمه دیگر روی «در حال اتصال» گیر نکند
+        _connecting = false;
         _socksPort = (r['socksPort'] as num?)?.toInt() ?? 9050;
         _bootstrapMsg = _t('در حال Bootstrap…', 'Bootstrapping…');
       });
-      // روتینگ VPN را _poll بعد از رسیدن به ۱۰۰٪ شروع می‌کند
     }
   }
 
@@ -274,16 +298,67 @@ class _TorScreenState extends State<TorScreen> {
     if (lower.contains('permission') || lower.contains('denied')) {
       return _t('دسترسی کافی نیست', 'Permission denied');
     }
-    if (lower.contains('binary') || lower.contains('libtor') || lower.contains('not found')) {
+    if (lower.contains('binary') ||
+        lower.contains('libtor') ||
+        lower.contains('not found')) {
       return _t('باینری Tor پیدا نشد', 'Tor binary not found');
     }
     if (lower.contains('timeout')) {
       return _t('زمان اتصال تمام شد', 'Connection timed out');
     }
+    if (lower.contains('vpn routing') || lower.contains('routing')) {
+      return _t(
+        'روتینگ VPN ناموفق بود — دوباره وصل شوید',
+        'VPN routing failed — try connecting again',
+      );
+    }
+    if (lower.contains('bridge')) {
+      return _t(
+        'مشکل در پل‌ها — نوع دیگری امتحان کنید یا پل شخصی بگذارید',
+        'Bridge problem — try another type or add a custom bridge',
+      );
+    }
+    if (lower.contains('dnstt')) {
+      return _t(
+        'DNSTT قطع شد — پل معتبر (دامنه/resolver) لازم است یا از obfs4 استفاده کنید',
+        'DNSTT failed — need a valid domain/resolver bridge, or use obfs4',
+      );
+    }
+    if (lower.contains('exited') || lower.contains('exit')) {
+      return _t(
+        'پروسه Tor فوری بسته شد — نوع پل یا پلاگین را عوض کنید',
+        'Tor exited immediately — change bridge type or plugin',
+      );
+    }
     return raw;
   }
 
+  String _friendlyBootstrap(String msg) {
+    if (msg.isEmpty) return msg;
+    final lower = msg.toLowerCase();
+    if (lower.contains('bootstrapped 100') || lower.contains('done')) {
+      return _t('Bootstrap کامل شد', 'Bootstrap complete');
+    }
+    if (lower.contains('connecting') || lower.contains('handshake')) {
+      return _t('در حال برقراری ارتباط…', 'Handshaking…');
+    }
+    if (lower.contains('loading') || lower.contains('consensus')) {
+      return _t('در حال بارگذاری شبکه Tor…', 'Loading Tor network…');
+    }
+    if (lower.contains('starting')) {
+      return _t('در حال راه‌اندازی…', 'Starting…');
+    }
+    return msg;
+  }
+
   Future<void> _addBridge() async {
+    if (_settingsLocked) {
+      _snack(_t(
+        'اول اتصال را قطع کنید، بعد تنظیمات را عوض کنید',
+        'Disconnect first, then change settings',
+      ));
+      return;
+    }
     final ctrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
@@ -291,14 +366,37 @@ class _TorScreenState extends State<TorScreen> {
         backgroundColor: AppColors.elevated(ctx),
         title: Text(_t('افزودن پل شخصی', 'Add custom bridge'),
             style: TextStyle(color: AppColors.fg(ctx))),
-        content: TextField(
-          controller: ctrl,
-          maxLines: 3,
-          style: TextStyle(color: AppColors.fg(ctx), fontSize: 12),
-          decoration: InputDecoration(
-            hintText: 'obfs4 1.2.3.4:1234 FINGERPRINT cert=... iat-mode=0',
-            hintStyle: TextStyle(color: AppColors.muted2(ctx), fontSize: 11),
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: ctrl,
+              maxLines: 4,
+              style: TextStyle(color: AppColors.fg(ctx), fontSize: 12),
+              decoration: InputDecoration(
+                hintText:
+                    'obfs4 1.2.3.4:1234 FINGERPRINT cert=... iat-mode=0',
+                hintStyle:
+                    TextStyle(color: AppColors.muted2(ctx), fontSize: 11),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () async {
+                  final data = await Clipboard.getData(Clipboard.kTextPlain);
+                  final t = data?.text?.trim() ?? '';
+                  if (t.isNotEmpty) ctrl.text = t;
+                },
+                icon: const Icon(Icons.paste, size: 16),
+                label: Text(_t('از کلیپ‌بورد', 'From clipboard')),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -317,13 +415,112 @@ class _TorScreenState extends State<TorScreen> {
     if (ok != true) return;
     final line = ctrl.text.trim();
     if (line.isEmpty) return;
-    setState(() => _customBridges.add(line));
+    // چند خط پل را هم پشتیبانی کن
+    final lines = line
+        .split(RegExp(r'[\r\n]+'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    setState(() {
+      for (final l in lines) {
+        if (!_customBridges.contains(l)) _customBridges.add(l);
+      }
+    });
     await _savePrefs();
+    _snack(_t(
+      '${lines.length} پل اضافه شد',
+      '${lines.length} bridge(s) added',
+    ));
   }
 
   Future<void> _removeBridge(int i) async {
+    if (_settingsLocked) {
+      _snack(_t(
+        'اول اتصال را قطع کنید',
+        'Disconnect first',
+      ));
+      return;
+    }
     setState(() => _customBridges.removeAt(i));
     await _savePrefs();
+  }
+
+  Future<void> _clearCustomBridges() async {
+    if (_settingsLocked) {
+      _snack(_t('اول اتصال را قطع کنید', 'Disconnect first'));
+      return;
+    }
+    if (_customBridges.isEmpty) return;
+    setState(() => _customBridges.clear());
+    await _savePrefs();
+    _snack(_t('پل‌های شخصی پاک شدند', 'Custom bridges cleared'));
+  }
+
+  /// پینگ TCP همهٔ پل‌های رایگان (+ شخصی) نوع فعلی
+  Future<void> _pingAllBridges() async {
+    if (_pingingBridges) return;
+    final list = <String>{
+      ...TorBridges.forType(_bridgeType, sni: _selectedSni),
+      ..._customBridges,
+    }.toList();
+    if (list.isEmpty) {
+      _snack(_t(
+        'برای این نوع پل، endpoint قابل پینگ نیست',
+        'No pingable endpoints for this bridge type',
+      ));
+      return;
+    }
+    setState(() {
+      _pingingBridges = true;
+      _bridgePings.clear();
+    });
+    await NetworkProber.runBatched<String>(
+      list,
+      6,
+      (line) async {
+        final ep = TorBridges.parseEndpoint(line);
+        if (ep == null) {
+          if (mounted) setState(() => _bridgePings[line] = null);
+          return;
+        }
+        final r = await NetworkProber.probeTcp(
+          ep.host,
+          port: ep.port,
+          samples: 2,
+          timeout: const Duration(seconds: 2),
+        );
+        if (!mounted) return;
+        setState(() => _bridgePings[line] = r.avgMs);
+      },
+    );
+    if (!mounted) return;
+    setState(() => _pingingBridges = false);
+    final ok = _bridgePings.values.where((v) => v != null && v > 0).length;
+    _snack(_t(
+      'پینگ $ok پل انجام شد',
+      'Pinged $ok bridges',
+    ));
+  }
+
+  /// پل‌هایی که برای اتصال استفاده می‌شوند: ترجیح کم‌پینگ‌ترین‌ها
+  List<String> _bridgesForConnect() {
+    if (_customBridges.isNotEmpty) {
+      final withPing = List<String>.from(_customBridges);
+      withPing.sort((a, b) {
+        final pa = _bridgePings[a] ?? 99999;
+        final pb = _bridgePings[b] ?? 99999;
+        return pa.compareTo(pb);
+      });
+      return withPing.take(4).toList();
+    }
+    final free = TorBridges.forType(_bridgeType, sni: _selectedSni);
+    final sorted = List<String>.from(free);
+    sorted.sort((a, b) {
+      final pa = _bridgePings[a] ?? 99999;
+      final pb = _bridgePings[b] ?? 99999;
+      return pa.compareTo(pb);
+    });
+    return sorted.take(4).toList();
   }
 
   Widget _bridgeSelector() {
@@ -339,8 +536,16 @@ class _TorScreenState extends State<TorScreen> {
           value: _bridgeType,
           isExpanded: true,
           dropdownColor: AppColors.elevated(context),
-          style: TextStyle(color: AppColors.fg(context), fontSize: 14),
-          icon: const Icon(Icons.expand_more, color: AppColors.accent),
+          style: TextStyle(
+            color: _settingsLocked
+                ? AppColors.muted2(context)
+                : AppColors.fg(context),
+            fontSize: 14,
+          ),
+          icon: Icon(Icons.expand_more,
+              color: _settingsLocked
+                  ? AppColors.muted2(context)
+                  : AppColors.accent),
           items: [
             for (final bt in _bridgeTypes)
               DropdownMenuItem<String>(
@@ -348,11 +553,13 @@ class _TorScreenState extends State<TorScreen> {
                 child: Text(_isFa ? bt['fa']! : bt['en']!),
               ),
           ],
-          onChanged: (v) async {
-            if (v == null) return;
-            setState(() => _bridgeType = v);
-            await _savePrefs();
-          },
+          onChanged: _settingsLocked
+              ? null
+              : (v) async {
+                  if (v == null) return;
+                  setState(() => _bridgeType = v);
+                  await _savePrefs();
+                },
         ),
       ),
     );
@@ -507,6 +714,34 @@ class _TorScreenState extends State<TorScreen> {
             ),
             const SizedBox(height: 8),
             _bridgeSelector(),
+            if (_bridgeType == 'snowflake' ||
+                _bridgeType == 'meek_lite' ||
+                _bridgeType == 'conjure')
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  _t(
+                    'این نوع پل برای دور زدن فیلتر طراحی شده و معمولاً کندتر از obfs4 است. برای سرعت بیشتر obfs4 + پینگ پل‌ها را امتحان کنید.',
+                    'This bridge type is for censorship resistance and is usually slower than obfs4. For speed, try obfs4 + bridge ping.',
+                  ),
+                  style: TextStyle(
+                      color: AppColors.muted2(context), fontSize: 11, height: 1.4),
+                ),
+              ),
+            if (_bridgeType == 'dnstt')
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  _t(
+                    'DNSTT نیاز به پل معتبر (دامنه + resolver) دارد. بدون پل شخصی ممکن است فوری قطع شود. از اپراتور DNSTT خط پل بگیرید.',
+                    'DNSTT needs a valid bridge (domain + resolver). Without a custom bridge it may disconnect immediately.',
+                  ),
+                  style: TextStyle(
+                      color: AppColors.danger.withOpacity(0.85),
+                      fontSize: 11,
+                      height: 1.4),
+                ),
+              ),
             const SizedBox(height: 16),
 
             // ---- پل‌های رایگان هر نوع (قابل مشاهده برای کاربر) ----
@@ -525,19 +760,47 @@ class _TorScreenState extends State<TorScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  if (_pingingBridges)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  else
+                    IconButton(
+                      tooltip: _t('پینگ پل‌ها', 'Ping bridges'),
+                      onPressed: _pingAllBridges,
+                      icon: const Icon(Icons.speed,
+                          color: AppColors.accent, size: 20),
+                    ),
                   TextButton.icon(
-                    onPressed: () {
-                      final free = TorBridges.forType(
-                          _bridgeType, sni: _selectedSni);
-                      setState(() {
-                        for (final b in free) {
-                          if (!_customBridges.contains(b)) {
-                            _customBridges.add(b);
-                          }
-                        }
-                      });
-                      _savePrefs();
-                    },
+                    onPressed: _settingsLocked
+                        ? () => _snack(_t(
+                              'اول اتصال را قطع کنید',
+                              'Disconnect first',
+                            ))
+                        : () {
+                            final free = TorBridges.forType(
+                                _bridgeType, sni: _selectedSni);
+                            var added = 0;
+                            setState(() {
+                              for (final b in free) {
+                                if (!_customBridges.contains(b)) {
+                                  _customBridges.add(b);
+                                  added++;
+                                }
+                              }
+                            });
+                            _savePrefs();
+                            _snack(added > 0
+                                ? _t('$added پل رایگان اضافه شد',
+                                    '$added free bridge(s) added')
+                                : _t('همه از قبل اضافه بودند',
+                                    'All already added'));
+                          },
                     icon: const Icon(Icons.download_outlined,
                         color: AppColors.accent, size: 18),
                     label: Text(
@@ -587,6 +850,41 @@ class _TorScreenState extends State<TorScreen> {
                           ),
                         ),
                       ),
+                      if (_bridgePings.containsKey(b))
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Text(
+                            _bridgePings[b] == null
+                                ? '—'
+                                : '${_bridgePings[b]}ms',
+                            style: TextStyle(
+                              color: (_bridgePings[b] ?? 999) < 200
+                                  ? Colors.green
+                                  : ((_bridgePings[b] ?? 999) < 500
+                                      ? Colors.orange
+                                      : AppColors.danger),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      IconButton(
+                        icon: const Icon(Icons.widgets_outlined,
+                            color: AppColors.accent, size: 18),
+                        tooltip: _t('ویجت صفحهٔ اصلی', 'Home widget'),
+                        onPressed: () async {
+                          await HomeWidgetService.pin(
+                            type: 'tor',
+                            title: TorBridges.shortLabel(b),
+                            subtitle: _bridgeType,
+                            payload: b,
+                          );
+                          _snack(_t(
+                            'به ویجت اضافه شد',
+                            'Added to home widget',
+                          ));
+                        },
+                      ),
                       IconButton(
                         icon: Icon(
                           _customBridges.contains(b)
@@ -598,6 +896,13 @@ class _TorScreenState extends State<TorScreen> {
                           size: 20,
                         ),
                         onPressed: () {
+                          if (_settingsLocked) {
+                            _snack(_t(
+                              'اول اتصال را قطع کنید',
+                              'Disconnect first',
+                            ));
+                            return;
+                          }
                           setState(() {
                             if (_customBridges.contains(b)) {
                               _customBridges.remove(b);
@@ -621,17 +926,27 @@ class _TorScreenState extends State<TorScreen> {
                 _bridgeType == 'dnstt' ||
                 _bridgeType == 'snowflake') ...[
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    _t('پل‌های شخصی (${_customBridges.length})',
-                        'Custom bridges (${_customBridges.length})'),
-                    style: TextStyle(
-                      color: AppColors.muted(context),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                  Expanded(
+                    child: Text(
+                      _t('پل‌های شخصی (${_customBridges.length})',
+                          'Custom bridges (${_customBridges.length})'),
+                      style: TextStyle(
+                        color: AppColors.muted(context),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
+                  if (_customBridges.isNotEmpty)
+                    TextButton(
+                      onPressed: _clearCustomBridges,
+                      child: Text(
+                        _t('پاک‌کردن', 'Clear'),
+                        style: TextStyle(
+                            color: AppColors.danger, fontSize: 12),
+                      ),
+                    ),
                   TextButton.icon(
                     onPressed: _addBridge,
                     icon: const Icon(Icons.add,
@@ -714,8 +1029,16 @@ class _TorScreenState extends State<TorScreen> {
                     value: _selectedSni,
                     isExpanded: true,
                     dropdownColor: AppColors.elevated(context),
-                    style: TextStyle(color: AppColors.fg(context), fontSize: 13),
-                    icon: const Icon(Icons.expand_more, color: AppColors.accent),
+                    style: TextStyle(
+                      color: _settingsLocked
+                          ? AppColors.muted2(context)
+                          : AppColors.fg(context),
+                      fontSize: 13,
+                    ),
+                    icon: Icon(Icons.expand_more,
+                        color: _settingsLocked
+                            ? AppColors.muted2(context)
+                            : AppColors.accent),
                     items: [
                       for (final s in TorSniPresets.all)
                         DropdownMenuItem<String>(
@@ -723,11 +1046,13 @@ class _TorScreenState extends State<TorScreen> {
                           child: Text(s, overflow: TextOverflow.ellipsis),
                         ),
                     ],
-                    onChanged: (v) async {
-                      if (v == null) return;
-                      setState(() => _selectedSni = v);
-                      await _savePrefs();
-                    },
+                    onChanged: _settingsLocked
+                        ? null
+                        : (v) async {
+                            if (v == null) return;
+                            setState(() => _selectedSni = v);
+                            await _savePrefs();
+                          },
                   ),
                 ),
               ),

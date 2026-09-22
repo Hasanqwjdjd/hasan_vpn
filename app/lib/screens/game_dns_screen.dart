@@ -10,6 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/settings_service.dart';
 import '../services/network_prober.dart';
+import '../services/game_booster_settings.dart';
+import '../services/home_widget_service.dart';
 
 /// لیست DNSهای اضافی پرکاربرد (اضافه‌شده در پچ).
 const List<GameDns> kExtraDnsList = <GameDns>[
@@ -80,6 +82,11 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
 
   final ScrollController _scrollController = ScrollController();
 
+  /// حالت بازی (DNS + فایروال سبک)
+  Map<String, dynamic> _booster = Map<String, dynamic>.from(
+    GameBoosterSettings.defaults,
+  );
+
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
 
@@ -108,11 +115,13 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     final pinned = await SettingsService.getPinnedDns();
     final overrides = await SettingsService.getDnsOverrides();
     final pings = await SettingsService.getDnsPingResults();
+    final booster = await GameBoosterSettings.load();
     final prefs = await SharedPreferences.getInstance();
     final savedOrder = prefs.getStringList('dns_manual_order_v1') ?? <String>[];
     if (!mounted) return;
     _manualOrder = savedOrder;
     setState(() {
+      _booster = booster;
       _ipPref = pref;
       _customDns = custom;
       _customIndexByKey = <String, int>{
@@ -210,8 +219,28 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     await SettingsService.setGameDns(dns.primary, dns.secondary);
     await SettingsService.setLastDns(_keyOf(dns));
     if (!mounted) return;
-    setState(() => _activeKey = _keyOf(dns));
-    _showMsg(_t('DNS فعال شد', 'DNS activated'));
+    setState(() {
+      _activeKey = _keyOf(dns);
+      _selectedKey = _keyOf(dns);
+    });
+    _showMsg(
+      _t('DNS فعال شد: ${dns.name} (${dns.primary})',
+          'DNS activated: ${dns.name} (${dns.primary})'),
+    );
+  }
+
+  Future<void> _pinDnsToHome(GameDns dns) async {
+    await HomeWidgetService.pin(
+      type: 'dns',
+      title: dns.name,
+      subtitle: dns.primary,
+      payload: '${dns.primary}|${dns.secondary}',
+    );
+    if (!mounted) return;
+    _showMsg(_t(
+      'به ویجت صفحهٔ اصلی اضافه شد — از صفحهٔ اصلی ویجت Hasan را اضافه کنید',
+      'Pinned to home widget — add Hasan widget from home screen',
+    ));
   }
 
   Future<void> _clear() async {
@@ -273,22 +302,40 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   }
 
   Future<void> _toggleActive() async {
+    // اگر همین الان فعال است → قطع
     if (_activeKey != null) {
       await _clear();
-    } else {
-      final list = _visibleDns;
-      if (list.isNotEmpty) {
-        final sorted = List<GameDns>.from(list);
-        sorted.sort((a, b) {
-          final pa = _pingResults[_keyOf(a)] ?? 99999;
-          final pb = _pingResults[_keyOf(b)] ?? 99999;
-          return pa.compareTo(pb);
-        });
-        await _select(sorted.first);
-      } else {
-        _showMsg(_t('هیچ DNS‌ای موجود نیست', 'No DNS available'));
+      return;
+    }
+
+    // باگ قبلی: همیشه کم‌پینگ‌ترین فعال می‌شد، نه آن‌که کاربر انتخاب کرده.
+    final list = _visibleDns;
+    if (list.isEmpty) {
+      _showMsg(_t('هیچ DNS‌ای موجود نیست', 'No DNS available'));
+      return;
+    }
+
+    GameDns? target;
+    if (_selectedKey != null) {
+      for (final d in list) {
+        if (_keyOf(d) == _selectedKey) {
+          target = d;
+          break;
+        }
       }
     }
+    // اگر چیزی انتخاب نشده، کم‌پینگ‌ترین
+    if (target == null) {
+      final sorted = List<GameDns>.from(list);
+      sorted.sort((a, b) {
+        final pa = _pingResults[_keyOf(a)] ?? 99999;
+        final pb = _pingResults[_keyOf(b)] ?? 99999;
+        return pa.compareTo(pb);
+      });
+      target = sorted.first;
+    }
+
+    await _select(target);
   }
 
   Future<void> _jumpToSelected() async {
@@ -686,6 +733,27 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     _showMsg(_t('مرتب بر اساس پینگ', 'Sorted by ping'));
   }
 
+  Widget _boosterSwitch(String key, String title) {
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      title: Text(
+        title,
+        style: TextStyle(color: AppColors.fg(context), fontSize: 12),
+      ),
+      value: _booster[key] == true,
+      activeColor: AppColors.accent,
+      onChanged: (v) async {
+        setState(() => _booster[key] = v);
+        if (key == 'forceIpv4' && v) {
+          setState(() => _ipPref = 'ipv4');
+          await SettingsService.setDnsIpPreference('ipv4');
+        }
+        await GameBoosterSettings.save(_booster);
+      },
+    );
+  }
+
   Widget _ipChip(String value, String label) {
     final active = _ipPref == value;
     return Expanded(
@@ -766,6 +834,8 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
           onTap: () {
             setState(() => _selectedKey = key);
           },
+          // نگه داشتن = فعال‌سازی همان DNS (نه کم‌پینگ‌ترین)
+          onLongPress: () => _select(dns),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(4, 8, 8, 8),
             child: Row(
@@ -865,6 +935,11 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                   icon: Icons.edit_outlined,
                   color: AppColors.muted(context),
                   onTap: () => _editDns(dns),
+                ),
+                _smallIcon(
+                  icon: Icons.widgets_outlined,
+                  color: AppColors.accent,
+                  onTap: () => _pinDnsToHome(dns),
                 ),
                 if (_customIndexOf(dns) != null)
                     _smallIcon(
@@ -1139,6 +1214,85 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
             ),
           ),
 
+          // ---- حالت بازی: DNS + فایروال سبک ----
+          Container(
+            margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: (_booster['enabled'] == true)
+                  ? AppColors.accent.withOpacity(0.08)
+                  : AppColors.surface(context),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: (_booster['enabled'] == true)
+                    ? AppColors.accent
+                    : AppColors.border(context),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text(
+                    _t('حالت بازی (DNS + فایروال)', 'Game Mode (DNS + Firewall)'),
+                    style: TextStyle(
+                      color: AppColors.fg(context),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  subtitle: Text(
+                    _t(
+                      'مسدودسازی QUIC/IPv6/تله‌متری + DNS بازی — پینگ را پایدارتر می‌کند (زیر ۳۰ تضمینی نیست)',
+                      'Block QUIC/IPv6/telemetry + game DNS — stabilizes ping (sub-30 not guaranteed)',
+                    ),
+                    style: TextStyle(
+                        color: AppColors.muted2(context), fontSize: 10),
+                  ),
+                  value: _booster['enabled'] == true,
+                  activeColor: AppColors.accent,
+                  onChanged: (v) async {
+                    setState(() => _booster['enabled'] = v);
+                    if (v) {
+                      setState(() {
+                        _booster['blockQuic'] = true;
+                        _booster['forceIpv4'] = true;
+                        _ipPref = 'ipv4';
+                      });
+                      await SettingsService.setDnsIpPreference('ipv4');
+                    }
+                    await GameBoosterSettings.save(_booster);
+                  },
+                ),
+                if (_booster['enabled'] == true) ...[
+                  const Divider(height: 12),
+                  _boosterSwitch(
+                    'blockQuic',
+                    _t('مسدودسازی QUIC (UDP/443)', 'Block QUIC (UDP/443)'),
+                  ),
+                  _boosterSwitch(
+                    'forceIpv4',
+                    _t('اجبار IPv4', 'Force IPv4'),
+                  ),
+                  _boosterSwitch(
+                    'blockTelemetry',
+                    _t('مسدودسازی تله‌متری بازی', 'Block game telemetry'),
+                  ),
+                  _boosterSwitch(
+                    'blockAds',
+                    _t('مسدودسازی تبلیغات', 'Block ads'),
+                  ),
+                  _boosterSwitch(
+                    'smallDnsCache',
+                    _t('کش DNS کوچک‌تر', 'Smaller DNS cache'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
           const SizedBox(height: 10),
           _buildConnectButton(),
           const SizedBox(height: 10),
@@ -1168,7 +1322,13 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
           Expanded(
             child: ReorderableListView.builder(
               scrollController: _scrollController,
-              padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+              // فاصلهٔ بیشتر پایین تا آخرین DNS زیر نوار سیستم بریده نشود
+              padding: EdgeInsets.fromLTRB(
+                10,
+                6,
+                10,
+                96 + MediaQuery.of(context).padding.bottom,
+              ),
               itemCount: all.length,
               onReorder: _onReorder,
               buildDefaultDragHandles: false,

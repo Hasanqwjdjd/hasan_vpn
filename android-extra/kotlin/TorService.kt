@@ -88,6 +88,11 @@ object TorService {
                 val proc = pb.start()
                 torProcess = proc
                 running = true
+                lastError = null
+                bootstrapPercent = 0
+                bootstrapMessage = "starting"
+
+                val recentLogs = StringBuilder()
 
                 // ۵. خواندن لاگ
                 logThread = Thread {
@@ -98,6 +103,15 @@ object TorService {
                         while (reader.readLine().also { line = it } != null) {
                             val l = line ?: continue
                             SafeLog.d(TAG, "[tor] $l")
+                            if (recentLogs.length < 4000) {
+                                recentLogs.append(l).append('\n')
+                            }
+                            val lower = l.lowercase()
+                            if (lower.contains("error") || lower.contains("failed") ||
+                                lower.contains("could not") || lower.contains("no bridges")
+                            ) {
+                                lastError = l.take(200)
+                            }
                             val m = bootstrapRegex.find(l)
                             if (m != null) {
                                 bootstrapPercent = m.groupValues[1].toIntOrNull() ?: 0
@@ -107,11 +121,30 @@ object TorService {
                         }
                     } catch (_: Exception) {}
                     try { proc.waitFor() } catch (_: Exception) {}
+                    if (bootstrapPercent < 100) {
+                        lastError = lastError ?: "Tor process exited early (bootstrap $bootstrapPercent%)"
+                    }
                     running = false
                 }.also { it.isDaemon = true; it.start() }
 
-                Thread.sleep(300)
-                // سرویس foreground را راه بینداز تا Tor در پس‌زمینه زنده بماند
+                // کمی صبر کن؛ اگر پروسه فوری مرد (مثل DNSTT خراب)، خطا برگردان
+                Thread.sleep(1200)
+                try {
+                    // exitValue فقط اگر مرده باشد کار می‌کند
+                    val code = proc.exitValue()
+                    running = false
+                    torProcess = null
+                    lastError = when {
+                        bridgeType == "dnstt" ->
+                            "DNSTT failed (exit $code). libdnstt may need a valid domain/resolver bridge line."
+                        else ->
+                            "Tor exited immediately (code $code). Check bridges / plugins."
+                    }
+                    return mapOf("ok" to false, "error" to lastError!!)
+                } catch (_: IllegalThreadStateException) {
+                    // هنوز زنده است — خوب
+                }
+
                 try {
                     TorForegroundService.start(context)
                 } catch (e: Exception) {
@@ -204,6 +237,16 @@ object TorService {
         sb.appendLine("Log notice stdout")
         sb.appendLine("SafeLogging 0")
         sb.appendLine("AvoidDiskWrites 1")
+        // بهینه‌سازی سرعت/پایداری مدار
+        sb.appendLine("CircuitBuildTimeout 15")
+        sb.appendLine("LearnCircuitBuildTimeout 0")
+        sb.appendLine("KeepalivePeriod 60")
+        sb.appendLine("NewCircuitPeriod 30")
+        sb.appendLine("MaxCircuitDirtiness 600")
+        sb.appendLine("EnforceDistinctSubnets 0")
+        sb.appendLine("ClientOnly 1")
+        sb.appendLine("ConnectionPadding 0")
+        sb.appendLine("ReducedConnectionPadding 1")
 
         when (bridgeType) {
             "vanilla" -> {
@@ -215,14 +258,13 @@ object TorService {
                     sb.appendLine("ClientTransportPlugin obfs4 exec ${obfs4Path}")
                     sb.appendLine("ClientTransportPlugin obfs3 exec ${obfs4Path}")
                     sb.appendLine("ClientTransportPlugin scramblesuit exec ${obfs4Path}")
-                    // اگر پل شخصی نبود، از پل‌های رایگان پیش‌فرض استفاده کن
-                    // (قبلاً بدون Bridge، Tor با UseBridges=1 گیر می‌کرد)
+                    // حداکثر ۳–۴ پل → اتصال سریع‌تر از ۸ پل همزمان
                     val bridges = if (!customBridges.isNullOrEmpty()) {
                         customBridges
                     } else {
                         defaultObfs4Bridges
                     }
-                    bridges.forEach { sb.appendLine("Bridge $it") }
+                    bridges.take(4).forEach { sb.appendLine("Bridge $it") }
                 }
             }
             "meek_lite" -> {
@@ -230,7 +272,7 @@ object TorService {
                     sb.appendLine("UseBridges 1")
                     sb.appendLine("ClientTransportPlugin meek_lite exec ${obfs4Path}")
                     if (!customBridges.isNullOrEmpty()) {
-                        customBridges.forEach { sb.appendLine("Bridge $it") }
+                        customBridges.take(2).forEach { sb.appendLine("Bridge $it") }
                     } else {
                         val host = if (!sni.isNullOrEmpty()) sni!! else "certum.pl"
                         sb.appendLine("Bridge meek_lite 192.0.2.2:443 url=https://$host/ front=$host")
@@ -240,10 +282,16 @@ object TorService {
             "snowflake" -> {
                 if (snowflakePath != null) {
                     sb.appendLine("UseBridges 1")
-                    val frontArg = if (!sni.isNullOrEmpty()) " -front=$sni" else ""
-                    sb.appendLine("ClientTransportPlugin snowflake exec ${snowflakePath}$frontArg")
+                    // snowflake به خودی خود کند است؛ front درست کمک می‌کند
+                    val front = if (!sni.isNullOrEmpty()) sni else "cdn.sstatic.net"
+                    sb.appendLine(
+                        "ClientTransportPlugin snowflake exec ${snowflakePath}" +
+                            " -url https://snowflake-broker.torproject.net.global.prod.fastly.net/" +
+                            " -front $front" +
+                            " -ice stun:stun.l.google.com:19302,stun:stun.antisip.com:3478"
+                    )
                     if (!customBridges.isNullOrEmpty()) {
-                        customBridges.forEach { sb.appendLine("Bridge $it") }
+                        customBridges.take(1).forEach { sb.appendLine("Bridge $it") }
                     } else {
                         sb.appendLine("Bridge snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72")
                     }
@@ -256,21 +304,26 @@ object TorService {
                     val bridges = if (!customBridges.isNullOrEmpty()) {
                         customBridges
                     } else {
-                        listOf("conjure 192.0.2.3:80")
+                        listOf("conjure 192.0.2.3:80 url=https://registration.refraction.network/api")
                     }
-                    bridges.forEach { sb.appendLine("Bridge $it") }
+                    bridges.take(2).forEach { sb.appendLine("Bridge $it") }
                 }
             }
             "dnstt" -> {
                 if (dnsttPath != null) {
+                    // DNSTT به resolver + دامنه نیاز دارد؛ بدون آرگومان درست فوری خارج می‌شود
                     sb.appendLine("UseBridges 1")
-                    sb.appendLine("ClientTransportPlugin dnstt exec ${dnsttPath}")
+                    sb.appendLine(
+                        "ClientTransportPlugin dnstt exec ${dnsttPath}" +
+                            " -udp 8.8.8.8:53"
+                    )
                     val bridges = if (!customBridges.isNullOrEmpty()) {
                         customBridges
                     } else {
-                        listOf("dnstt t.cdn.ns.fbcdn.net")
+                        // خط نمونه؛ کاربر باید پل واقعی از اپراتور DNSTT بگیردارد
+                        listOf("dnstt 1.2.3.4:443")
                     }
-                    bridges.forEach { sb.appendLine("Bridge $it") }
+                    bridges.take(2).forEach { sb.appendLine("Bridge $it") }
                 }
             }
         }

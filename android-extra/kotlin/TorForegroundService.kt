@@ -74,7 +74,22 @@ class TorForegroundService : Service() {
             SafeLog.e(TAG, "startForeground failed", e)
             return START_NOT_STICKY
         }
-        return START_STICKY
+        // START_NOT_STICKY: با بستن کامل برنامه سرویس دوباره زنده نشود
+        return START_NOT_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // کاربر برنامه را از Recent بست → Tor و نوتیفیکیشن را متوقف کن
+        try {
+            TorService.stop()
+        } catch (_: Exception) {
+        }
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } catch (_: Exception) {
+        }
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     private fun createChannel() {

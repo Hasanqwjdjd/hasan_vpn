@@ -147,6 +147,7 @@ jobs:
           cp -f android-extra/kotlin/TorService.kt "$KT_DIR/TorService.kt"
           cp -f android-extra/kotlin/TorForegroundService.kt "$KT_DIR/TorForegroundService.kt"
           cp -f android-extra/kotlin/LiveMonitorService.kt "$KT_DIR/LiveMonitorService.kt"
+          cp -f android-extra/kotlin/QuickConnectWidget.kt "$KT_DIR/QuickConnectWidget.kt"
           if [ -d android-extra/psiphon ] && [ "$(find android-extra/psiphon -name '*.aar' | wc -l)" -gt 0 ]; then
             echo "Using real Psiphon AAR"
             cp -f android-extra/kotlin/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
@@ -156,6 +157,27 @@ jobs:
             echo "Using Psiphon stub (no AAR)"
             cp -f android-extra/kotlin-stub/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
           fi
+
+      - name: Install Android widget resources
+        run: |
+          set -e
+          RES_DIR="build_src/android/app/src/main/res"
+          mkdir -p "$RES_DIR/drawable" "$RES_DIR/layout" "$RES_DIR/xml" "$RES_DIR/values"
+          if [ -d android-extra/res ]; then
+            cp -rf android-extra/res/. "$RES_DIR/"
+            echo "Widget resources copied"
+          fi
+          STRINGS="$RES_DIR/values/strings.xml"
+          if [ ! -f "$STRINGS" ]; then
+            {
+              echo '<?xml version="1.0" encoding="utf-8"?>'
+              echo '<resources>'
+              echo '    <string name="widget_description">Quick connect</string>'
+              echo '    <string name="app_name">Hasan VPN</string>'
+              echo '</resources>'
+            } > "$STRINGS"
+          fi
+
 
       - name: Psiphon embedded server list (optional)
         run: |
@@ -301,6 +323,22 @@ jobs:
                   android:foregroundServiceType="specialUse" />
           """
               text = text.replace("</application>", svc + "</application>", 1)
+
+          if 'QuickConnectWidget' not in text:
+              widget = """    <receiver
+                  android:name="com.hasan.hasan_vpn.QuickConnectWidget"
+                  android:enabled="true"
+                  android:exported="true"
+                  android:label="Hasan VPN">
+                  <intent-filter>
+                      <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                  </intent-filter>
+                  <meta-data
+                      android:name="android.appwidget.provider"
+                      android:resource="@xml/quick_connect_widget_info" />
+              </receiver>
+          """
+              text = text.replace("</application>", widget + "</application>", 1)
           with open(path, "w", encoding="utf-8") as f:
               f.write(text)
           PYEOF

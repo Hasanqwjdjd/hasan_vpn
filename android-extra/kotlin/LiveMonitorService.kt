@@ -22,8 +22,19 @@ object LiveMonitorService {
         val result = mutableMapOf<String, Any?>()
 
         // --- CPU ---
+        // نمونهٔ اول همیشه ۰ بود؛ برای اندازه‌گیری واقعی دو خواندن با فاصله لازم است.
         try {
-            val (idle, total) = readCpuStat()
+            var idleTotal = readCpuStat()
+            var idle = idleTotal.first
+            var total = idleTotal.second
+            if (lastCpuTotal <= 0L || total <= lastCpuTotal) {
+                lastCpuIdle = idle
+                lastCpuTotal = total
+                try { Thread.sleep(80) } catch (_: InterruptedException) {}
+                idleTotal = readCpuStat()
+                idle = idleTotal.first
+                total = idleTotal.second
+            }
             if (lastCpuTotal > 0L && total > lastCpuTotal) {
                 val totalDelta = total - lastCpuTotal
                 val idleDelta = idle - lastCpuIdle
@@ -76,9 +87,15 @@ object LiveMonitorService {
         }
 
         // --- Network traffic ---
+        // TrafficStats گاهی UNSUPPORTED (-1) برمی‌گرداند؛ در آن صورت ۰ می‌گذاریم.
         try {
-            result["rxBytes"] = TrafficStats.getTotalRxBytes()
-            result["txBytes"] = TrafficStats.getTotalTxBytes()
+            var rx = TrafficStats.getTotalRxBytes()
+            var tx = TrafficStats.getTotalTxBytes()
+            if (rx < 0L) rx = 0L
+            if (tx < 0L) tx = 0L
+            // به صورت Number بفرست تا Dart هم int و هم long را درست بخواند
+            result["rxBytes"] = rx
+            result["txBytes"] = tx
         } catch (_: Throwable) {
             result["rxBytes"] = 0L
             result["txBytes"] = 0L

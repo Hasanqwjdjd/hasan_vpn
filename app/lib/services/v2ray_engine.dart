@@ -6,6 +6,7 @@ import 'package:flutter_vless/flutter_vless.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
+import 'game_booster_settings.dart';
 import 'settings_service.dart';
 import 'socks_probe.dart';
 import 'telemetry_service.dart';
@@ -123,9 +124,7 @@ class V2RayEngine {
 
   static Future<String> _applyGameDns(String config) async {
     try {
-      final mode = await SettingsService.getVpnMode();
-      if (mode != 'proxy') return config;
-
+      // قبلاً فقط در حالت proxy اعمال می‌شد → در VPN واقعی DNS بازی نادیده گرفته می‌شد
       final dns = await SettingsService.getGameDns();
       if (dns == null || dns.length < 2) return config;
 
@@ -136,16 +135,13 @@ class V2RayEngine {
 
       final map = Map<String, dynamic>.from(json);
 
-      final servers = <String>[];
-      if (pref == 'ipv6') {
-        servers.addAll(<String>[
-          'https://dns.google/dns-query',
-          'https://cloudflare-dns.com/dns-query',
-        ]);
-      } else {
-        servers.addAll(<String>[dns[0], dns[1]]);
-      }
+      // فقط همان DNS انتخاب‌شده کاربر (نه DoH جایگزین که مسیر را عوض کند)
+      final servers = <dynamic>[
+        dns[0],
+        if (dns[1].isNotEmpty && dns[1] != dns[0]) dns[1],
+      ];
 
+      // برای بازی (COD و مشابه) IPv4 معمولاً پینگ پایدارتری دارد
       final queryStrategy = pref == 'ipv6'
           ? 'UseIPv6'
           : (pref == 'both' ? 'UseIP' : 'UseIPv4');
@@ -153,11 +149,123 @@ class V2RayEngine {
       map['dns'] = <String, dynamic>{
         'servers': servers,
         'queryStrategy': queryStrategy,
+        // کش کوچک‌تر = رزولوشن تازه‌تر برای سرورهای بازی
+        'cacheSize': 64,
+        'disableCache': false,
       };
+
+      // اگر routing وجود دارد، domainStrategy را برای سرعت بهتر تنظیم کن
+      final routing = map['routing'];
+      if (routing is Map) {
+        final r = Map<String, dynamic>.from(routing);
+        r['domainStrategy'] = r['domainStrategy'] ?? 'AsIs';
+        map['routing'] = r;
+      }
 
       return jsonEncode(map);
     } catch (e) {
       debugPrint('applyGameDns error: $e');
+      return config;
+    }
+  }
+
+  /// حالت بازی: فایروال سبک + DNS روی کانفیگ Xray
+  static Future<String> _applyGameBooster(String config) async {
+    try {
+      final s = await GameBoosterSettings.load();
+      if (s['enabled'] != true) return config;
+
+      final dynamic json = jsonDecode(config);
+      if (json is! Map) return config;
+      final map = Map<String, dynamic>.from(json);
+
+      // --- DNS: اجبار IPv4 + کش کوچک ---
+      final dns = Map<String, dynamic>.from(
+        (map['dns'] is Map)
+            ? Map<String, dynamic>.from(map['dns'] as Map)
+            : <String, dynamic>{},
+      );
+      if (s['forceIpv4'] == true) {
+        dns['queryStrategy'] = 'UseIPv4';
+      }
+      if (s['smallDnsCache'] == true) {
+        dns['cacheSize'] = 32;
+      }
+      map['dns'] = dns;
+
+      // --- blackhole outbound ---
+      final outbounds = <dynamic>[];
+      if (map['outbounds'] is List) {
+        outbounds.addAll(map['outbounds'] as List);
+      }
+      final hasBlock = outbounds.any(
+        (o) => o is Map && (o['tag'] == 'block' || o['tag'] == 'blackhole'),
+      );
+      if (!hasBlock) {
+        outbounds.add({
+          'tag': 'block',
+          'protocol': 'blackhole',
+          'settings': {
+            'response': {'type': 'none'},
+          },
+        });
+      }
+      map['outbounds'] = outbounds;
+
+      // --- routing rules ---
+      final routing = Map<String, dynamic>.from(
+        (map['routing'] is Map)
+            ? Map<String, dynamic>.from(map['routing'] as Map)
+            : <String, dynamic>{'domainStrategy': 'AsIs', 'rules': <dynamic>[]},
+      );
+      if (s['forceIpv4'] == true) {
+        routing['domainStrategy'] = 'AsIs';
+      }
+      final rules = <dynamic>[];
+      if (routing['rules'] is List) {
+        rules.addAll(routing['rules'] as List);
+      }
+
+      // مسدودسازی QUIC (UDP/443) — ترافیک رقابتی کمتر
+      if (s['blockQuic'] == true) {
+        rules.insert(0, {
+          'type': 'field',
+          'network': 'udp',
+          'port': '443',
+          'outboundTag': 'block',
+        });
+      }
+
+      // بلاک IPv6 در سطح مسیر (تقریبی)
+      if (s['forceIpv4'] == true) {
+        rules.insert(0, {
+          'type': 'field',
+          'ip': ['::/0'],
+          'outboundTag': 'block',
+        });
+      }
+
+      final blockDomains = <String>[];
+      if (s['blockTelemetry'] == true) {
+        blockDomains.addAll(GameBoosterSettings.telemetryDomains);
+      }
+      if (s['blockAds'] == true) {
+        blockDomains.addAll(GameBoosterSettings.adDomains);
+      }
+      if (blockDomains.isNotEmpty) {
+        rules.insert(0, {
+          'type': 'field',
+          'domain': blockDomains.map((d) => 'domain:$d').toList(),
+          'outboundTag': 'block',
+        });
+      }
+
+      routing['rules'] = rules;
+      map['routing'] = routing;
+
+      return jsonEncode(map);
+    } catch (e) {
+      debugPrint('applyGameBooster error: $e');
       return config;
     }
   }
@@ -195,6 +303,7 @@ class V2RayEngine {
       }
 
       config = await _applyGameDns(config);
+      config = await _applyGameBooster(config);
 
       return await startConfig(
         remark: remark,

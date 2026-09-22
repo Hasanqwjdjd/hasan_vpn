@@ -33,9 +33,10 @@ class TorBridges {
     'snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72',
   ];
 
-  /// DNSTT پیش‌فرض.
+  /// DNSTT — بدون خط معتبر از اپراتور معمولاً وصل نمی‌شود.
+  /// فرمت نمونه: `dnstt domain.example pubkey=...` یا IP:port
   static const List<String> dnstt = <String>[
-    'dnstt t.cdn.ns.fbcdn.net',
+    // placeholder — کاربر باید پل واقعی اضافه کند
   ];
 
   /// برای هر نوع، لیست پل‌های رایگان/پیشنهادی را برمی‌گرداند.
@@ -79,5 +80,21 @@ class TorBridges {
     }
     if (parts.isNotEmpty) return parts[0];
     return bridgeLine;
+  }
+
+  /// استخراج host و port از خط پل برای پینگ TCP.
+  /// مثال: `obfs4 85.31.186.98:443 FINGERPRINT cert=...`
+  static ({String host, int port})? parseEndpoint(String bridgeLine) {
+    final parts = bridgeLine.trim().split(RegExp(r'\s+'));
+    if (parts.length < 2) return null;
+    final ep = parts[1];
+    // آدرس‌های ساختگی meek/snowflake قابل پینگ نیستند
+    if (ep.startsWith('192.0.2.')) return null;
+    final colon = ep.lastIndexOf(':');
+    if (colon <= 0 || colon >= ep.length - 1) return null;
+    final host = ep.substring(0, colon);
+    final port = int.tryParse(ep.substring(colon + 1));
+    if (host.isEmpty || port == null || port <= 0) return null;
+    return (host: host, port: port);
   }
 }

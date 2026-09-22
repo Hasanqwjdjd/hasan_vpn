@@ -23,6 +23,22 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
 
+  int _asInt(dynamic v) {
+    if (v == null) return 0;
+    if (v is int) return v;
+    if (v is double) return v.toInt();
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString()) ?? 0;
+  }
+
+  double _asDouble(dynamic v) {
+    if (v == null) return 0.0;
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0.0;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -30,16 +46,17 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
       final now = DateTime.now();
       final dt = now.difference(_lastTick).inMilliseconds / 1000.0;
       _lastTick = now;
-      final rx = (d['rxBytes'] as int?) ?? 0;
-      final tx = (d['txBytes'] as int?) ?? 0;
-      if (dt > 0 && _prevRx > 0) {
-        _dlSpeed = (rx - _prevRx) / dt / 1024;
-        _ulSpeed = (tx - _prevTx) / dt / 1024;
+      // Platform channel ممکن است int/double برگرداند — cast سخت می‌شکست
+      final rx = _asInt(d['rxBytes']);
+      final tx = _asInt(d['txBytes']);
+      if (dt > 0.2 && _prevRx > 0 && rx >= _prevRx) {
+        _dlSpeed = (rx - _prevRx) / dt / 1024.0;
+        _ulSpeed = (tx - _prevTx) / dt / 1024.0;
         if (_dlSpeed < 0) _dlSpeed = 0;
         if (_ulSpeed < 0) _ulSpeed = 0;
       }
-      _prevRx = rx;
-      _prevTx = tx;
+      if (rx > 0) _prevRx = rx;
+      if (tx > 0) _prevTx = tx;
       if (mounted) setState(() => _data = d);
     });
     _svc.start();
@@ -102,10 +119,10 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cpu = (_data['cpu'] as num?)?.toDouble() ?? 0;
-    final memUsed = _data['memUsedMb'] as int? ?? 0;
-    final battery = _data['battery'] as int? ?? 0;
-    final temp = (_data['temp'] as num?)?.toDouble() ?? 0;
+    final cpu = _asDouble(_data['cpu']);
+    final memUsed = _asInt(_data['memUsedMb']);
+    final battery = _asInt(_data['battery']);
+    final temp = _asDouble(_data['temp']);
 
     return Scaffold(
       backgroundColor: AppColors.bg(context),

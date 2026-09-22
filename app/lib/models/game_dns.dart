@@ -17,6 +17,14 @@ class GameDns {
 }
 
 final List<GameDns> kGameDnsList = const <GameDns>[
+  // ---------- 🎮 مخصوص بازی (پینگ پایین‌تر در ایران / COD) ----------
+  GameDns(name: '🎮 Electro', primary: '78.157.42.100', secondary: '78.157.42.101'),
+  GameDns(name: '🎮 Electro 2', primary: '78.157.42.101', secondary: '78.157.42.100'),
+  GameDns(name: '🎮 403 Online', primary: '10.202.10.202', secondary: '10.202.10.102'),
+  GameDns(name: '🎮 Radar Game', primary: '10.202.10.10', secondary: '10.202.10.11'),
+  GameDns(name: '🎮 Shecan Gaming', primary: '185.51.200.2', secondary: '178.22.122.100'),
+  GameDns(name: '🎮 Begzar', primary: '185.55.226.26', secondary: '185.55.225.25'),
+
   // ---------- 🇮🇷 ایران ----------
   GameDns(name: '🇮🇷 ایران ۱', primary: '37.32.5.61', secondary: '37.32.5.60'),
   GameDns(name: '🇮🇷 ایران ۲', primary: '10.139.177.22', secondary: '10.139.177.21'),

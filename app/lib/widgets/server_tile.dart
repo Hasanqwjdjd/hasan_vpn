@@ -16,6 +16,7 @@ class ServerTile extends StatelessWidget {
   final VoidCallback? onShare;
   final VoidCallback? onEdit;
   final VoidCallback? onTest;
+  final VoidCallback? onHomeWidget;
 
   const ServerTile({
     super.key,
@@ -28,6 +29,7 @@ class ServerTile extends StatelessWidget {
     this.onShare,
     this.onEdit,
     this.onTest,
+    this.onHomeWidget,
   });
 
   String get _caption {
@@ -252,6 +254,13 @@ class ServerTile extends StatelessWidget {
                     onPressed: server.status == ServerStatus.testing
                         ? null
                         : onTest,
+                  ),
+
+                if (onHomeWidget != null)
+                  _smallIcon(
+                    icon: Icons.widgets_outlined,
+                    color: AppColors.accent,
+                    onPressed: onHomeWidget,
                   ),
 
                 if (onShare != null)

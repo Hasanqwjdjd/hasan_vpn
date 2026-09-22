@@ -15,6 +15,7 @@ import '../services/settings_service.dart';
 import '../services/exit_ip_service.dart';
 import '../services/psiphon_service.dart';
 import '../services/v2ray_engine.dart';
+import '../services/home_widget_service.dart';
 import '../widgets/server_tile.dart';
 import 'add_config_screen.dart';
 import 'announcements_screen.dart';
@@ -503,6 +504,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     _rebuildServerList();
     _savePinned();
+  }
+
+  Future<void> _pinServerToHome(VpnServer server) async {
+    await HomeWidgetService.pin(
+      type: 'server',
+      title: server.displayName,
+      subtitle: server.host.isNotEmpty ? server.host : server.protocol.name,
+      payload: server.id,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_t(
+          'به ویجت صفحهٔ اصلی اضافه شد — ویجت Hasan را از صفحهٔ اصلی اضافه کنید',
+          'Pinned to home widget — add Hasan widget from home screen',
+        )),
+      ),
+    );
   }
 
   void _sortCurrentServers() {
@@ -1385,6 +1404,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             ? () => _deleteServer(server)
                             : null,
                         onPin: () => _togglePin(server),
+                        onHomeWidget: () => _pinServerToHome(server),
                         onShare: _customServers.any((s) => s.id == server.id)
                             ? () => _shareServer(server)
                             : null,
