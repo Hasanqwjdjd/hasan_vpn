@@ -1,5 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
+import 'services/v2ray_engine.dart';
+import 'services/settings_service.dart';
+import 'models/server.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'models/subscription.dart';
@@ -10,6 +15,101 @@ import 'services/app_colors.dart';
 import 'screens/home_screen.dart';
 import 'screens/subscriptions_screen.dart';
 import 'screens/settings_screen.dart';
+
+/// Entry point برای اجرا از ویجت ۱×۱ در پس‌زمینه (بدون UI).
+/// این تابع توسط FlutterEngine بدون Activity اجرا می‌شود.
+@pragma('vm:entry-point')
+Future<void> widgetHeadlessMain() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  const channel = MethodChannel('com.hasan.hasan_vpn/widget_headless');
+
+  // گوش دادن به درخواست‌های اتصال از Kotlin
+  channel.setMethodCallHandler((call) async {
+    if (call.method == 'connectFromWidget') {
+      final args = call.arguments as Map?;
+      if (args == null) return {'ok': false, 'error': 'no args'};
+
+      final type = args['type']?.toString() ?? 'server';
+      final payload = args['payload']?.toString() ?? '';
+      final title = args['title']?.toString() ?? '';
+
+      if (payload.isEmpty) return {'ok': false, 'error': 'empty payload'};
+
+      try {
+        // ساخت VpnServer از payload (shareLink)
+        VpnServer? server;
+        if (type == 'server') {
+          server = _buildServerFromShareLink(payload, title);
+        }
+        if (server == null) {
+          return {'ok': false, 'error': 'cannot build server from payload'};
+        }
+
+        // اتصال از طریق موتور VPN موجود
+        await V2RayEngine.init();
+        final ok = await V2RayEngine.startConfig(
+          remark: server.displayName,
+          config: server.shareLink,
+          server: server,
+        );
+
+        return {'ok': ok};
+      } catch (e) {
+        return {'ok': false, 'error': e.toString()};
+      }
+    }
+    return null;
+  });
+
+  // علامت‌گذاری که آماده‌ایم
+  try {
+    await channel.invokeMethod('headlessReady');
+  } catch (_) {}
+}
+
+/// ساخت VpnServer از یک shareLink (vless://, vmess://, trojan://, ss://)
+VpnServer? _buildServerFromShareLink(String shareLink, String title) {
+  try {
+    final uri = Uri.parse(shareLink);
+    final scheme = uri.scheme.toLowerCase();
+    VpnProtocol proto;
+    switch (scheme) {
+      case 'vless':
+        proto = VpnProtocol.vless;
+        break;
+      case 'vmess':
+        proto = VpnProtocol.vmess;
+        break;
+      case 'trojan':
+        proto = VpnProtocol.trojan;
+        break;
+      case 'ss':
+        proto = VpnProtocol.shadowsocks;
+        break;
+      case 'hysteria2':
+        proto = VpnProtocol.hysteria2;
+        break;
+      default:
+        return null;
+    }
+    final host = uri.host;
+    final port = uri.port;
+    if (host.isEmpty || port <= 0) return null;
+    return VpnServer(
+      id: 'widget_${DateTime.now().millisecondsSinceEpoch}',
+      name: title.isNotEmpty ? title : host,
+      flag: '⚡',
+      shareLink: shareLink,
+      protocol: proto,
+      host: host,
+      port: port,
+      isDeletable: false,
+    );
+  } catch (_) {
+    return null;
+  }
+}
 
 void main() {
   // در نسخهٔ نهایی هیچ لاگی (خطاها، آدرس‌ها، کانفیگ‌ها) روی logcat نمی‌رود.

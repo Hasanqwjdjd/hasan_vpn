@@ -39,14 +39,19 @@ class QuickConnectWidget1x1 : AppWidgetProvider() {
             val type = intent.getStringExtra(EXTRA_TYPE) ?: "server"
             val payload = intent.getStringExtra(EXTRA_PAYLOAD) ?: ""
             val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
-            // Activity شفاف — بدون ماندن روی UI (شبیه v2rayNG)
-            val launch = Intent(context, WidgetBgConnectActivity::class.java).apply {
-                putExtra("widget_type", type)
-                putExtra("widget_payload", payload)
-                putExtra("widget_title", title)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+            // ─── اتصال کاملاً بدون UI از طریق WidgetConnectService ───
+            try {
+                WidgetConnectService.start(context, type, payload, title)
+            } catch (_: Exception) {
+                // fallback: اگر سرویس کار نکرد، از Activity شفاف استفاده کن
+                val launch = Intent(context, WidgetBgConnectActivity::class.java).apply {
+                    putExtra("widget_type", type)
+                    putExtra("widget_payload", payload)
+                    putExtra("widget_title", title)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                }
+                context.startActivity(launch)
             }
-            context.startActivity(launch)
         }
     }
 
