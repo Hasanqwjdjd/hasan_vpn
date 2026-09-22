@@ -1000,8 +1000,8 @@ class _TorScreenState extends State<TorScreen> {
                         },
                       ),
                       IconButton(
-                        icon: const Icon(Icons.share_outlined,
-                            color: AppColors.muted2, size: 18),
+                        icon: Icon(Icons.share_outlined,
+                            color: AppColors.muted2(context), size: 18),
                         tooltip: _t('اشتراک‌گذاری', 'Share'),
                         onPressed: () {
                           Clipboard.setData(ClipboardData(text: b));
