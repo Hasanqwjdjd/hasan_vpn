@@ -1655,7 +1655,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         iconTheme: IconThemeData(color: AppColors.fg(context)),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

@@ -140,9 +140,22 @@ class QuickWidgetService {
     required String name,
     required String shareLink,
     String host = '',
-  }) {
+  }) async {
+    // index رو خودکار پیدا کن (اولین اسلات خالی از 0..3)
+    final slots = await load();
+    final used = slots.map((s) => s.index).toSet();
+    int freeIndex = -1;
+    for (var i = 0; i < 4; i++) {
+      if (!used.contains(i)) {
+        freeIndex = i;
+        break;
+      }
+    }
+    // اگه پر بود، اسلات ۰ رو overwrite کن
+    if (freeIndex < 0) freeIndex = 0;
+
     return addOrReplace(QuickWidgetSlot(
-      index: 0,
+      index: freeIndex,
       type: 'server',
       id: id,
       title: name,
@@ -155,9 +168,19 @@ class QuickWidgetService {
     required String name,
     required String primary,
     required String secondary,
-  }) {
+  }) async {
+    final slots = await load();
+    final used = slots.map((s) => s.index).toSet();
+    int freeIndex = -1;
+    for (var i = 0; i < 4; i++) {
+      if (!used.contains(i)) {
+        freeIndex = i;
+        break;
+      }
+    }
+    if (freeIndex < 0) freeIndex = 0;
     return addOrReplace(QuickWidgetSlot(
-      index: 0,
+      index: freeIndex,
       type: 'dns',
       id: '$primary|$secondary',
       title: name,
@@ -169,9 +192,19 @@ class QuickWidgetService {
   static Future<bool> pinTorBridge({
     required String label,
     required String bridgeLine,
-  }) {
+  }) async {
+    final slots = await load();
+    final used = slots.map((s) => s.index).toSet();
+    int freeIndex = -1;
+    for (var i = 0; i < 4; i++) {
+      if (!used.contains(i)) {
+        freeIndex = i;
+        break;
+      }
+    }
+    if (freeIndex < 0) freeIndex = 0;
     return addOrReplace(QuickWidgetSlot(
-      index: 0,
+      index: freeIndex,
       type: 'tor_bridge',
       id: bridgeLine.hashCode.toString(),
       title: label,

@@ -38,10 +38,9 @@ class TorBridges {
   ];
 
   /// پل‌های conjure پیش‌فرض.
-  static const List<String> conjure = <String>[
-    'conjure 192.0.2.3:80 url=https://registration.refraction.network/api',
-    'conjure 192.0.2.4:80 url=https://registration.refraction.network/api',
-  ];
+  // Conjure در سال ۲۰۲۳ توسط Tor Project متوقف شد.
+  // این لیست خالیه تا کاربر وقتش رو با این بریج تلف نکنه.
+  static const List<String> conjure = <String>[];
 
   /// Snowflake — چند خط استاندارد.
   static const List<String> snowflake = <String>[

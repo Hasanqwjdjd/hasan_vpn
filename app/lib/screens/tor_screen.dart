@@ -142,7 +142,7 @@ class _TorScreenState extends State<TorScreen> {
       'ajax.aspnetcdn.com',
       'verizon.com',
       'eset.com',
-      ...TorSniPresets.all.take(20),
+      ...TorSniPresets.all,
     }.toList();
     String? best;
     for (final host in candidates) {
