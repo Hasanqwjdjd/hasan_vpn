@@ -46,6 +46,14 @@ class WidgetConnectService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // ★ اول از همه startForeground را صدا بزن — وگرنه Android سرویس را
+        // حداکثر تا ۵ ثانیه kill می‌کند (ForegroundServiceDidNotStartInTimeException).
+        // این باید قبل از هر read، check، یا activity launch باشد.
+        val initialAction = if (isVpnConnected()) ACTION_DISCONNECT else ACTION_CONNECT
+        try {
+            startFgQuiet(initialAction)
+        } catch (_: Exception) {}
+
         val origType = intent?.getStringExtra(EXTRA_TYPE) ?: "server"
         val origPayload = intent?.getStringExtra(EXTRA_PAYLOAD) ?: ""
         val origTitle = intent?.getStringExtra(EXTRA_TITLE) ?: ""
@@ -60,6 +68,7 @@ class WidgetConnectService : Service() {
             val bound = readWidgetBinding(widgetId)
             if (bound == null) {
                 // binding نداره → MainActivity رو باز کن تا کاربر انتخاب کنه
+                // startForeground قبلاً صدا زده شده، پس safe است
                 openAppForWidgetSelection(widgetId)
                 return START_NOT_STICKY
             }
@@ -76,6 +85,7 @@ class WidgetConnectService : Service() {
         // Toggle: اگه الان یک VPN فعاله → این تپ یعنی قطع؛ وگرنه یعنی وصل.
         val action = if (isVpnConnected()) ACTION_DISCONNECT else ACTION_CONNECT
 
+        // startForeground قبلاً صدا زده شده؛ فقط notification را با action به‌روز کن
         try {
             startFgQuiet(action)
         } catch (_: Exception) {}
