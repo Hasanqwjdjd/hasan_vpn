@@ -1679,20 +1679,14 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: AppColors.accent,
             ),
             _buildTypeCard(
-              title: 'Aether',
-              subtitle: _t('دور زدن فیلترینگ با اسکن خودکار مسیر',
-                  'Censorship circumvention with automatic route scanning'),
+              title: 'Aether / Oblivion',
+              subtitle: _t(
+                'WARP + اسکن مسیر + MASQUE/WireGuard (ادغام‌شده)',
+                'WARP + route scan + MASQUE/WireGuard (merged)',
+              ),
               icon: Icons.auto_awesome,
               type: 'aether',
               color: const Color(0xFF7C4DFF),
-            ),
-            _buildTypeCard(
-              title: 'Oblivion',
-              subtitle: _t('ساخت کانفیگ رایگان Oblivion (WARP)',
-                  'Generate free Oblivion (WARP) config'),
-              icon: Icons.cloud,
-              type: 'oblivion',
-              color: const Color(0xFF29B6F6),
             ),
             _buildTypeCard(
               title: 'Siphon',
@@ -1944,9 +1938,11 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   ),
                 ),
               ),
-            ] else if (_selectedType == 'aether') ...[
+            ] else if (_selectedType == 'aether' ||
+                _selectedType == 'oblivion') ...[
+              // بخش ادغام‌شده Aether + Oblivion
               _buildAetherForm(),
-            ] else if (_selectedType == 'oblivion') ...[
+              const SizedBox(height: 16),
               _buildOblivionForm(),
             ] else if (_selectedType == 'siphon') ...[
               _buildSiphonForm(),

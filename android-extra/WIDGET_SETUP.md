@@ -122,3 +122,16 @@ private fun pushWidgetIntent(i: Intent, engine: FlutterEngine) {
 ## نکته واقعی دربارهٔ «بدون باز شدن برنامه»
 
 Android برای شروع VPN معمولاً به یک Context اپ نیاز دارد. v2rayNG هم Activity کوتاه/شفاف دارد. `WidgetBgConnectActivity` همان نقش را دارد و بلافاصله `finish` می‌شود؛ کاربر عملاً UI کامل نمی‌بیند. اتصال کامل بدون هیچ Activity فقط با `VpnService` از قبل مجوزگرفته ممکن است و به کد بومی هستهٔ VPN وابسته است.
+
+## moveTaskToBack (ویجت ۱×۱)
+
+در MethodChannel handler:
+
+```kotlin
+"moveTaskToBack" -> {
+  moveTaskToBack(true)
+  result.success(true)
+}
+```
+
+این باعث می‌شود بعد از شروع اتصال، اپ به پس‌زمینه برود و کاربر مثل v2rayNG UI کامل نبیند.

@@ -311,19 +311,31 @@ object TorService {
             }
             "dnstt" -> {
                 if (dnsttPath != null) {
-                    // DNSTT به resolver + دامنه نیاز دارد؛ بدون آرگومان درست فوری خارج می‌شود
+                    // Slipnet-style DNSTT: -udp RESOLVER + Bridge dnstt DOMAIN
                     sb.appendLine("UseBridges 1")
-                    sb.appendLine(
-                        "ClientTransportPlugin dnstt exec ${dnsttPath}" +
-                            " -udp 8.8.8.8:53"
-                    )
                     val bridges = if (!customBridges.isNullOrEmpty()) {
                         customBridges
                     } else {
-                        // خط نمونه؛ کاربر باید پل واقعی از اپراتور DNSTT بگیردارد
-                        listOf("dnstt 1.2.3.4:443")
+                        emptyList()
                     }
-                    bridges.take(2).forEach { sb.appendLine("Bridge $it") }
+                    var resolver = "8.8.8.8:53"
+                    if (bridges.isNotEmpty()) {
+                        val m = Regex("""resolver=([^\\s]+)""").find(bridges.first())
+                        if (m != null) resolver = m.groupValues[1]
+                    }
+                    sb.appendLine(
+                        "ClientTransportPlugin dnstt exec ${dnsttPath} -udp ${resolver}"
+                    )
+                    if (bridges.isNotEmpty()) {
+                        bridges.take(3).forEach { line ->
+                            val t = line.trim()
+                            if (t.startsWith("Bridge ", ignoreCase = true)) {
+                                sb.appendLine(t)
+                            } else {
+                                sb.appendLine("Bridge $t")
+                            }
+                        }
+                    }
                 }
             }
         }

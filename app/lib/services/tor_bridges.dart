@@ -50,10 +50,11 @@ class TorBridges {
     'snowflake 192.0.2.5:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ fronts=cdn.sstatic.net ice=stun:stun.l.google.com:19302,stun:stun.antisip.com:3478',
   ];
 
-  /// DNSTT — نمونه‌های نمایشی (برای کار واقعی دامنه/کلید لازم است).
+  /// DNSTT سبک Slipnet: دامنه + resolver (+ pubkey واقعی از اپراتور).
   static const List<String> dnstt = <String>[
-    'dnstt t.cdn.ns.fbcdn.net',
-    'dnstt dns.google',
+    'dnstt dns.google resolver=8.8.8.8:53',
+    'dnstt cloudflare-dns.com resolver=1.1.1.1:53',
+    'dnstt dns.quad9.net resolver=9.9.9.9:53',
   ];
 
   /// برای هر نوع، لیست پل‌های رایگان/پیشنهادی را برمی‌گرداند.

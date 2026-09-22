@@ -86,6 +86,8 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   Map<String, dynamic> _booster = Map<String, dynamic>.from(
     GameBoosterSettings.defaults,
   );
+  /// جمع/باز کردن گزینه‌های حالت بازی (علامت ^ / v)
+  bool _boosterExpanded = false;
 
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
@@ -1232,41 +1234,67 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  title: Text(
-                    _t('حالت بازی (DNS + فایروال)', 'Game Mode (DNS + Firewall)'),
-                    style: TextStyle(
-                      color: AppColors.fg(context),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
+                Row(
+                  children: [
+                    Expanded(
+                      child: SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(
+                          _t('حالت بازی (DNS + فایروال)',
+                              'Game Mode (DNS + Firewall)'),
+                          style: TextStyle(
+                            color: AppColors.fg(context),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        subtitle: _boosterExpanded
+                            ? Text(
+                                _t(
+                                  'مسدودسازی QUIC/IPv6/تله‌متری + DNS بازی',
+                                  'Block QUIC/IPv6/telemetry + game DNS',
+                                ),
+                                style: TextStyle(
+                                    color: AppColors.muted2(context),
+                                    fontSize: 10),
+                              )
+                            : null,
+                        value: _booster['enabled'] == true,
+                        activeColor: AppColors.accent,
+                        onChanged: (v) async {
+                          setState(() {
+                            _booster['enabled'] = v;
+                            if (v) _boosterExpanded = true;
+                          });
+                          if (v) {
+                            setState(() {
+                              _booster['blockQuic'] = true;
+                              _booster['forceIpv4'] = true;
+                              _ipPref = 'ipv4';
+                            });
+                            await SettingsService.setDnsIpPreference('ipv4');
+                          }
+                          await GameBoosterSettings.save(_booster);
+                        },
+                      ),
                     ),
-                  ),
-                  subtitle: Text(
-                    _t(
-                      'مسدودسازی QUIC/IPv6/تله‌متری + DNS بازی — پینگ را پایدارتر می‌کند (زیر ۳۰ تضمینی نیست)',
-                      'Block QUIC/IPv6/telemetry + game DNS — stabilizes ping (sub-30 not guaranteed)',
+                    IconButton(
+                      tooltip: _boosterExpanded
+                          ? _t('جمع کردن', 'Collapse')
+                          : _t('باز کردن', 'Expand'),
+                      onPressed: () =>
+                          setState(() => _boosterExpanded = !_boosterExpanded),
+                      icon: Icon(
+                        _boosterExpanded
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
+                        color: AppColors.accent,
+                      ),
                     ),
-                    style: TextStyle(
-                        color: AppColors.muted2(context), fontSize: 10),
-                  ),
-                  value: _booster['enabled'] == true,
-                  activeColor: AppColors.accent,
-                  onChanged: (v) async {
-                    setState(() => _booster['enabled'] = v);
-                    if (v) {
-                      setState(() {
-                        _booster['blockQuic'] = true;
-                        _booster['forceIpv4'] = true;
-                        _ipPref = 'ipv4';
-                      });
-                      await SettingsService.setDnsIpPreference('ipv4');
-                    }
-                    await GameBoosterSettings.save(_booster);
-                  },
+                  ],
                 ),
-                if (_booster['enabled'] == true) ...[
+                if (_booster['enabled'] == true && _boosterExpanded) ...[
                   const Divider(height: 12),
                   _boosterSwitch(
                     'blockQuic',

@@ -94,8 +94,9 @@ class SocksProbe {
   SocksProbe._();
 
   static const List<_Target> _targets = <_Target>[
-    _Target('cp.cloudflare.com', 80, '/generate_204'),
+    _Target('www.gstatic.com', 443, '/generate_204'),
     _Target('www.gstatic.com', 80, '/generate_204'),
+    _Target('cp.cloudflare.com', 80, '/generate_204'),
   ];
 
   static Future<bool> isPortOpen(int port,

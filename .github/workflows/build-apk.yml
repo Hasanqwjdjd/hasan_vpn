@@ -42,7 +42,7 @@ jobs:
       - name: Compute app version
         id: appver
         run: |
-          BASE=321
+          BASE=323
           N=$(( ${{ github.run_number }} - BASE ))
           if [ "$N" -lt 0 ]; then N=0; fi
           MINOR=$(( 2 + N / 5 ))

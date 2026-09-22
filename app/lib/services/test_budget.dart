@@ -20,7 +20,8 @@ class TestBudget {
     this.tcpFallback = true,
   });
 
-  int get realConcurrency => direct.clamp(2, 4).toInt();
+  /// هم‌زمانی بالاتر = تست سریع‌تر؛ سقف ۸ برای حفظ دقت پینگ واقعی
+  int get realConcurrency => direct.clamp(4, 8).toInt();
   int get worstCaseSec => timeoutSec * samples;
 
   static int _pick(dynamic raw, List<int> options, int fallback) {

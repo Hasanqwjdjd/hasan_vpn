@@ -16,7 +16,7 @@ import 'xray_settings.dart';
 class V2RayEngine {
   V2RayEngine._();
 
-  static const String _defaultDelayUrl = 'http://cp.cloudflare.com/generate_204';
+  static const String _defaultDelayUrl = 'https://www.gstatic.com/generate_204';
   static String delayUrl = _defaultDelayUrl;
 
   static bool _initialized = false;

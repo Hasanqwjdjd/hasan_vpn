@@ -116,6 +116,7 @@ class MainActivity : FlutterActivity() {
                 "updateWidgets" -> { refreshAllWidgets(); result.success(true) }
                 "getInitialIntent" -> result.success(intentToMap(intent))
                 "getLaunchExtras" -> result.success(intentToMap(intent))
+                "moveTaskToBack" -> { moveTaskToBack(true); result.success(true) }
                 else -> result.notImplemented()
             }
         }
@@ -126,6 +127,7 @@ class MainActivity : FlutterActivity() {
                 "updateWidgets" -> { refreshAllWidgets(); result.success(true) }
                 "getInitialIntent" -> result.success(intentToMap(intent))
                 "getLaunchExtras" -> result.success(intentToMap(intent))
+                "moveTaskToBack" -> { moveTaskToBack(true); result.success(true) }
                 else -> result.notImplemented()
             }
         }

@@ -124,9 +124,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _handleWidgetRequest(WidgetConnectRequest req) async {
     if (!mounted || req.payload.isEmpty) return;
 
-    if (req.type == 'dns') {
-      // payload: primary|secondary
-      final parts = req.payload.split('|');
+    // به ریشه برگرد تا صفحهٔ قبلی (مثلاً Tor) باز نماند
+    try {
+      Navigator.of(context).popUntil((r) => r.isFirst);
+    } catch (_) {}
+
+    final payload = req.payload.trim();
+    final looksLikeBridge = RegExp(
+      r'^(obfs4|snowflake|meek|conjure|dnstt)\b',
+      caseSensitive: false,
+    ).hasMatch(payload);
+    final type = looksLikeBridge ? 'tor' : req.type;
+
+    if (type == 'dns') {
+      final parts = payload.split('|');
       final primary = parts.isNotEmpty ? parts[0].trim() : '';
       final secondary = parts.length > 1 ? parts[1].trim() : '';
       if (primary.isEmpty) return;
@@ -136,17 +147,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         'DNS بازی از ویجت: $primary',
         'Game DNS from widget: $primary',
       ));
-      // اگر VPN وصل است، DNS در کانفیگ بعدی اعمال می‌شود
+      if (req.bgConnect) await _maybeMoveTaskToBack();
       return;
     }
 
-    if (req.type == 'tor') {
+    if (type == 'tor') {
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => TorScreen(
             language: widget.language,
-            initialBridgeLine: req.payload,
+            initialBridgeLine: payload,
             autoConnect: req.autoConnect,
           ),
         ),
@@ -154,14 +165,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // server
+    // server — فقط صفحهٔ اصلی + اتصال همان سرور
     final idx = _servers.indexWhere(
-      (s) => s.id == req.payload || s.shareLink == req.payload,
+      (s) =>
+          s.id == payload ||
+          s.shareLink == payload ||
+          s.displayName == req.title,
     );
     if (idx < 0) {
       _showMsg(_t(
-        'سرور ویجت پیدا نشد',
-        'Widget server not found',
+        'سرور ویجت پیدا نشد — دوباره از داخل اپ پین کنید',
+        'Widget server not found — pin again from the app',
       ));
       return;
     }
@@ -171,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (!req.autoConnect) return;
     if (_connected && _active?.id == server.id) {
-      _showMsg(_t('قبلاً متصل است', 'Already connected'));
+      if (req.bgConnect) await _maybeMoveTaskToBack();
       return;
     }
     if (_connected) {
@@ -182,6 +196,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     if (!mounted) return;
     await _toggleConnection();
+    if (req.bgConnect) await _maybeMoveTaskToBack();
+  }
+
+  /// ویجت ۱×۱: بعد از شروع اتصال، اپ را به پس‌زمینه بفرست
+  Future<void> _maybeMoveTaskToBack() async {
+    try {
+      const ch = MethodChannel('com.hasan.hasan_vpn/widget');
+      await ch.invokeMethod('moveTaskToBack');
+    } catch (_) {}
   }
 
   @override

@@ -454,8 +454,16 @@ class _TorScreenState extends State<TorScreen> {
     }
     if (lower.contains('dnstt')) {
       return _t(
-        'DNSTT قطع شد — پل معتبر (دامنه/resolver) لازم است یا از obfs4 استفاده کنید',
-        'DNSTT failed — need a valid domain/resolver bridge, or use obfs4',
+        'DNSTT قطع شد — دامنه+pubkey واقعی (سبک Slipnet) لازم است یا از obfs4 استفاده کنید',
+        'DNSTT failed — need real domain+pubkey (Slipnet-style), or use obfs4',
+      );
+    }
+    if (lower.contains('conjure') ||
+        lower.contains('registration fail') ||
+        lower.contains('libconjure')) {
+      return _t(
+        'Conjure ثبت‌نام نشد — پل ساختگی یا شبکه refraction در دسترس نیست. obfs4 یا snowflake را امتحان کنید.',
+        'Conjure registration failed — dummy bridge or refraction unreachable. Try obfs4 or snowflake.',
       );
     }
     if (lower.contains('exited') || lower.contains('exit')) {
