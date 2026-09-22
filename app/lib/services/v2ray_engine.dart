@@ -16,7 +16,7 @@ import 'xray_settings.dart';
 class V2RayEngine {
   V2RayEngine._();
 
-  static const String _defaultDelayUrl = 'https://www.gstatic.com/generate_204';
+  static const String _defaultDelayUrl = 'http://www.gstatic.com/generate_204';
   static String delayUrl = _defaultDelayUrl;
 
   static bool _initialized = false;
@@ -569,9 +569,17 @@ class V2RayEngine {
     }
   }
 
+  /// چند URL تأخیر — بعضی هسته‌ها فقط HTTP ساده را پشتیبانی می‌کنند.
+  static const List<String> _delayUrls = <String>[
+    'http://www.gstatic.com/generate_204',
+    'https://www.gstatic.com/generate_204',
+    'http://cp.cloudflare.com/generate_204',
+    'http://connectivitycheck.gstatic.com/generate_204',
+  ];
+
   static Future<int> realDelay(
     VpnServer server, {
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = const Duration(seconds: 10),
   }) async {
     String? config = _fullConfigOf(server);
     if (config == null || config.trim().isEmpty) return -2;
@@ -586,14 +594,27 @@ class V2RayEngine {
     try {
       await init();
       final dynamic engine = _engine;
-      final dynamic raw = await Future<dynamic>.value(
-        engine.getServerDelay(config: config, url: delayUrl),
-      ).timeout(timeout);
-
-      final int? value = raw is int ? raw : int.tryParse(raw.toString());
-      if (value == null || value <= 0) return -1;
-      return value;
-    } on TimeoutException {
+      // اول URL تنظیم‌شده کاربر، بعد لیست پشتیبان
+      final urls = <String>{
+        if (delayUrl.isNotEmpty) delayUrl,
+        ..._delayUrls,
+      };
+      for (final url in urls) {
+        try {
+          final dynamic raw = await Future<dynamic>.value(
+            engine.getServerDelay(config: config, url: url),
+          ).timeout(timeout);
+          final int? value = raw is int ? raw : int.tryParse(raw?.toString() ?? '');
+          // بعضی پلاگین‌ها کد خطای منفی برمی‌گردانند — فقط مثبت قبول
+          if (value != null && value > 0 && value < 120000) {
+            return value;
+          }
+        } on TimeoutException {
+          continue;
+        } catch (_) {
+          continue;
+        }
+      }
       return -1;
     } on NoSuchMethodError {
       return -2;

@@ -124,6 +124,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _handleWidgetRequest(WidgetConnectRequest req) async {
     if (!mounted || req.payload.isEmpty) return;
 
+    // ویجت ۱×۱: فوراً به پس‌زمینه برو تا UI دیده نشود
+    if (req.bgConnect) {
+      // ignore: unawaited_futures
+      _maybeMoveTaskToBack();
+    }
+
     // به ریشه برگرد تا صفحهٔ قبلی (مثلاً Tor) باز نماند
     try {
       Navigator.of(context).popUntil((r) => r.isFirst);

@@ -242,7 +242,9 @@ class ServerTester {
       if (session.cancelled) return;
 
       var kind = PingKind.real;
-      if (ms == -2 && budget.tcpFallback) {
+      // اگر پینگ واقعی منفی/ناموفق بود، TCP به host:port را امتحان کن
+      // (خیلی از سرورهای Reality/TLS روی getServerDelay خطا می‌دهند ولی وصل می‌شوند)
+      if (ms <= 0 && budget.tcpFallback) {
         final tcp = await _tcpProbe(server, budget, tcpGate);
         if (session.cancelled) return;
         if (tcp.$1 > 0) {
@@ -266,6 +268,7 @@ class ServerTester {
         server.status = ServerStatus.unknown;
         summary.unknown++;
       } else {
+        // هرگز مقدار منفی در UI ذخیره نکن
         server.ping = null;
         server.jitter = null;
         server.pingKind = PingKind.none;

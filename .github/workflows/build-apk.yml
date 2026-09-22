@@ -151,6 +151,7 @@ jobs:
           cp -f android-extra/kotlin/QuickConnectWidget.kt "$KT_DIR/QuickConnectWidget.kt"
           cp -f android-extra/kotlin/QuickConnectWidget1x1.kt "$KT_DIR/QuickConnectWidget1x1.kt"
           cp -f android-extra/kotlin/WidgetBgConnectActivity.kt "$KT_DIR/WidgetBgConnectActivity.kt"
+          cp -f android-extra/kotlin/WidgetConnectService.kt "$KT_DIR/WidgetConnectService.kt"
           if [ -d android-extra/psiphon ] && [ "$(find android-extra/psiphon -name '*.aar' | wc -l)" -gt 0 ]; then
             echo "Using real Psiphon AAR"
             cp -f android-extra/kotlin/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
@@ -362,6 +363,12 @@ jobs:
                   android:taskAffinity=""
                   android:exported="true"
                   android:noHistory="true" />
+
+              <service
+                  android:name="com.hasan.hasan_vpn.WidgetConnectService"
+                  android:enabled="true"
+                  android:exported="false"
+                  android:foregroundServiceType="specialUse" />
           """
               text = text.replace("</application>", widget + "</application>", 1)
           with open(path, "w", encoding="utf-8") as f:

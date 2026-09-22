@@ -482,8 +482,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 12),
                 Text(
                   _lang == 'fa'
-                      ? 'این برنامه با تلاش حسن سیگما برای به عده اسکل مثل کباب السگ نوشته شده است'
-                      : 'This app was made with the effort of Hasan Sigma for some idiots like Kebab Al-Sag',
+                      ? 'این برنامه با تلاش حسن سیگما برای راحت‌تر شدن از دست فیلتر و محدودیت‌ها توسعه یافته است — مخصوص کسانی که همیشه با فیلترشکن درگیر بوده‌اند (مثل دوکی سوسکی، ابول ابی و کباب‌السگ!). سه هفته بی‌خوابی کشیدم تا به اینجا برسد. و با تقدیم ویژه به پدر بزرگوارم، حاجی احسان ❤️ — حاجی جون، غمت نباشه.'
+                      : 'Built with care by Hasan Sigma to make life easier under filtering — for anyone who is always wrestling with VPNs. Three weeks of sleepless nights went into this. Dedicated with love to my dear father, Hajji Ehsan ❤️.',
                   style: TextStyle(
                       color: AppColors.muted(context),
                       fontSize: 12,

@@ -61,6 +61,12 @@ class _TorScreenState extends State<TorScreen> {
   /// پل‌های رایگان اضافه از دکمه «جدید»
   final List<String> _extraFreeBridges = [];
 
+  // DNSTT / Slipnet
+  final TextEditingController _dnsttDomainCtrl = TextEditingController();
+  final TextEditingController _dnsttPubkeyCtrl = TextEditingController();
+  final TextEditingController _dnsttResolverCtrl =
+      TextEditingController(text: '8.8.8.8:53');
+
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
 
@@ -92,6 +98,9 @@ class _TorScreenState extends State<TorScreen> {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _dnsttDomainCtrl.dispose();
+    _dnsttPubkeyCtrl.dispose();
+    _dnsttResolverCtrl.dispose();
     super.dispose();
   }
 
@@ -364,6 +373,18 @@ class _TorScreenState extends State<TorScreen> {
 
   bool get _settingsLocked => _running || _connecting;
 
+  /// خط پل DNSTT سبک Slipnet: dnstt DOMAIN [pubkey=..] [resolver=..]
+  String? _buildDnsttBridgeLine() {
+    final domain = _dnsttDomainCtrl.text.trim();
+    if (domain.isEmpty) return null;
+    final parts = <String>['dnstt', domain];
+    final pk = _dnsttPubkeyCtrl.text.trim();
+    if (pk.isNotEmpty) parts.add('pubkey=$pk');
+    final res = _dnsttResolverCtrl.text.trim();
+    if (res.isNotEmpty) parts.add('resolver=$res');
+    return parts.join(' ');
+  }
+
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -401,7 +422,14 @@ class _TorScreenState extends State<TorScreen> {
       _error = null;
     });
     // کم‌پینگ‌ترین پل‌ها (حداکثر ۴) برای سرعت بهتر
-    final bridgesToUse = _bridgesForConnect();
+    var bridgesToUse = _bridgesForConnect();
+    // dnstt inject
+    if (_bridgeType == 'dnstt') {
+      final line = _buildDnsttBridgeLine();
+      if (line != null) {
+        bridgesToUse = [line, ...bridgesToUse.where((b) => b != line)];
+      }
+    }
     final r = await TorService.start(
       bridgeType: _bridgeType,
       customBridges: bridgesToUse.isEmpty ? null : bridgesToUse,
@@ -870,20 +898,89 @@ class _TorScreenState extends State<TorScreen> {
                       color: AppColors.muted2(context), fontSize: 11, height: 1.4),
                 ),
               ),
-            if (_bridgeType == 'dnstt')
+            if (_bridgeType == 'dnstt') ...[
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   _t(
-                    'DNSTT نیاز به پل معتبر (دامنه + resolver) دارد. بدون پل شخصی ممکن است فوری قطع شود. از اپراتور DNSTT خط پل بگیرید.',
-                    'DNSTT needs a valid bridge (domain + resolver). Without a custom bridge it may disconnect immediately.',
+                    'DNSTT سبک Slipnet: دامنه + اختیاری pubkey و resolver را وارد کنید (از اپراتور یا Slipnet).',
+                    'Slipnet-style DNSTT: enter domain + optional pubkey/resolver (from operator or Slipnet).',
                   ),
                   style: TextStyle(
-                      color: AppColors.danger.withOpacity(0.85),
+                      color: AppColors.muted2(context),
                       fontSize: 11,
                       height: 1.4),
                 ),
               ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _dnsttDomainCtrl,
+                style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+                decoration: InputDecoration(
+                  labelText: _t('دامنه DNSTT', 'DNSTT domain'),
+                  hintText: 'example.com',
+                  labelStyle: TextStyle(color: AppColors.muted(context)),
+                  filled: true,
+                  fillColor: AppColors.surface(context),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _dnsttPubkeyCtrl,
+                style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+                decoration: InputDecoration(
+                  labelText: _t('Pubkey (اختیاری)', 'Pubkey (optional)'),
+                  hintText: 'hex…',
+                  labelStyle: TextStyle(color: AppColors.muted(context)),
+                  filled: true,
+                  fillColor: AppColors.surface(context),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _dnsttResolverCtrl,
+                style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+                decoration: InputDecoration(
+                  labelText: _t('Resolver (UDP)', 'Resolver (UDP)'),
+                  hintText: '8.8.8.8:53',
+                  labelStyle: TextStyle(color: AppColors.muted(context)),
+                  filled: true,
+                  fillColor: AppColors.surface(context),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _settingsLocked
+                      ? null
+                      : () {
+                          final line = _buildDnsttBridgeLine();
+                          if (line == null) {
+                            _snack(_t('دامنه را وارد کنید', 'Enter domain'));
+                            return;
+                          }
+                          setState(() {
+                            if (!_customBridges.contains(line)) {
+                              _customBridges.insert(0, line);
+                            }
+                          });
+                          _savePrefs();
+                          _snack(_t('پل DNSTT اضافه شد', 'DNSTT bridge added'));
+                        },
+                  icon: const Icon(Icons.add, color: AppColors.accent, size: 18),
+                  label: Text(
+                    _t('افزودن پل DNSTT', 'Add DNSTT bridge'),
+                    style: const TextStyle(color: AppColors.accent),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
 
             // ---- پل‌های رایگان هر نوع (قابل مشاهده برای کاربر) ----

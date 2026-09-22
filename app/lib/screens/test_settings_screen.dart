@@ -20,7 +20,7 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
   int _direct = 16;
   int _samples = 1;
   bool _tcp = true;
-  String _delayUrl = 'https://www.gstatic.com/generate_204';
+  String _delayUrl = 'http://www.gstatic.com/generate_204';
   bool _loading = true;
 
   late final TextEditingController _urlController;
@@ -199,7 +199,7 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                   controller: _urlController,
                   style: TextStyle(color: AppColors.fg(context), fontSize: 13),
                   decoration: InputDecoration(
-                    hintText: 'https://www.gstatic.com/generate_204',
+                    hintText: 'http://www.gstatic.com/generate_204',
                     hintStyle: TextStyle(color: AppColors.muted2(context)),
                     filled: true,
                     fillColor: AppColors.surface(context),
