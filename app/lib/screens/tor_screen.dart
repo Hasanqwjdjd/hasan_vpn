@@ -1573,7 +1573,7 @@ class _TorScreenState extends State<TorScreen> {
                   alignment: Alignment.centerLeft,
                   child: TextButton(
                     onPressed:
-                        _settingsLocked ? null : _showSniListDialog,
+                        _settingsLocked ? null : _showSniPickerDialog,
                     child: Text(
                       _t('مشاهده / ویرایش لیست SNI', 'View / edit SNI list'),
                       style: const TextStyle(color: AppColors.accent),
