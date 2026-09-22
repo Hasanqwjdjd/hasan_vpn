@@ -1,18 +1,15 @@
 package com.hasan.hasan_vpn
 
 import android.Manifest
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-/**
- * پل Flutter ↔ بخش بومی:
- *  - com.hasan.hasan_vpn/aether  → Aether/WARP
- *  - com.hasan.hasan_vpn/psiphon → Psiphon
- *  - com.hasan.hasan_vpn/device  → ABI، مجوز نوتیفیکیشن، تله‌متری
- */
 class MainActivity : FlutterActivity() {
 
     private val aetherChannel = "com.hasan.hasan_vpn/aether"
@@ -20,11 +17,15 @@ class MainActivity : FlutterActivity() {
     private val deviceChannel = "com.hasan.hasan_vpn/device"
     private val torChannel = "com.hasan.hasan_vpn/tor"
     private val monitorChannel = "com.hasan.hasan_vpn/monitor"
+    private val widgetChannel = "com.hasan.hasan_vpn/widget"
+    private val widgetsChannel = "com.hasan.hasan_vpn/widgets"
+
+    private var widgetChannelRef: MethodChannel? = null
+    private var widgetsChannelRef: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // لاگ بومی فقط در بیلد debuggable روشن است.
         SafeLog.enabled =
             (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
@@ -38,16 +39,11 @@ class MainActivity : FlutterActivity() {
                         if (env.isNullOrEmpty()) {
                             result.error("bad_args", "env is missing", null)
                         } else {
-                            result.success(
-                                AetherService.start(applicationContext, env, remark),
-                            )
+                            result.success(AetherService.start(applicationContext, env, remark))
                         }
                     }
                     "status" -> result.success(AetherService.status())
-                    "stop" -> {
-                        AetherService.stop(applicationContext)
-                        result.success(true)
-                    }
+                    "stop" -> { AetherService.stop(applicationContext); result.success(true) }
                     else -> result.notImplemented()
                 }
             }
@@ -60,18 +56,11 @@ class MainActivity : FlutterActivity() {
                         val config = call.argument<String>("config") ?: ""
                         val timeout = call.argument<Int>("timeoutSec") ?: 90
                         Thread {
-                            val map = PsiphonService.start(
-                                applicationContext,
-                                config,
-                                timeout.toLong(),
-                            )
+                            val map = PsiphonService.start(applicationContext, config, timeout.toLong())
                             runOnUiThread { result.success(map) }
                         }.start()
                     }
-                    "stop" -> {
-                        PsiphonService.stop(applicationContext)
-                        result.success(true)
-                    }
+                    "stop" -> { PsiphonService.stop(applicationContext); result.success(true) }
                     else -> result.notImplemented()
                 }
             }
@@ -80,20 +69,14 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "abis" -> result.success(Build.SUPPORTED_ABIS.toList())
-                    "notifPermission" -> {
-                        requestNotificationPermission()
-                        result.success(true)
-                    }
+                    "notifPermission" -> { requestNotificationPermission(); result.success(true) }
                     "telemetryShow" -> {
                         val title = call.argument<String>("title") ?: "Hasan VPN"
                         val text = call.argument<String>("text") ?: ""
                         TelemetryNotifier.show(applicationContext, title, text)
                         result.success(true)
                     }
-                    "telemetryHide" -> {
-                        TelemetryNotifier.hide(applicationContext)
-                        result.success(true)
-                    }
+                    "telemetryHide" -> { TelemetryNotifier.hide(applicationContext); result.success(true) }
                     else -> result.notImplemented()
                 }
             }
@@ -107,19 +90,11 @@ class MainActivity : FlutterActivity() {
                         val customBridges = call.argument<List<String>>("customBridges")
                         val sni = call.argument<String>("sni")
                         Thread {
-                            val map = TorService.start(
-                                applicationContext,
-                                bridgeType,
-                                customBridges,
-                                sni,
-                            )
+                            val map = TorService.start(applicationContext, bridgeType, customBridges, sni)
                             runOnUiThread { result.success(map) }
                         }.start()
                     }
-                    "stop" -> {
-                        TorService.stopWithContext(applicationContext)
-                        result.success(true)
-                    }
+                    "stop" -> { TorService.stopWithContext(applicationContext); result.success(true) }
                     else -> result.notImplemented()
                 }
             }
@@ -128,16 +103,70 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "snapshot" -> {
-                        try {
-                            val snap = LiveMonitorService.snapshot(applicationContext)
-                            result.success(snap)
-                        } catch (e: Exception) {
-                            result.error("monitor_error", e.message, null)
-                        }
+                        try { result.success(LiveMonitorService.snapshot(applicationContext)) }
+                        catch (e: Exception) { result.error("monitor_error", e.message, null) }
                     }
                     else -> result.notImplemented()
                 }
             }
+
+        widgetChannelRef = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, widgetChannel)
+        widgetChannelRef!!.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "updateWidgets" -> { refreshAllWidgets(); result.success(true) }
+                "getInitialIntent" -> result.success(intentToMap(intent))
+                else -> result.notImplemented()
+            }
+        }
+
+        widgetsChannelRef = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, widgetsChannel)
+        widgetsChannelRef!!.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "updateWidgets" -> { refreshAllWidgets(); result.success(true) }
+                "getInitialIntent" -> result.success(intentToMap(intent))
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val map = intentToMap(intent)
+        if (map.isNotEmpty()) {
+            try {
+                widgetChannelRef?.invokeMethod("onWidgetIntent", map)
+                widgetsChannelRef?.invokeMethod("onWidgetIntent", map)
+            } catch (_: Exception) { }
+        }
+    }
+
+    private fun intentToMap(intent: Intent?): Map<String, Any?> {
+        if (intent == null) return emptyMap()
+        val action = intent.getStringExtra("widget_action") ?: return emptyMap()
+        val map = mutableMapOf<String, Any?>(
+            "widget_action" to action,
+            "widget_type" to intent.getStringExtra("widget_type"),
+            "widget_payload" to intent.getStringExtra("widget_payload"),
+            "widget_title" to intent.getStringExtra("widget_title"),
+            "widget_slot" to intent.getIntExtra("widget_slot", 0),
+            "widget_auto_connect" to intent.getBooleanExtra("widget_auto_connect", false),
+            "widget_bg_connect" to intent.getBooleanExtra("widget_bg_connect", false),
+        )
+        intent.removeExtra("widget_action")
+        return map
+    }
+
+    private fun refreshAllWidgets() {
+        val mgr = AppWidgetManager.getInstance(this)
+        try {
+            val w2 = ComponentName(this, QuickConnectWidget::class.java)
+            for (id in mgr.getAppWidgetIds(w2)) QuickConnectWidget.updateAppWidget(this, mgr, id)
+        } catch (_: Exception) { }
+        try {
+            val w1 = ComponentName(this, QuickConnectWidget1x1::class.java)
+            for (id in mgr.getAppWidgetIds(w1)) QuickConnectWidget1x1.updateAppWidget(this, mgr, id)
+        } catch (_: Exception) { }
     }
 
     private fun requestNotificationPermission() {

@@ -120,9 +120,17 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
   @override
   Widget build(BuildContext context) {
     final cpu = _asDouble(_data['cpu']);
+    final cpuArch = (_data['cpuArch']?.toString() ?? '').trim();
     final memUsed = _asInt(_data['memUsedMb']);
     final battery = _asInt(_data['battery']);
     final temp = _asDouble(_data['temp']);
+    // نمایش معماری (arm64/v7/x86) + درصد در صورت موجود بودن
+    final cpuValue = cpuArch.isEmpty
+        ? cpu.toStringAsFixed(1)
+        : (cpu > 0.05
+            ? '$cpuArch ${cpu.toStringAsFixed(0)}'
+            : cpuArch);
+    final cpuUnit = cpuArch.isEmpty ? '%' : (cpu > 0.05 ? '%' : '');
 
     return Scaffold(
       backgroundColor: AppColors.bg(context),
@@ -155,7 +163,7 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
             ),
             const SizedBox(height: 16),
             Row(children: [
-              Expanded(child: _card(_t('پردازنده', 'CPU'), cpu.toStringAsFixed(1), '%',
+              Expanded(child: _card(_t('پردازنده', 'CPU'), cpuValue, cpuUnit,
                   Icons.memory, AppColors.accent)),
               const SizedBox(width: 10),
               Expanded(child: _card(_t('حافظه', 'RAM'), memUsed.toString(), 'MB',

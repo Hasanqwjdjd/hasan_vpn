@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
+import android.os.Build
 import android.net.TrafficStats
 import java.io.File
 
@@ -21,20 +22,19 @@ object LiveMonitorService {
     fun snapshot(context: Context): Map<String, Any?> {
         val result = mutableMapOf<String, Any?>()
 
-        // --- CPU ---
-        // نمونهٔ اول همیشه ۰ بود؛ برای اندازه‌گیری واقعی دو خواندن با فاصله لازم است.
+        // --- CPU usage + architecture ---
+        result["cpuArch"] = cpuArchitecture()
         try {
             var idleTotal = readCpuStat()
             var idle = idleTotal.first
             var total = idleTotal.second
-            if (lastCpuTotal <= 0L || total <= lastCpuTotal) {
-                lastCpuIdle = idle
-                lastCpuTotal = total
-                try { Thread.sleep(80) } catch (_: InterruptedException) {}
-                idleTotal = readCpuStat()
-                idle = idleTotal.first
-                total = idleTotal.second
-            }
+            // همیشه دو نمونه با فاصلهٔ بیشتر — روی بعضی ROMها ۸۰ms کافی نیست
+            lastCpuIdle = idle
+            lastCpuTotal = total
+            try { Thread.sleep(220) } catch (_: InterruptedException) {}
+            idleTotal = readCpuStat()
+            idle = idleTotal.first
+            total = idleTotal.second
             if (lastCpuTotal > 0L && total > lastCpuTotal) {
                 val totalDelta = total - lastCpuTotal
                 val idleDelta = idle - lastCpuIdle
@@ -43,12 +43,13 @@ object LiveMonitorService {
                 } else 0.0
                 result["cpu"] = usage.coerceIn(0.0, 100.0)
             } else {
-                result["cpu"] = 0.0
+                // Fallback: loadavg ۱ دقیقه × مقیاس تقریبی
+                result["cpu"] = readLoadAvgPercent()
             }
             lastCpuIdle = idle
             lastCpuTotal = total
         } catch (_: Throwable) {
-            result["cpu"] = 0.0
+            result["cpu"] = readLoadAvgPercent()
         }
 
         // --- RAM ---
@@ -105,6 +106,40 @@ object LiveMonitorService {
     }
 
     // --------------------------------------------------------------
+
+    /** معماری پردازنده: arm64 / armeabi-v7a / x86_64 / ... */
+    private fun cpuArchitecture(): String {
+        return try {
+            val abis = Build.SUPPORTED_ABIS
+            if (abis != null && abis.isNotEmpty()) {
+                val a = abis[0]
+                when {
+                    a.contains("arm64") -> "arm64"
+                    a.contains("armeabi-v7a") || a.contains("armeabi") -> "armeabi-v7a"
+                    a.contains("x86_64") -> "x86_64"
+                    a.contains("x86") -> "x86"
+                    else -> a
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                Build.CPU_ABI ?: "unknown"
+            }
+        } catch (_: Throwable) {
+            "unknown"
+        }
+    }
+
+    /** تقریب از /proc/loadavg وقتی /proc/stat کار نکند. */
+    private fun readLoadAvgPercent(): Double {
+        return try {
+            val line = File("/proc/loadavg").readText().trim()
+            val load = line.split(Regex("\\s+")).firstOrNull()?.toDoubleOrNull() ?: return 0.0
+            val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+            ((load / cores) * 100.0).coerceIn(0.0, 100.0)
+        } catch (_: Throwable) {
+            0.0
+        }
+    }
 
     /** خواندن /proc/stat → (idle, total) بر حسب jiffies. */
     private fun readCpuStat(): Pair<Long, Long> {

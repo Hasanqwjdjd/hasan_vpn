@@ -1,64 +1,48 @@
 # ویجت اتصال سریع (Quick Connect Widget)
 
-فایل‌های لازم در همین پوشه:
+## دو اندازه
 
-- `kotlin/QuickConnectWidget.kt`
-- `res/layout/widget_quick_connect.xml`
-- `res/xml/quick_connect_widget_info.xml`
-- `res/drawable/widget_bg.xml`
+| ویجت | فایل‌ها | رفتار |
+|------|---------|--------|
+| **۲×۱** | QuickConnectWidget.kt + widget_quick_connect.xml | اپ را با CLEAR_TOP باز می‌کند، همان سرور/DNS/Tor را انتخاب و **خودکار وصل** می‌کند. به صفحهٔ قبلی ناوبری نمی‌رود. |
+| **۱×۱** | QuickConnectWidget1x1.kt + widget_quick_connect_1x1.xml | مثل v2rayNG: Intent با widget_bg_connect=true برای اتصال سریع |
 
 ## ثبت در AndroidManifest.xml
 
-داخل `<application>`:
-
 ```xml
-<receiver
-    android:name=".QuickConnectWidget"
-    android:exported="true"
-    android:label="Hasan VPN">
-    <intent-filter>
-        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-    </intent-filter>
-    <meta-data
-        android:name="android.appwidget.provider"
-        android:resource="@xml/quick_connect_widget_info" />
+<receiver android:name=".QuickConnectWidget" android:exported="true" android:label="Hasan VPN 2x1">
+  <intent-filter>
+    <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+  </intent-filter>
+  <meta-data android:name="android.appwidget.provider"
+      android:resource="@xml/quick_connect_widget_info" />
+</receiver>
+
+<receiver android:name=".QuickConnectWidget1x1" android:exported="true" android:label="Hasan VPN 1x1">
+  <intent-filter>
+    <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+  </intent-filter>
+  <meta-data android:name="android.appwidget.provider"
+      android:resource="@xml/quick_connect_widget_1x1_info" />
 </receiver>
 ```
 
-در صورت نیاز، string برای description:
-
 ```xml
-<string name="widget_description">اتصال سریع سرور / DNS / Tor</string>
+<string name="widget_description">اتصال سریع ۲×۱</string>
+<string name="widget_description_1x1">اتصال سریع ۱×۱</string>
 ```
 
-## MethodChannel (اختیاری)
+## Intent extras (Flutter)
 
-در `MainActivity` برای refresh ویجت بعد از pin:
+- widget_action: connect | bg_connect
+- widget_type: server | dns | tor
+- widget_payload: id یا خط پل یا primary|secondary
+- widget_auto_connect: true
+- widget_bg_connect: true (فقط ۱×۱)
 
-```kotlin
-MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.hasan.hasan_vpn/widget")
-  .setMethodCallHandler { call, result ->
-    if (call.method == "updateWidgets") {
-      val mgr = AppWidgetManager.getInstance(this)
-      val ids = mgr.getAppWidgetIds(ComponentName(this, QuickConnectWidget::class.java))
-      for (id in ids) {
-        QuickConnectWidget.updateAppWidget(this, mgr, id)
-      }
-      result.success(true)
-    } else {
-      result.notImplemented()
-    }
-  }
-```
+در MainActivity extras را بخوانید و به Flutter (MethodChannel) بفرستید تا HomeScreen همان آیتم را انتخاب و connect کند.
 
-## استفاده کاربر
+## MethodChannel به‌روزرسانی ویجت
 
-1. داخل اپ روی آیکون ویجت (شبکه/widgets) کنار سرور، DNS یا پل Tor بزنید.
-2. در صفحهٔ اصلی گوشی: ویجت‌ها → Hasan VPN را اضافه کنید (تا ۴ اسلات).
-3. با زدن ویجت، اپ باز می‌شود و intent اتصال ارسال می‌شود.
-
-## جلوگیری از زنده شدن ناخواسته در پس‌زمینه
-
-- `TorForegroundService` با `START_NOT_STICKY` و `onTaskRemoved` متوقف می‌شود.
-- سرویس VPN سیستم (flutter_vless) تا وقتی اتصال VPN فعال است نوتیفیکیشن دارد — این رفتار استاندارد Android است.
-- برای قطع کامل: در اپ Disconnect بزنید، یا در تنظیمات سیستم Always-on VPN را برای این اپ خاموش کنید.
+channel: com.hasan.hasan_vpn/widget
+method: updateWidgets

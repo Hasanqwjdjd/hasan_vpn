@@ -23,20 +23,37 @@ class TorBridges {
         'meek_lite 192.0.2.2:443 url=https://$host/ front=$host',
       ];
 
+  /// جبهه‌های meek (سبک InviZible).
+  static const List<String> meekFronts = <String>[
+    'play.googleapis.com',
+    'drive.google.com',
+    'cdn.ampproject.org',
+    'api.github.com',
+    'ajax.aspnetcdn.com',
+    'verizon.com',
+    'eset.com',
+    'certum.pl',
+    'ajax.microsoft.com',
+    'www.google.com',
+  ];
+
   /// پل‌های conjure پیش‌فرض.
   static const List<String> conjure = <String>[
-    'conjure 192.0.2.3:80',
+    'conjure 192.0.2.3:80 url=https://registration.refraction.network/api',
+    'conjure 192.0.2.4:80 url=https://registration.refraction.network/api',
   ];
 
-  /// Snowflake — از broker داخلی استفاده می‌کند؛ این خط برای نمایش در UI است.
+  /// Snowflake — چند خط استاندارد.
   static const List<String> snowflake = <String>[
     'snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72',
+    'snowflake 192.0.2.4:1 8838024498816A039FCBBAB14E6F40A0843051FA',
+    'snowflake 192.0.2.5:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ fronts=cdn.sstatic.net ice=stun:stun.l.google.com:19302,stun:stun.antisip.com:3478',
   ];
 
-  /// DNSTT — بدون خط معتبر از اپراتور معمولاً وصل نمی‌شود.
-  /// فرمت نمونه: `dnstt domain.example pubkey=...` یا IP:port
+  /// DNSTT — نمونه‌های نمایشی (برای کار واقعی دامنه/کلید لازم است).
   static const List<String> dnstt = <String>[
-    // placeholder — کاربر باید پل واقعی اضافه کند
+    'dnstt t.cdn.ns.fbcdn.net',
+    'dnstt dns.google',
   ];
 
   /// برای هر نوع، لیست پل‌های رایگان/پیشنهادی را برمی‌گرداند.
@@ -45,8 +62,14 @@ class TorBridges {
       case 'obfs4':
         return List<String>.from(obfs4);
       case 'meek_lite':
-        final host = (sni != null && sni.isNotEmpty) ? sni : 'certum.pl';
-        return meekLiteFor(host);
+        if (sni != null && sni.isNotEmpty) {
+          return meekLiteFor(sni);
+        }
+        // چند جبهه رایگان مثل InviZible
+        return meekFronts
+            .map((h) =>
+                'meek_lite 192.0.2.2:443 url=https://$h/ front=$h')
+            .toList();
       case 'conjure':
         return List<String>.from(conjure);
       case 'snowflake':

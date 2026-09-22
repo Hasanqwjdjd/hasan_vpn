@@ -34,6 +34,8 @@ class _TorScreenState extends State<TorScreen> {
 
   String _bridgeType = 'obfs4';
   String _selectedSni = TorSniPresets.defaultSni;
+  bool _sniEnabled = false;
+  bool _sniAutoPicking = false;
   List<String> _customBridges = [];
   bool _running = false;
   bool _connecting = false;
@@ -70,11 +72,13 @@ class _TorScreenState extends State<TorScreen> {
     final bt = prefs.getString('tor_bridge_type') ?? 'obfs4';
     final cb = prefs.getStringList('tor_custom_bridges') ?? <String>[];
     final sni = prefs.getString('tor_sni') ?? TorSniPresets.defaultSni;
+    final sniOn = prefs.getBool('tor_sni_enabled') ?? false;
     if (!mounted) return;
     setState(() {
       _bridgeType = bt;
       _customBridges = cb;
       _selectedSni = sni;
+      _sniEnabled = sniOn;
     });
   }
 
@@ -83,6 +87,108 @@ class _TorScreenState extends State<TorScreen> {
     await prefs.setString('tor_bridge_type', _bridgeType);
     await prefs.setStringList('tor_custom_bridges', _customBridges);
     await prefs.setString('tor_sni', _selectedSni);
+    await prefs.setBool('tor_sni_enabled', _sniEnabled);
+  }
+
+  /// انتخاب خودکار SNI: DNS resolve چند دامنه و اولین پاسخ‌دهنده
+  Future<void> _autoPickSni() async {
+    if (_sniAutoPicking) return;
+    setState(() => _sniAutoPicking = true);
+    // لیست InviZible-style + presetهای محلی
+    final candidates = <String>{
+      'play.googleapis.com',
+      'drive.google.com',
+      'cdn.ampproject.org',
+      'api.github.com',
+      'ajax.aspnetcdn.com',
+      'verizon.com',
+      'eset.com',
+      ...TorSniPresets.all.take(20),
+    }.toList();
+    String? best;
+    for (final host in candidates) {
+      try {
+        final r = await NetworkProber.probeTcp(
+          host,
+          port: 443,
+          samples: 1,
+          timeout: const Duration(milliseconds: 900),
+        );
+        if (r.avgMs != null) {
+          best = host;
+          break;
+        }
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() {
+      _selectedSni = best ?? TorSniPresets.defaultSni;
+      _sniAutoPicking = false;
+    });
+    await _savePrefs();
+    if (best != null) {
+      _snack(_t('SNI خودکار: $best', 'Auto SNI: $best'));
+    }
+  }
+
+  Future<void> _showSniListDialog() async {
+    final ctrl = TextEditingController(
+      text: [
+        'play.googleapis.com',
+        'drive.google.com',
+        'cdn.ampproject.org',
+        'api.github.com',
+        'ajax.aspnetcdn.com',
+        'verizon.com',
+        'eset.com',
+        if (!TorSniPresets.all.contains(_selectedSni)) _selectedSni,
+      ].join(', '),
+    );
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.elevated(ctx),
+        title: Text(
+          _t('جعل نشانگر نام سرور', 'Server name indication'),
+          style: TextStyle(color: AppColors.fg(ctx)),
+        ),
+        content: SingleChildScrollView(
+          child: TextField(
+            controller: ctrl,
+            maxLines: 8,
+            style: TextStyle(color: AppColors.fg(ctx), fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'domain1.com, domain2.com, ...',
+              hintStyle: TextStyle(color: AppColors.muted2(ctx)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(_t('لغو', 'Cancel'),
+                style: TextStyle(color: AppColors.muted(ctx))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('OK', style: TextStyle(color: AppColors.accent)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final parts = ctrl.text
+        .split(RegExp(r'[,;\s]+'))
+        .map((e) => e.trim())
+        .where((e) => e.contains('.'))
+        .toList();
+    if (parts.isNotEmpty) {
+      setState(() => _selectedSni = parts.first);
+      await _savePrefs();
+    }
   }
 
   Future<void> _poll() async {
@@ -271,7 +377,7 @@ class _TorScreenState extends State<TorScreen> {
     final r = await TorService.start(
       bridgeType: _bridgeType,
       customBridges: bridgesToUse.isEmpty ? null : bridgesToUse,
-      sni: _selectedSni,
+      sni: _sniEnabled ? _selectedSni : null,
     );
     if (!mounted) return;
     if (r['ok'] != true) {
@@ -869,6 +975,43 @@ class _TorScreenState extends State<TorScreen> {
                           ),
                         ),
                       IconButton(
+                        icon: const Icon(Icons.speed,
+                            color: AppColors.warn, size: 18),
+                        tooltip: _t('پینگ این پل', 'Ping this bridge'),
+                        onPressed: () async {
+                          final ep = TorBridges.parseEndpoint(b);
+                          if (ep == null) {
+                            _snack(_t(
+                              'این پل endpoint قابل پینگ ندارد',
+                              'No pingable endpoint',
+                            ));
+                            return;
+                          }
+                          final r = await NetworkProber.probeTcp(
+                            ep.host,
+                            port: ep.port,
+                            samples: 2,
+                          );
+                          if (!mounted) return;
+                          setState(() => _bridgePings[b] = r.avgMs);
+                          _snack(r.avgMs == null
+                              ? _t('بدون پاسخ', 'No response')
+                              : _t('پینگ: ${r.avgMs}ms', 'Ping: ${r.avgMs}ms'));
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.share_outlined,
+                            color: AppColors.muted2, size: 18),
+                        tooltip: _t('اشتراک‌گذاری', 'Share'),
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: b));
+                          _snack(_t(
+                            'خط پل کپی شد',
+                            'Bridge line copied',
+                          ));
+                        },
+                      ),
+                      IconButton(
                         icon: const Icon(Icons.widgets_outlined,
                             color: AppColors.accent, size: 18),
                         tooltip: _t('ویجت صفحهٔ اصلی', 'Home widget'),
@@ -1005,66 +1148,68 @@ class _TorScreenState extends State<TorScreen> {
               const SizedBox(height: 20),
             ],
 
-            // انتخاب SNI (برای meek_lite و snowflake)
-            if (_bridgeType == 'meek_lite' || _bridgeType == 'snowflake') ...[
-              Text(
-                _t('نام میزبان SNI (جعل نام سرور)',
-                    'SNI hostname (fake server name)'),
-                style: TextStyle(
-                  color: AppColors.muted(context),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 8),
+            // جعل نشانگر نام سرور — UI شبیه InviZible (سوییچ + لیست یکجا)
+            if (_bridgeType == 'meek_lite' ||
+                _bridgeType == 'snowflake' ||
+                _bridgeType == 'obfs4') ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 decoration: BoxDecoration(
                   color: AppColors.surface(context),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: AppColors.border(context)),
                 ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedSni,
-                    isExpanded: true,
-                    dropdownColor: AppColors.elevated(context),
+                child: SwitchListTile(
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                  title: Text(
+                    _t('جعل نشانگر نام سرور', 'Server name indication spoof'),
                     style: TextStyle(
-                      color: _settingsLocked
-                          ? AppColors.muted2(context)
-                          : AppColors.fg(context),
-                      fontSize: 13,
+                      color: AppColors.fg(context),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
                     ),
-                    icon: Icon(Icons.expand_more,
-                        color: _settingsLocked
-                            ? AppColors.muted2(context)
-                            : AppColors.accent),
-                    items: [
-                      for (final s in TorSniPresets.all)
-                        DropdownMenuItem<String>(
-                          value: s,
-                          child: Text(s, overflow: TextOverflow.ellipsis),
-                        ),
-                    ],
-                    onChanged: _settingsLocked
-                        ? null
-                        : (v) async {
-                            if (v == null) return;
-                            setState(() => _selectedSni = v);
-                            await _savePrefs();
-                          },
+                  ),
+                  subtitle: Text(
+                    _sniEnabled
+                        ? (_sniAutoPicking
+                            ? _t('در حال انتخاب خودکار…', 'Auto-picking…')
+                            : _selectedSni)
+                        : _t(
+                            'خاموش — بدون جعل SNI',
+                            'Off — no SNI spoof',
+                          ),
+                    style: TextStyle(
+                        color: AppColors.muted2(context), fontSize: 11),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  value: _sniEnabled,
+                  activeColor: AppColors.accent,
+                  onChanged: _settingsLocked
+                      ? null
+                      : (v) async {
+                          setState(() => _sniEnabled = v);
+                          if (v) {
+                            await _autoPickSni();
+                          }
+                          await _savePrefs();
+                        },
+                ),
+              ),
+              if (_sniEnabled)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed:
+                        _settingsLocked ? null : _showSniListDialog,
+                    child: Text(
+                      _t('مشاهده / ویرایش لیست SNI', 'View / edit SNI list'),
+                      style: const TextStyle(color: AppColors.accent),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                _t(
-                  'این نام در TLS handshake جعل می‌شود تا DPI فریب بخورد.',
-                  'This name is spoofed in TLS handshake to evade DPI.',
-                ),
-                style: TextStyle(color: AppColors.muted2(context), fontSize: 11),
-              ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
             ],
 
             Center(child: _connectButton()),

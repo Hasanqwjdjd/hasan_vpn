@@ -42,7 +42,7 @@ class QuickConnectWidget : AppWidgetProvider() {
             val type = intent.getStringExtra(EXTRA_TYPE) ?: "server"
             val payload = intent.getStringExtra(EXTRA_PAYLOAD) ?: ""
             val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
-            // باز کردن اپ با deep-link برای اتصال
+            // 2×1: باز کردن اپ روی همان آیتم + اتصال خودکار (نه صفحهٔ قبلی)
             val launch = context.packageManager
                 .getLaunchIntentForPackage(context.packageName)
             if (launch != null) {
@@ -52,7 +52,12 @@ class QuickConnectWidget : AppWidgetProvider() {
                 launch.putExtra("widget_payload", payload)
                 launch.putExtra("widget_title", title)
                 launch.putExtra("widget_slot", slotIndex)
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                launch.putExtra("widget_auto_connect", true)
+                launch.addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                )
                 context.startActivity(launch)
             }
         }
