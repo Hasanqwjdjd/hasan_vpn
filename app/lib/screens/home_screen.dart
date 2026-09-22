@@ -753,10 +753,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
       if (sub.id.isNotEmpty) {
         final links = sub.cachedLinks.toSet();
-        final customIds = _customServers.map((s) => s.id).toSet();
-        list = list.where((s) =>
-          links.contains(s.shareLink) || customIds.contains(s.id)
-        ).toList();
+        list = list.where((s) => links.contains(s.shareLink)).toList();
       }
     }
 
