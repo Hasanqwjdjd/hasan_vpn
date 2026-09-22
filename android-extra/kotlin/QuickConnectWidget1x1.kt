@@ -39,9 +39,10 @@ class QuickConnectWidget1x1 : AppWidgetProvider() {
             val type = intent.getStringExtra(EXTRA_TYPE) ?: "server"
             val payload = intent.getStringExtra(EXTRA_PAYLOAD) ?: ""
             val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
+            val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
             // ─── اتصال کاملاً بدون UI از طریق WidgetConnectService ───
             try {
-                WidgetConnectService.start(context, type, payload, title)
+                WidgetConnectService.start(context, type, payload, title, widgetId)
             } catch (_: Exception) {
                 // fallback: اگر سرویس کار نکرد، از Activity شفاف استفاده کن
                 val launch = Intent(context, WidgetBgConnectActivity::class.java).apply {
@@ -60,6 +61,7 @@ class QuickConnectWidget1x1 : AppWidgetProvider() {
         const val EXTRA_TYPE = "type"
         const val EXTRA_PAYLOAD = "payload"
         const val EXTRA_TITLE = "title"
+        const val EXTRA_WIDGET_ID = "widget_id"
 
         fun updateAppWidget(
             context: Context,
@@ -94,6 +96,7 @@ class QuickConnectWidget1x1 : AppWidgetProvider() {
                 putExtra(EXTRA_TYPE, type)
                 putExtra(EXTRA_PAYLOAD, payload)
                 putExtra(EXTRA_TITLE, title)
+                putExtra(EXTRA_WIDGET_ID, appWidgetId)
             }
             val pi = PendingIntent.getBroadcast(
                 context,

@@ -165,7 +165,24 @@ class MainActivity : FlutterActivity() {
 
     private fun intentToMap(intent: Intent?): Map<String, Any?> {
         if (intent == null) return emptyMap()
-        val action = intent.getStringExtra("widget_action") ?: return emptyMap()
+
+        val needsServer = intent.getBooleanExtra("widget_needs_server", false)
+        val widgetId = intent.getIntExtra("widget_id", -1)
+        val action = intent.getStringExtra("widget_action")
+
+        // اگر درخواست انتخاب سرور برای ویجت آمده، بدون widget_action هم برمی‌گردانیم
+        if (needsServer && widgetId > 0) {
+            val map = mutableMapOf<String, Any?>(
+                "widget_needs_server" to true,
+                "widget_id" to widgetId,
+            )
+            intent.removeExtra("widget_needs_server")
+            intent.removeExtra("widget_id")
+            return map
+        }
+
+        if (action == null) return emptyMap()
+
         val map = mutableMapOf<String, Any?>(
             "widget_action" to action,
             "widget_type" to intent.getStringExtra("widget_type"),

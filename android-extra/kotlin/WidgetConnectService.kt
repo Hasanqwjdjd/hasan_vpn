@@ -44,13 +44,31 @@ class WidgetConnectService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val type = intent?.getStringExtra(EXTRA_TYPE) ?: "server"
-        val payload = intent?.getStringExtra(EXTRA_PAYLOAD) ?: ""
-        val title = intent?.getStringExtra(EXTRA_TITLE) ?: ""
+        val origType = intent?.getStringExtra(EXTRA_TYPE) ?: "server"
+        val origPayload = intent?.getStringExtra(EXTRA_PAYLOAD) ?: ""
+        val origTitle = intent?.getStringExtra(EXTRA_TITLE) ?: ""
+        val widgetId = intent?.getIntExtra(EXTRA_WIDGET_ID, -1) ?: -1
 
         try {
             startFgQuiet()
         } catch (_: Exception) {}
+
+        // اگر از ویجت اومده، binding مخصوص همون ویجت رو بخون
+        var type = origType
+        var payload = origPayload
+        var title = origTitle
+
+        if (widgetId > 0) {
+            val bound = readWidgetBinding(widgetId)
+            if (bound == null) {
+                // binding نداره → MainActivity رو باز کن تا کاربر انتخاب کنه
+                openAppForWidgetSelection(widgetId)
+                return START_NOT_STICKY
+            }
+            type = bound.first
+            payload = bound.second
+            title = bound.third
+        }
 
         if (payload.isEmpty()) {
             stopSoon()
@@ -216,6 +234,39 @@ class WidgetConnectService : Service() {
         super.onDestroy()
     }
 
+    /// خواندن binding یک ویجت خاص از SharedPreferences Flutter
+    private fun readWidgetBinding(widgetId: Int): Triple<String, String, String>? {
+        return try {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            val key = "flutter.widget_server_$widgetId"
+            val raw = prefs.getString(key, null) ?: return null
+            // فرمت: type|payload|title
+            val parts = raw.split("|", limit = 3)
+            if (parts.size != 3) return null
+            Triple(parts[0], parts[1], parts[2])
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /// باز کردن اپ برای انتخاب سرور توسط کاربر (اولین بار)
+    private fun openAppForWidgetSelection(widgetId: Int) {
+        try {
+            val launch = packageManager.getLaunchIntentForPackage(packageName)
+            if (launch != null) {
+                launch.putExtra("widget_needs_server", true)
+                launch.putExtra("widget_id", widgetId)
+                launch.addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                )
+                startActivity(launch)
+            }
+        } catch (_: Exception) {}
+        stopSoon()
+    }
+
     private fun startFgQuiet() {
         val channelId = "widget_connect_quiet"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -261,12 +312,14 @@ class WidgetConnectService : Service() {
         const val EXTRA_TYPE = "type"
         const val EXTRA_PAYLOAD = "payload"
         const val EXTRA_TITLE = "title"
+        const val EXTRA_WIDGET_ID = "widget_id"
 
-        fun start(context: Context, type: String, payload: String, title: String) {
+        fun start(context: Context, type: String, payload: String, title: String, widgetId: Int = -1) {
             val i = Intent(context, WidgetConnectService::class.java).apply {
                 putExtra(EXTRA_TYPE, type)
                 putExtra(EXTRA_PAYLOAD, payload)
                 putExtra(EXTRA_TITLE, title)
+                putExtra(EXTRA_WIDGET_ID, widgetId)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(i)

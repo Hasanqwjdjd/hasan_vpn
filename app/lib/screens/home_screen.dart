@@ -62,6 +62,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<String> _manualOrder = <String>[];
 
   String? _selectedSubId;
+  // اگر از ویجت با widget_needs_server اومده باشیم، این مقدار پر می‌شه
+  int? _pendingWidgetId;
   VpnServer? _selected;
   VpnServer? _active;
 
@@ -90,6 +92,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _t(String fa, String en) => _isFa ? fa : en;
 
   @override
+  /// بررسی می‌کند که آیا از intent جاری، درخواست انتخاب سرور برای ویجت آمده
+  Future<void> _readWidgetSelectionIntent() async {
+    try {
+      const ch = MethodChannel('com.hasan.hasan_vpn/widget');
+      final map = await ch.invokeMethod<Map>('getLaunchExtras');
+      if (map != null && map['widget_needs_server'] == true) {
+        final wid = (map['widget_id'] as num?)?.toInt();
+        if (wid != null && wid > 0) {
+          setState(() => _pendingWidgetId = wid);
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_t(
+                'سرور مورد نظر برای این ویجت را انتخاب کنید',
+                'Choose the server for this widget',
+              )),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    } catch (_) {}
+  }
+
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
@@ -118,6 +144,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (pending != null && mounted) {
       await _handleWidgetRequest(pending);
     }
+    // بررسی intent انتخاب سرور برای ویجت
+    await _readWidgetSelectionIntent();
   }
 
   /// اتصال از ویجت ۲×۱ / ۱×۱
@@ -797,6 +825,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     _rebuildServerList();
     _savePinned();
+  }
+
+  /// ذخیره binding برای ویجت مشخص
+  Future<void> _bindServerToWidget(int widgetId, VpnServer server) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = '${server.protocol.name}|${server.id}|${server.displayName}';
+      await prefs.setString('widget_server_$widgetId', raw);
+    } catch (_) {}
+  }
+
+  /// وقتی از ویجت با widget_needs_server اومده‌ایم: روی اولین سرور که کلیک شه bind کن
+  Future<void> _handleWidgetServerSelection(VpnServer server) async {
+    final wid = _pendingWidgetId;
+    if (wid == null) return;
+    await _bindServerToWidget(wid, server);
+    setState(() {
+      _selected = server;
+      _pendingWidgetId = null;
+    });
+    await SettingsService.setLastServer(server.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_t(
+          'ویجت به "${server.displayName}" وصل شد — از این به بعد بدون باز کردن اپ وصل می‌شه',
+          'Widget bound to "${server.displayName}" — future taps connect silently',
+        )),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+    // اتصال خودکار
+    try {
+      await _toggleConnection();
+    } catch (_) {}
+    // به پس‌زمینه برو
+    try {
+      const ch = MethodChannel('com.hasan.hasan_vpn/widget');
+      await ch.invokeMethod('moveTaskToBack');
+    } catch (_) {}
   }
 
   Future<void> _pinServerToHome(VpnServer server) async {
@@ -1690,6 +1758,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         selected: _selected?.id == server.id,
                         active: _connected && _active?.id == server.id,
                         onTap: () async {
+                          // اگر در حالت انتخاب سرور برای ویجت هستیم، bind کن
+                          if (_pendingWidgetId != null) {
+                            await _handleWidgetServerSelection(server);
+                            return;
+                          }
                           setState(() => _selected = server);
                           await SettingsService.setLastServer(server.id);
                         },
