@@ -144,12 +144,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // ignore: unawaited_futures
       _handleWidgetRequest(req);
     });
-    final pending = await WidgetConnectHandler.consumePending();
-    if (pending != null && mounted) {
-      await _handleWidgetRequest(pending);
-    }
-    // بررسی intent انتخاب سرور برای ویجت
+    // ★ ابتدا بررسی انتخاب سرور برای ویجت (اگر pending server selection هست، اپ رو نبند)
     await _readWidgetSelectionIntent();
+    if (_pendingWidgetId == null) {
+      final pending = await WidgetConnectHandler.consumePending();
+      if (pending != null && mounted) {
+        await _handleWidgetRequest(pending);
+      }
+    } else {
+      // pending server selection داریم → consumePending رو پاک کن بدون اجرا
+      await WidgetConnectHandler.consumePending();
+    }
   }
 
   /// اتصال از ویجت ۲×۱ / ۱×۱

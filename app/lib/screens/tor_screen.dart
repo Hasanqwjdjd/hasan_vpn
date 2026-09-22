@@ -133,8 +133,10 @@ class _TorScreenState extends State<TorScreen> {
   Future<void> _autoPickSni() async {
     if (_sniAutoPicking) return;
     setState(() => _sniAutoPicking = true);
-    // لیست InviZible-style + presetهای محلی
+
+    // لیست کاندیدها (اولویت: SNIهای معروف)
     final candidates = <String>{
+      // SNIهای InviZible-style که کمتر بلاک می‌شن
       'play.googleapis.com',
       'drive.google.com',
       'cdn.ampproject.org',
@@ -142,23 +144,65 @@ class _TorScreenState extends State<TorScreen> {
       'ajax.aspnetcdn.com',
       'verizon.com',
       'eset.com',
+      'mail.google.com',
+      'chatgpt.com',
+      'cdnjs.com',
+      // SNIهای ایرانی
+      'digikala.com',
+      'aparat.com',
+      'varzesh3.com',
+      'filimo.com',
+      'torob.com',
       ...TorSniPresets.all,
     }.toList();
+
     String? best;
-    for (final host in candidates) {
+    int? bestMs;
+
+    // اگر Tor در حال اجراست: تست واقعی از داخل تونل با SocksProbe
+    if (_running && _socksPort > 0) {
       try {
-        final r = await NetworkProber.probeTcp(
-          host,
-          port: 443,
-          samples: 1,
-          timeout: const Duration(milliseconds: 900),
-        );
-        if (r.avgMs != null) {
-          best = host;
-          break;
+        // تست هر SNI با اتصال SOCKS به همون دامنه
+        for (final host in candidates.take(20)) {
+          if (!mounted) break;
+          try {
+            // تست واقعی SNI از طریق SOCKS
+            final r = await SocksProbe.measure(
+              port: _socksPort,
+              samples: 1,
+              timeout: const Duration(milliseconds: 1500),
+            );
+            if (r.ok && r.ms != null && r.ms! > 0) {
+              if (bestMs == null || r.ms! < bestMs) {
+                bestMs = r.ms;
+                best = host;
+              }
+            }
+          } catch (_) {}
         }
       } catch (_) {}
     }
+
+    // اگر Tor در حال اجرا نبود یا هیچ SNI جواب نداد، از TCP استفاده کن
+    if (best == null) {
+      for (final host in candidates) {
+        if (!mounted) break;
+        try {
+          final r = await NetworkProber.probeTcp(
+            host,
+            port: 443,
+            samples: 1,
+            timeout: const Duration(milliseconds: 900),
+          );
+          if (r.avgMs != null) {
+            best = host;
+            bestMs = r.avgMs;
+            break;
+          }
+        } catch (_) {}
+      }
+    }
+
     if (!mounted) return;
     setState(() {
       _selectedSni = best ?? TorSniPresets.defaultSni;
@@ -166,7 +210,12 @@ class _TorScreenState extends State<TorScreen> {
     });
     await _savePrefs();
     if (best != null) {
-      _snack(_t('SNI خودکار: $best', 'Auto SNI: $best'));
+      _snack(_t(
+        'SNI خودکار: $best${bestMs != null ? " (${bestMs}ms)" : ""}',
+        'Auto SNI: $best${bestMs != null ? " (${bestMs}ms)" : ""}',
+      ));
+    } else {
+      _snack(_t('هیچ SNI خوبی پیدا نشد', 'No good SNI found'));
     }
   }
 
