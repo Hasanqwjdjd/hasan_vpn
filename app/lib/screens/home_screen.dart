@@ -881,6 +881,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _pendingWidgetId = null;
     });
     await SettingsService.setLastServer(server.id);
+    // برچسب ویجت را فوراً به‌روز کن تا منتظر onUpdate بعدی سیستم نمانیم
+    try {
+      const ch = MethodChannel('com.hasan.hasan_vpn/widget');
+      await ch.invokeMethod('updateWidgets');
+    } catch (_) {}
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

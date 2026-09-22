@@ -72,22 +72,22 @@ class QuickConnectWidget1x1 : AppWidgetProvider() {
                 "FlutterSharedPreferences",
                 Context.MODE_PRIVATE,
             )
-            val raw = prefs.getString("flutter.quick_home_widgets_v1", null)
-            var title = "Hasan"
+
+            // ─── هر ویجت ۱×۱ سرور مخصوص خودش را دارد ───
+            // binding format: "type|payload|title"
+            val binding = prefs.getString("flutter.widget_server_$appWidgetId", null)
+            var title = "Tap to set"
             var type = "server"
             var payload = ""
-            if (raw != null) {
-                try {
-                    val arr = org.json.JSONArray(raw)
-                    if (arr.length() > 0) {
-                        val o = arr.getJSONObject(0)
-                        title = o.optString("title", "Hasan")
-                        type = o.optString("type", "server")
-                        payload = o.optString("payload", "")
-                    }
-                } catch (_: Exception) {
+            if (binding != null) {
+                val parts = binding.split("|", limit = 3)
+                if (parts.size == 3) {
+                    type = parts[0]
+                    payload = parts[1]
+                    title = parts[2].ifBlank { "Hasan" }
                 }
             }
+
             val views = RemoteViews(context.packageName, R.layout.widget_quick_connect_1x1)
             views.setTextViewText(R.id.widget_title, title)
 
