@@ -56,6 +56,22 @@ class WidgetBgConnectActivity : Activity() {
         } catch (_: Exception) {
         }
 
-        Handler(Looper.getMainLooper()).postDelayed({ finish() }, 80)
+        Handler(Looper.getMainLooper()).postDelayed({ finish() }, 10)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // وقتی از ویجت بیدار می‌شویم، این Activity باید فوراً ناپدید شود
+        val launch = packageManager.getLaunchIntentForPackage(packageName)
+        if (launch == null) {
+            finish()
+            overridePendingTransition(0, 0)
+            return
+        }
+    }
+
+    override fun finish() {
+        super.finish()
+        overridePendingTransition(0, 0)
     }
 }

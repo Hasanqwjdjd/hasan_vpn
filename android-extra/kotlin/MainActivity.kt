@@ -133,6 +133,24 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private var autoMoveToBackOnWidget = false
+
+    override fun onResume() {
+        super.onResume()
+        // اگر اپ از ویجت ۱×۱ بیدار شده، بدون نمایش UI به پس‌زمینه برو
+        if (intent?.getBooleanExtra("widget_bg_connect", false) == true) {
+            intent.removeExtra("widget_bg_connect")
+            autoMoveToBackOnWidget = true
+            // یک تأخیر کوچک تا Flutter engine کامل initialize شود
+            window?.decorView?.postDelayed({
+                if (autoMoveToBackOnWidget) {
+                    moveTaskToBack(true)
+                    autoMoveToBackOnWidget = false
+                }
+            }, 150)
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
