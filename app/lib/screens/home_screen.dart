@@ -50,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const String _customKey = 'custom_servers_v1';
   static const String _pingsKey = 'server_pings_v1';
   static const String _orderKey = 'server_order_v1';
+  static const String _customSubTagsKey = 'custom_server_sub_tags_v1';
 
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _listScrollController = ScrollController();
@@ -57,6 +58,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   List<VpnServer> _servers = [];
   List<VpnServer> _customServers = [];
+  // tag سرورهای custom به سابسکریپشن‌ها: serverId → subscriptionId
+  Map<String, String> _customSubTags = <String, String>{};
   Set<String> _deletedIds = <String>{};
   Set<String> _pinnedIds = <String>{};
   List<String> _manualOrder = <String>[];
@@ -125,6 +128,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _bootstrap() async {
     await _loadDeletedAndPinned();
     await _loadCustomServers();
+    await _loadCustomSubTags();
     await _loadServerNameOverrides();
     await _loadManualOrder();
     if (!mounted) return;
@@ -700,6 +704,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await prefs.setString(_deletedKey, jsonEncode(_deletedIds.toList()));
   }
 
+  Future<void> _saveCustomSubTags() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_customSubTagsKey, jsonEncode(_customSubTags));
+  }
+
+  Future<void> _loadCustomSubTags() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_customSubTagsKey);
+      if (raw == null) return;
+      final m = jsonDecode(raw) as Map;
+      _customSubTags = m.map((k, v) => MapEntry(k.toString(), v.toString()));
+    } catch (_) {
+      _customSubTags = <String, String>{};
+    }
+  }
+
   Future<void> _savePinned() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_pinnedKey, jsonEncode(_pinnedIds.toList()));
@@ -781,7 +802,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
       if (sub.id.isNotEmpty) {
         final links = sub.cachedLinks.toSet();
-        list = list.where((s) => links.contains(s.shareLink)).toList();
+        final customIds = _customServers.map((s) => s.id).toSet();
+        list = list.where((s) {
+          // سرورهای اشتراک → با shareLink
+          if (links.contains(s.shareLink)) return true;
+          // سرورهای custom → با tag به همین سابسکریپشن
+          if (customIds.contains(s.id) && _customSubTags[s.id] == _selectedSubId) {
+            return true;
+          }
+          return false;
+        }).toList();
       }
     }
 
@@ -1010,6 +1040,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _deleteServer(VpnServer server) {
     _deletedIds.add(server.id);
     _customServers.removeWhere((item) => item.id == server.id);
+    _customSubTags.remove(server.id);
+    _saveCustomSubTags();
     if (_selected?.id == server.id) _selected = null;
     _rebuildServerList();
     _saveDeleted();
@@ -1311,6 +1343,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           language: widget.language,
           onServerAdded: (server) {
             _customServers.insert(0, server);
+            // اگر سابسکریپشن خاصی انتخاب شده، سرور را به آن tag بزن
+            if (_selectedSubId != null) {
+              _customSubTags[server.id] = _selectedSubId!;
+              _saveCustomSubTags();
+            }
             _rebuildServerList();
             _saveCustomServers();
           },
