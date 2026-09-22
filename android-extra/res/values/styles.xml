@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- تمی که Activity را کاملاً نامرئی می‌کند (بدون پنجره).
-         Theme.Translucent.NoDisplay در public SDK وجود ندارد،
-         پس این معادل را می‌سازیم. -->
     <style name="Theme.HasanVPN.NoDisplay" parent="@android:style/Theme.Translucent.NoTitleBar">
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowContentOverlay">@null</item>
