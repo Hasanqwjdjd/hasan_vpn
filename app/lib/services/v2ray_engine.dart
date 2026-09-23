@@ -305,11 +305,19 @@ class V2RayEngine {
       config = await _applyGameDns(config);
       config = await _applyGameBooster(config);
 
-      return await startConfig(
+      final ok = await startConfig(
         remark: remark,
         config: config,
         server: server,
       );
+      // FIX_VPN_FLAG
+      if (ok) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('vpn_active', true);
+        } catch (_) {}
+      }
+      return ok;
     } catch (e) {
       lastError = e.toString();
       debugPrint('V2Ray connect error: $e');
@@ -548,6 +556,12 @@ class V2RayEngine {
     } catch (_) {}
     _connected = false;
     _current = null;
+    // FIX_VPN_FLAG: ذخیره flag برای WidgetConnectService (که در isolate جدا اجرا می‌شه
+    // و به state داخلی Dart دسترسی نداره)
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('vpn_active', false);
+    } catch (_) {}
     unawaited(TelemetryService.hide());
   }
 

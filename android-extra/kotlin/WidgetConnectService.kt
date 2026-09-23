@@ -102,6 +102,14 @@ class WidgetConnectService : Service() {
     /// آیا الان یک تونل VPN فعال روی دستگاه برقرار است؟ (منبع حقیقت واحد،
     /// مستقل از هر state داخلی Dart که بین اجراهای headless پایدار نیست.)
     private fun isVpnConnected(): Boolean {
+        // FIX_VPN_FLAG: اول flag قابل‌اعتماد Flutter رو چک کن.
+        // چون TRANSPORT_VPN روی بعضی دستگاه‌ها/ROM ها درست کار نمی‌کنه.
+        try {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            val flag = prefs.getBoolean("flutter.vpn_active", false)
+            if (flag) return true
+        } catch (_: Exception) {}
+        // Fallback: ConnectivityManager
         return try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
                 ?: return false
