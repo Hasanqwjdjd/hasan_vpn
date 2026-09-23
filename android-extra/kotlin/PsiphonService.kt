@@ -95,6 +95,9 @@ object PsiphonService {
      * نبودنش مشکلی ایجاد نمی‌کند.
      */
     private fun loadEmbeddedServerEntries(context: Context): String = try {
+        // FIX_SKIP_EMBEDDED: بذار SDK خودش از S3 دانلود کنه
+        // چون لیست embedded ما (از 2024) احتمالاً همه‌شون برای ISP ایران بلاک شدن
+        if (true) return ""
         context.applicationContext.assets.open("server_entries.txt")
             .bufferedReader().use { it.readText().trim() }
     } catch (_: Throwable) {
