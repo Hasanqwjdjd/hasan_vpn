@@ -111,6 +111,15 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, logsChannel)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getLogs" -> result.success(SafeLog.dump())
+                    "clearLogs" -> { SafeLog.clear(); result.success(true) }
+                    else -> result.notImplemented()
+                }
+            }
+
         widgetChannelRef = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, widgetChannel)
         widgetChannelRef!!.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -150,14 +159,6 @@ class MainActivity : FlutterActivity() {
                 }
             }, 150)
         }
-        // Log viewer channel
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, logsChannel)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "getLogs" -> result.success(SafeLog.dump())
-                    "clearLogs" -> { SafeLog.clear(); result.success(true) }
-                    else -> result.notImplemented()
-                }
             }
 
     }
