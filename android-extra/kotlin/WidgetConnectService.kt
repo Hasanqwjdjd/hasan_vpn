@@ -117,11 +117,12 @@ class WidgetConnectService : Service() {
     private fun launchHeadless(type: String, payload: String, title: String, action: String) {
         WidgetHeadlessActivity.pendingResult = { ok, err ->
             handler.post {
+                // SHOW_REAL_ERROR
                 if (!ok && err != null) {
                     SafeLog.d("WidgetConnect", "$action failed: $err")
                 }
-                updateFgNotification(action, ok)
-                handler.postDelayed({ stopSoon() }, 3000)
+                updateFgNotification(action, ok, err)
+                handler.postDelayed({ stopSoon() }, 5000)
             }
         }
         try {
@@ -141,19 +142,26 @@ class WidgetConnectService : Service() {
         } catch (ex: Exception) {
             SafeLog.d("WidgetConnect", "launch headless activity failed: ${ex.message}")
             WidgetHeadlessActivity.pendingResult = null
-            updateFgNotification(action, false)
+            updateFgNotification(action, false, null)
             handler.postDelayed({ stopSoon() }, 3000)
         }
     }
 
-    private fun updateFgNotification(action: String, ok: Boolean) {
+    private fun updateFgNotification(action: String, ok: Boolean, err: String? = null) {
         try {
             val nm = getSystemService(NotificationManager::class.java) ?: return
             val text = when {
                 action == ACTION_CONNECT && ok -> "Connected"
-                action == ACTION_CONNECT && !ok -> "Connect failed"
+                action == ACTION_CONNECT && !ok -> {
+                    val e = err ?: "unknown"
+                    // خطا رو کوتاه کن که توی notification جا بشه
+                    if (e.length > 120) e.substring(0, 120) + "..." else e
+                }
                 action == ACTION_DISCONNECT && ok -> "Disconnected"
-                else -> "Disconnect failed"
+                else -> {
+                    val e = err ?: "unknown"
+                    if (e.length > 120) e.substring(0, 120) + "..." else e
+                }
             }
             val ongoing = action == ACTION_CONNECT && ok
             val n = buildNotification(text, ongoing)
