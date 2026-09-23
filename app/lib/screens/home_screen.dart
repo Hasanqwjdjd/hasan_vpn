@@ -332,7 +332,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _loadServerNameOverrides() async {
     final overrides = await SettingsService.getServerNameOverrides();
     final allServers = <VpnServer>[
-      ...kServers,
       ..._customServers,
       ...widget.extraServers,
     ];
@@ -814,7 +813,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
 
     final allServers = <VpnServer>[
-      ...kServers.where((server) => !_deletedIds.contains(server.id)),
       ..._customServers.where((server) => !_deletedIds.contains(server.id)),
       ...widget.extraServers.where((server) => !_deletedIds.contains(server.id)),
     ];
