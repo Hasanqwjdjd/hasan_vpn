@@ -159,8 +159,6 @@ class MainActivity : FlutterActivity() {
                 }
             }, 150)
         }
-            }
-
     }
 
     override fun onNewIntent(intent: Intent) {
