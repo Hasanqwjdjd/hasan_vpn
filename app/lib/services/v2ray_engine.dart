@@ -584,16 +584,18 @@ class V2RayEngine {
   }
 
   /// چند URL تأخیر — بعضی هسته‌ها فقط HTTP ساده را پشتیبانی می‌کنند.
+  /// PattNG DELAY_TEST_URL / DELAY_TEST_URL2 order (https gstatic first).
   static const List<String> _delayUrls = <String>[
-    'http://www.gstatic.com/generate_204',
     'https://www.gstatic.com/generate_204',
+    'https://www.google.com/generate_204',
+    'http://www.gstatic.com/generate_204',
     'http://cp.cloudflare.com/generate_204',
     'http://connectivitycheck.gstatic.com/generate_204',
   ];
 
   static Future<int> realDelay(
     VpnServer server, {
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 12),
   }) async {
     String? config = _fullConfigOf(server);
     if (config == null || config.trim().isEmpty) return -2;

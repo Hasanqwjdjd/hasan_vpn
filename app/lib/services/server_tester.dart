@@ -3,8 +3,8 @@ import 'dart:collection';
 import 'dart:io';
 
 import '../models/server.dart';
-import 'test_budget.dart';
 import 'aether_service.dart';
+import 'test_budget.dart';
 import 'v2ray_engine.dart';
 
 /// توکن لغو برای یک دور تست.
@@ -49,38 +49,37 @@ class _Semaphore {
   }
 }
 
-/// تست واقعی: یک درخواست HTTP از داخل پروکسی (Xray) فرستاده می‌شود.
-/// این دقیقاً همان چیزی است که کاربر در عمل تجربه می‌کند.
+/// پینگ به سبک PattNG (RealPingWorkerService):
 ///
-/// سرورهای Aether اینجا تست نمی‌شوند (آدرس ثابت ندارند و پینگشان فقط وقتی
-/// تونل بالاست معنا دارد).
+/// 1) هم‌زمانی پیش‌فرض ۱۶ (سقف ۶۴)
+/// 2) پیش‌چک TCP یک‌ثانیه‌ای — fail → آفلاین بدون realDelay
+/// 3) realDelay با gstatic generate_204 و بودجه ~۱۲ث
+/// 4) TCP-only فقط تقریبی است (online نمی‌شود)
+/// 5) Aether: measureDelay جدا
 class ServerTester {
   ServerTester._();
 
-  /// اگر تلاش اول زودتر از این شکست خورد، احتمالاً خطای گذراست و یک‌بار
-  /// دیگر امتحان می‌شود.
-  static const int _fastFailMs = 2500;
-
-  /// تعداد تست هم‌زمان؛ هر تست یک نمونه‌ی موقت از هسته می‌سازد، پس بر اساس
-  /// تعداد هسته‌های گوشی تنظیم می‌شود (۴ تا ۱۰).
-  // ------------------------------------------------------------------- API
+  static const int _tcpTimeoutMs = 1000;
+  static const int _realBudgetSec = 12;
 
   static Future<TestSummary> testAll(
     List<VpnServer> servers, {
     required TestSession session,
     void Function(VpnServer server)? onServerDone,
     void Function()? onChanged,
+    bool onlyTcp = false,
   }) async {
     await V2RayEngine.loadDelayUrl();
     final budget = await TestBudget.load();
-    // Regular configs: high concurrency. Aether: low concurrency (native process).
-    final regular = servers.where((s) => !s.isAether && !s.isPsiphon).toList();
-    final aetherTargets = servers.where((s) => s.isAether).toList();
-    final targets = [...regular, ...aetherTargets];
-    final summary = TestSummary()..total = targets.length;
-    final gate = _Semaphore(budget.realConcurrency);
+
+    final regular = servers.where((s) => !s.isPsiphon).toList();
+    final summary = TestSummary()..total = regular.length;
+
+    final realGate = _Semaphore(budget.realConcurrency);
+    final tcpGate = _Semaphore(
+      onlyTcp ? budget.realConcurrency * 2 : budget.tcpConcurrency,
+    );
     final aetherGate = _Semaphore(budget.aetherConcurrency);
-    final tcpGate = _Semaphore(budget.direct);
 
     Timer? throttle;
     var dirty = false;
@@ -99,12 +98,12 @@ class ServerTester {
     }
 
     await Future.wait(
-      targets.map(
+      regular.map(
         (server) => _testServer(
           server,
           session: session,
-          retries: 1,
-          gate: server.isAether ? aetherGate : gate,
+          onlyTcp: onlyTcp,
+          gate: server.isAether ? aetherGate : realGate,
           tcpGate: tcpGate,
           budget: budget,
           summary: summary,
@@ -124,6 +123,7 @@ class ServerTester {
     VpnServer server, {
     required TestSession session,
     void Function()? onChanged,
+    bool onlyTcp = false,
   }) async {
     await V2RayEngine.loadDelayUrl();
     final budget = await TestBudget.load();
@@ -132,7 +132,7 @@ class ServerTester {
     await _testServer(
       server,
       session: session,
-      retries: 2,
+      onlyTcp: onlyTcp,
       gate: _Semaphore(1),
       tcpGate: _Semaphore(1),
       budget: budget,
@@ -141,8 +141,6 @@ class ServerTester {
     );
     return summary;
   }
-
-  // ---------------------------------------------------------------- engine
 
   static (int, int?) _summarize(List<int> values, {required bool dropWarmup}) {
     if (values.isEmpty) return (-1, null);
@@ -156,29 +154,46 @@ class ServerTester {
     return (ms < 1 ? 1 : ms, jitter);
   }
 
-  /// (ms, jitter): ms=-1 ناموفق، ms=-2 پینگ واقعی پشتیبانی نمی‌شود.
-  static Future<(int, int?)> _measure(
+  static bool _tcpPrecheckEligible(VpnServer server) {
+    if (server.isAether || server.isPsiphon) return false;
+    if (server.usesUdpTransport) return false;
+    if (server.host.isEmpty || server.port <= 0) return false;
+    if (server.host == 'serverless') return false;
+    return true;
+  }
+
+  static Future<int> _tcpConnectMs(VpnServer server) async {
+    if (!_tcpPrecheckEligible(server)) return -1;
+    final watch = Stopwatch()..start();
+    try {
+      final socket = await Socket.connect(
+        server.host,
+        server.port,
+        timeout: const Duration(milliseconds: _tcpTimeoutMs),
+      );
+      watch.stop();
+      socket.destroy();
+      final ms = watch.elapsedMilliseconds;
+      return ms < 1 ? 1 : ms;
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  static Future<(int, int?)> _measureReal(
     VpnServer server,
     TestBudget budget,
-    int retries,
     TestSession session,
   ) async {
-    final timeout = Duration(seconds: budget.timeoutSec);
+    final timeout = Duration(
+      seconds: budget.timeoutSec.clamp(5, _realBudgetSec),
+    );
     final values = <int>[];
-    var attempt = 0;
+    final samples = budget.samples.clamp(1, 3);
 
-    for (var i = 0; i < budget.samples; i++) {
+    for (var i = 0; i < samples; i++) {
       if (session.cancelled) break;
-      var result = -1;
-      while (true) {
-        final watch = Stopwatch()..start();
-        result = await V2RayEngine.realDelay(server, timeout: timeout);
-        if (result != -1 || session.cancelled) break;
-        if (attempt >= retries || watch.elapsedMilliseconds >= _fastFailMs) {
-          break;
-        }
-        attempt++;
-      }
+      final result = await V2RayEngine.realDelay(server, timeout: timeout);
       if (result == -2) return (-2, null);
       if (result > 0) {
         values.add(result);
@@ -186,48 +201,13 @@ class ServerTester {
         break;
       }
     }
-    return _summarize(values, dropWarmup: budget.samples >= 2);
-  }
-
-  static Future<(int, int?)> _tcpProbe(
-    VpnServer server,
-    TestBudget budget,
-    _Semaphore gate,
-  ) async {
-    if (server.host.isEmpty ||
-        server.port <= 0 ||
-        server.host == 'serverless' ||
-        server.usesUdpTransport) {
-      return (-1, null);
-    }
-    await gate.acquire();
-    try {
-      final times = <int>[];
-      for (var i = 0; i < budget.samples; i++) {
-        final watch = Stopwatch()..start();
-        try {
-          final socket = await Socket.connect(
-            server.host,
-            server.port,
-            timeout: Duration(seconds: budget.timeoutSec),
-          );
-          watch.stop();
-          socket.destroy();
-          times.add(watch.elapsedMilliseconds);
-        } catch (_) {
-          if (times.isEmpty) break;
-        }
-      }
-      return _summarize(times, dropWarmup: budget.samples >= 2);
-    } finally {
-      gate.release();
-    }
+    return _summarize(values, dropWarmup: samples >= 2);
   }
 
   static Future<void> _testServer(
     VpnServer server, {
     required TestSession session,
-    required int retries,
+    required bool onlyTcp,
     required _Semaphore gate,
     required _Semaphore tcpGate,
     required TestBudget budget,
@@ -243,11 +223,10 @@ class ServerTester {
       server.status = ServerStatus.testing;
       notify();
 
-      // Aether: PattNG-style native delay (SOCKS generate_204), not Xray getServerDelay.
       if (server.isAether) {
         final ms = await AetherService.measureDelay(
           server,
-          budget: Duration(seconds: budget.timeoutSec.clamp(8, 15)),
+          budget: Duration(seconds: budget.timeoutSec.clamp(8, _realBudgetSec)),
         );
         if (session.cancelled) return;
         if (ms > 0) {
@@ -266,51 +245,100 @@ class ServerTester {
         return;
       }
 
-      var (ms, jitter) = await _measure(server, budget, retries, session);
-      if (session.cancelled) return;
+      if (onlyTcp) {
+        await tcpGate.acquire();
+        try {
+          final tcp = await _tcpConnectMs(server);
+          if (session.cancelled) return;
+          if (tcp > 0) {
+            server.ping = tcp;
+            server.jitter = null;
+            server.pingKind = PingKind.tcp;
+            server.status = ServerStatus.idle;
+            summary.unknown++;
+          } else {
+            server.ping = null;
+            server.jitter = null;
+            server.pingKind = PingKind.none;
+            server.status = ServerStatus.offline;
+            summary.offline++;
+          }
+        } finally {
+          tcpGate.release();
+        }
+        return;
+      }
 
-      var kind = PingKind.real;
-      // اگر پینگ واقعی منفی/ناموفق بود، TCP به host:port را امتحان کن
-      // (خیلی از سرورهای Reality/TLS روی getServerDelay خطا می‌دهند ولی وصل می‌شوند)
-      if (ms <= 0 && budget.tcpFallback) {
-        final tcp = await _tcpProbe(server, budget, tcpGate);
+      // PattNG fail-fast TCP pre-check (1s)
+      if (_tcpPrecheckEligible(server) && budget.tcpPrecheck) {
+        await tcpGate.acquire();
+        final tcp = await _tcpConnectMs(server);
+        tcpGate.release();
         if (session.cancelled) return;
-        if (tcp.$1 > 0) {
-          ms = tcp.$1;
-          jitter = tcp.$2;
-          kind = PingKind.tcp;
+        if (tcp <= 0) {
+          server.ping = null;
+          server.jitter = null;
+          server.pingKind = PingKind.none;
+          server.status = ServerStatus.offline;
+          summary.offline++;
+          return;
         }
       }
 
-      if (ms > 0 && kind == PingKind.real) {
-        // Real tunnel ping → server is truly online
+      var (ms, jitter) = await _measureReal(server, budget, session);
+      if (session.cancelled) return;
+
+      if (ms > 0) {
         server.ping = ms;
         server.jitter = jitter;
         server.pingKind = PingKind.real;
         server.status = ServerStatus.online;
         summary.online++;
-      } else if (ms > 0 && kind == PingKind.tcp) {
-        // TCP-only → approximate, NOT online (avoids false positives)
-        server.ping = ms;
-        server.jitter = jitter;
-        server.pingKind = PingKind.tcp;
-        server.status = ServerStatus.idle;
-        summary.unknown++;
-      } else if (ms == -2) {
+        return;
+      }
+
+      if (ms == -2) {
         summary.realUnavailable = true;
+        if (budget.tcpFallback && _tcpPrecheckEligible(server)) {
+          await tcpGate.acquire();
+          final tcp = await _tcpConnectMs(server);
+          tcpGate.release();
+          if (tcp > 0) {
+            server.ping = tcp;
+            server.jitter = null;
+            server.pingKind = PingKind.tcp;
+            server.status = ServerStatus.idle;
+            summary.unknown++;
+            return;
+          }
+        }
         server.ping = null;
         server.jitter = null;
         server.pingKind = PingKind.none;
         server.status = ServerStatus.unknown;
         summary.unknown++;
-      } else {
-        // هرگز مقدار منفی در UI ذخیره نکن
-        server.ping = null;
-        server.jitter = null;
-        server.pingKind = PingKind.none;
-        server.status = ServerStatus.offline;
-        summary.offline++;
+        return;
       }
+
+      if (budget.tcpFallback && _tcpPrecheckEligible(server)) {
+        await tcpGate.acquire();
+        final tcp = await _tcpConnectMs(server);
+        tcpGate.release();
+        if (tcp > 0) {
+          server.ping = tcp;
+          server.jitter = null;
+          server.pingKind = PingKind.tcp;
+          server.status = ServerStatus.idle;
+          summary.unknown++;
+          return;
+        }
+      }
+
+      server.ping = null;
+      server.jitter = null;
+      server.pingKind = PingKind.none;
+      server.status = ServerStatus.offline;
+      summary.offline++;
     } finally {
       gate.release();
     }
@@ -318,34 +346,23 @@ class ServerTester {
     notify();
   }
 
-  // --------------------------------------------------------------- sorting
-
-  /// امتیاز ترکیبی (بالاتر = بهتر).
-  /// - تأخیر کم → امتیاز بیشتر
-  /// - وضعیت online الزامی
-  /// - jitter در صورت وجود جریمه می‌شود
   static double scoreOf(VpnServer s) {
     if (s.status != ServerStatus.online || s.ping == null) return -1;
-    if (s.isAether) return -1;
 
-    // پایه: هرچه پینگ کمتر، امتیاز بیشتر (سقف نرم ~۳۰۰ms)
     final ping = s.ping!.clamp(1, 10000);
     var score = 10000.0 / ping;
 
-    // جریمه jitter (اگر ثبت شده)
     final j = s.jitter;
     if (j != null && j > 0) {
       score *= (1.0 / (1.0 + j / 200.0));
     }
 
-    // پاداش پینگ خیلی خوب
     if (ping < 200) score *= 1.25;
     if (ping < 100) score *= 1.15;
 
     return score;
   }
 
-  /// مرتب‌سازی پایدار: پین‌شده‌ها ← امتیاز بالاتر ← بدون پینگ.
   static void sortServers(List<VpnServer> servers, {bool descending = false}) {
     final order = <VpnServer, int>{
       for (var i = 0; i < servers.length; i++) servers[i]: i,
@@ -362,14 +379,13 @@ class ServerTester {
 
       if (aHas && bHas) {
         final cmp = sa.compareTo(sb);
-        if (cmp != 0) return descending ? cmp : -cmp; // پیش‌فرض: امتیاز بالاتر اول
+        if (cmp != 0) return descending ? cmp : -cmp;
       }
 
       return order[a]!.compareTo(order[b]!);
     });
   }
 
-  /// بهترین سرور بر اساس امتیاز ترکیبی.
   static VpnServer? fastest(List<VpnServer> servers) {
     VpnServer? best;
     double bestScore = -1;
@@ -384,8 +400,6 @@ class ServerTester {
     return best;
   }
 
-  /// رتبه‌بندی کامل: لیست را بر اساس امتیاز مرتب می‌کند و رتبه ۱-based می‌دهد.
-  /// خروجی: map از serverId → رتبه (۱ = بهترین)
   static Map<String, int> rankAll(List<VpnServer> servers) {
     final ranked = List<VpnServer>.from(servers)
       ..sort((a, b) {
@@ -401,7 +415,7 @@ class ServerTester {
     var rank = 1;
     for (final s in ranked) {
       if (scoreOf(s) < 0) {
-        result[s.id] = 0; // بدون رتبه
+        result[s.id] = 0;
       } else {
         result[s.id] = rank++;
       }
