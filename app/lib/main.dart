@@ -44,17 +44,34 @@ Future<void> widgetHeadlessMain() async {
   try {
     if (action == 'disconnect') {
       await V2RayEngine.init();
-      // FIX_DISCONNECT_V2: چند بار پشت سر هم disconnect کن تا اگر پلاگین
-      // یا native layer خودش دوباره وصل کرد، دوباره قطع بشه.
-      for (int attempt = 0; attempt < 4; attempt++) {
+      // FIX_DISCONNECT_V3:
+      // مشکل V2 این بود که isolate بعد از 4 تلاش می‌مرد و native layer
+      // یه بار دیگه VPN رو وصل می‌کرد (همون 1 ثانیه‌ای که می‌دیدی).
+      // راه‌حل: به مدت 20 ثانیه، هر 500 میلی‌ثانیه چک کن؛ اگه هنوز وصله،
+      // دوباره قطع کن. این باعث می‌شه native layer نتونه دوباره وصل کنه.
+      final disconnectEnd = DateTime.now().add(const Duration(seconds: 20));
+      int disconnectAttempts = 0;
+      while (DateTime.now().isBefore(disconnectEnd)) {
         try {
           await V2RayEngine.disconnect();
+          disconnectAttempts++;
         } catch (_) {}
-        // بین هر تلاش کمی صبر کن
-        await Future.delayed(const Duration(milliseconds: 700));
+        await Future.delayed(const Duration(milliseconds: 500));
+        // اگه 10 ثانیه گذشته و دیگه وصل نشد، زودتر بیا بیرون
+        if (disconnectAttempts >= 3 &&
+            DateTime.now().difference(disconnectEnd).inSeconds < -10) {
+          if (!V2RayEngine.isConnected) {
+            // هنوز 10 ثانیه مونده ولی disconnected پایداره؛ یکم بیشتر صبر کن
+            // تا مطمئن شیم native layer ساکت شده
+            await Future.delayed(const Duration(seconds: 5));
+            if (!V2RayEngine.isConnected) break;
+          }
+        }
       }
-      // آخرین تأخیر تا مطمئن شیم state اپ اصلی هم پاک بشه
-      await Future.delayed(const Duration(milliseconds: 500));
+      // آخرین قطع برای اطمینان
+      try {
+        await V2RayEngine.disconnect();
+      } catch (_) {}
       ok = true;
     } else if (payload.isNotEmpty) {
       // type می‌تونه 'server' باشه یا اسم پروتکل (vless, trojan, ...).
