@@ -87,19 +87,6 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
     ));
   }
 
-  Future<void> _share() async {
-    final buf = StringBuffer();
-    for (final e in _logs) {
-      buf.writeln(_formatLine(e));
-    }
-    await Clipboard.setData(ClipboardData(text: buf.toString()));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(_t('کپی شد — می‌توانی paste کنی', 'Copied — paste anywhere')),
-      duration: const Duration(seconds: 2),
-    ));
-  }
-
   String _formatLine(Map<String, dynamic> e) {
     final ts = DateTime.fromMillisecondsSinceEpoch(e['ts'] as int? ?? 0);
     final hh = ts.hour.toString().padLeft(2, '0');
@@ -201,12 +188,6 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
                   onPressed: _copyAll,
                   icon: const Icon(Icons.copy_all, size: 16),
                   label: Text(_t('کپی همه', 'Copy all'),
-                      style: const TextStyle(fontSize: 12)),
-                ),
-                TextButton.icon(
-                  onPressed: _share,
-                  icon: const Icon(Icons.share, size: 16),
-                  label: Text(_t('اشتراک', 'Share'),
                       style: const TextStyle(fontSize: 12)),
                 ),
                 TextButton.icon(
