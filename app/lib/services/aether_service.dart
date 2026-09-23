@@ -362,15 +362,28 @@ class AetherService {
     required int socksPort,
     bool blockQuic = true,
   }) {
-    // Psiphon / Aether SOCKS is TCP-oriented. Sending raw UDP:53 through the
-    // SOCKS outbound often fails (no UDP ASSOCIATE) → "connected but no
-    // traffic". Use Xray's internal DNS outbound + DoH (TCP/HTTPS) which
-    // travels over the same SOCKS path as normal HTTPS.
     final rules = <Map<String, dynamic>>[
-      // System DNS (UDP/TCP 53) → Xray DNS module (resolves via DoH over proxy).
+      // DNS queries (UDP:53) must be answered locally by Xray's built-in DNS
+      // client (outbound tag 'dns-out'), NOT forwarded raw as UDP to the
+      // 'proxy' SOCKS outbound.
+      //
+      // Root cause of the "Psiphon completely broken" regression: Psiphon's
+      // local SOCKS proxy (LocalSocksProxyPort) only implements the SOCKS
+      // CONNECT command — it has no UDP ASSOCIATE support. When this rule
+      // pointed 'proxy' (outbound protocol 'socks' → 127.0.0.1:<psiphon
+      // socks port>), Xray tried to relay every UDP:53 packet through that
+      // SOCKS outbound's UDP path, which Psiphon rejects/ignores. Every DNS
+      // lookup then times out, so nothing resolves and the connection looks
+      // completely dead (worse than before, when DNS simply leaked direct).
+      //
+      // 'dns-out' (protocol 'dns', defined below) instead answers the query
+      // itself using the DoH servers in the 'dns' block — those lookups are
+      // ordinary TCP/443 connections, which the catch-all rule below already
+      // routes through 'proxy' correctly (Psiphon handles TCP CONNECT fine).
       <String, dynamic>{
         'type': 'field',
         'port': '53',
+        'network': 'udp',
         'outboundTag': 'dns-out',
       },
       // Block QUIC (UDP:443) so browsers fall back to TCP-over-proxy.
@@ -465,16 +478,11 @@ class AetherService {
         <String, dynamic>{'tag': 'dns-out', 'protocol': 'dns'},
       ],
       'dns': <String, dynamic>{
-        // DoH is TCP/HTTPS → goes through the SOCKS proxy via catch-all.
-        // Pure IP fallback only if DoH cannot bootstrap (rare on WiFi).
-        'servers': <dynamic>[
+        'servers': <String>[
           'https://1.1.1.1/dns-query',
           'https://8.8.8.8/dns-query',
-          '1.1.1.1',
-          '8.8.8.8',
         ],
         'queryStrategy': 'UseIPv4',
-        'disableCache': false,
       },
       'routing': <String, dynamic>{
         'domainStrategy': 'AsIs',

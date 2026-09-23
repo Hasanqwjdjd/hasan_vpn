@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../models/subscription.dart';
-import '../services/subscription_service.dart';
+import '../services/subscription_service.dart'
+    show SubscriptionService, SubscriptionFetchException, SubFetchErrorKind;
 import '../services/app_colors.dart';
 
 class SubscriptionsScreen extends StatefulWidget {
@@ -126,6 +127,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       final servers = await SubscriptionService.fetch(sub);
       sub.lastUpdated = DateTime.now();
       sub.serverCount = servers.length;
+      sub.lastError = null;
+      sub.lastErrorCode = null;
       await SubscriptionService.save(_subs);
       widget.onChanged(_subs);
       if (mounted) {
@@ -133,10 +136,44 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         _showMsg(
             '${servers.length} ${_t('سرور بارگیری شد از', 'servers loaded from')} ${sub.name}');
       }
+    } on SubscriptionFetchException catch (e) {
+      // کش/serverCount قبلی دست‌نخورده می‌ماند (fetch قبل از تغییر آن‌ها
+      // throw می‌کند)؛ فقط پیام خطا برای نوار هشدار ذخیره می‌شود.
+      sub.lastError = e.message;
+      sub.lastErrorCode = e.statusCode;
+      if (mounted) {
+        setState(() {});
+        _showMsg(_errorLabel(sub, e));
+      }
     } catch (e) {
-      _showMsg('${_t('خطا', 'Error')}: $e');
+      sub.lastError = e.toString();
+      sub.lastErrorCode = null;
+      if (mounted) {
+        setState(() {});
+        _showMsg('${_t('خطا', 'Error')}: $e');
+      }
     } finally {
       if (mounted) setState(() => _loading.remove(sub.id));
+    }
+  }
+
+  String _errorLabel(Subscription sub, SubscriptionFetchException e) {
+    final kept = sub.serverCount > 0
+        ? ' — ${_t('سرورهای قبلی نگه داشته شدند', 'previous servers kept')} (${sub.serverCount})'
+        : '';
+    switch (e.kind) {
+      case SubFetchErrorKind.httpError:
+        return '${_t('خطای HTTP', 'HTTP error')} ${e.statusCode}$kept';
+      case SubFetchErrorKind.timeout:
+        return '${_t('اتصال timeout شد', 'Connection timed out')}$kept';
+      case SubFetchErrorKind.dnsFailure:
+        return '${_t('خطای DNS — آدرس resolve نشد', 'DNS error — could not resolve address')}$kept';
+      case SubFetchErrorKind.networkError:
+        return '${_t('خطای شبکه', 'Network error')}$kept';
+      case SubFetchErrorKind.emptyOrInvalid:
+        return '${_t('پاسخ نامعتبر یا خالی بود', 'Response was empty or invalid')}$kept';
+      case SubFetchErrorKind.unknown:
+        return '${_t('خطا', 'Error')}: ${e.message}$kept';
     }
   }
 
@@ -410,6 +447,39 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                               color: AppColors.muted2(context), fontSize: 10),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis),
+                      if (s.lastError != null) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppColors.danger.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border:
+                                Border.all(color: AppColors.danger.withOpacity(0.4)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.error_outline,
+                                  color: AppColors.danger, size: 14),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  s.lastErrorCode != null
+                                      ? '${_t('خطا', 'Error')} ${s.lastErrorCode}: ${s.lastError}'
+                                      : s.lastError!,
+                                  style: const TextStyle(
+                                      color: AppColors.danger, fontSize: 10),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 6),
                       Row(
                         children: [

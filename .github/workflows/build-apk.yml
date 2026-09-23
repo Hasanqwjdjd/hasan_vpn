@@ -42,19 +42,20 @@ jobs:
       - name: Compute app version
         id: appver
         run: |
-          # BASE = run_number that should produce 2.11.0
-          # Latest release was run 362 → 2.10.0; next run 363 → 2.11.0
-          BASE=363
+          # BASE = the github.run_number of the FIRST build that should be tagged 2.11.0.
+          # Set this to (current latest Actions run number) + 1 before merging, so the very
+          # next workflow run lands on 2.11.0. Check the Actions tab for the latest run
+          # number, e.g. if the latest run shown is 418, set BASE=419.
+          BASE=419
           N=$(( ${{ github.run_number }} - BASE ))
           if [ "$N" -lt 0 ]; then N=0; fi
           MINOR=$(( 11 + N / 5 ))
           PATCH=$(( (N % 5) * 2 ))
-          if [ "$MINOR" -ge 20 ]; then
-            MAJOR=3
+          MAJOR=2
+          while [ "$MINOR" -ge 20 ]; do
+            MAJOR=$(( MAJOR + 1 ))
             MINOR=$(( MINOR - 20 ))
-          else
-            MAJOR=2
-          fi
+          done
           CLEAN="${MAJOR}.${MINOR}.${PATCH}"
           echo "version=$CLEAN" >> "$GITHUB_OUTPUT"
           echo "Computed version: $CLEAN (run: ${{ github.run_number }})"

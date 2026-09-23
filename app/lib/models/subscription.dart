@@ -9,6 +9,11 @@ class Subscription {
   int serverCount;
   List<String> cachedLinks;
 
+  /// آخرین خطای دریافت (اگر آخرین تلاش شکست خورد). روی دیسک ذخیره نمی‌شود؛
+  /// فقط برای نمایش نوار خطا در همین اجرای برنامه است.
+  String? lastError;
+  int? lastErrorCode;
+
   Subscription({
     required this.id,
     required this.name,
@@ -19,6 +24,8 @@ class Subscription {
     this.lastUpdated,
     this.serverCount = 0,
     List<String>? cachedLinks,
+    this.lastError,
+    this.lastErrorCode,
   }) : cachedLinks = cachedLinks ?? [];
 
   Map<String, dynamic> toJson() => {

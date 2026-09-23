@@ -11,56 +11,47 @@ import 'link_parser.dart';
 import 'protected_defaults.dart';
 import 'xray_json.dart';
 
-/// Structured error so UI can show HTTP code + reason clearly.
-class SubscriptionFetchException implements Exception {
-  final String message;
-  final int? statusCode;
-  final String kind; // 'http', 'timeout', 'dns', 'network', 'format', 'empty'
+/// دلیل شکست دریافت اشتراک — برای پیام خطای دقیق در UI.
+enum SubFetchErrorKind {
+  httpError, // پاسخ سرور با کد غیر ۲۰۰ (404, 403, 5xx, ...)
+  timeout,
+  dnsFailure, // نام دامنه resolve نشد
+  networkError, // بقیه‌ی خطاهای شبکه/اتصال
+  emptyOrInvalid, // پاسخ ۲۰۰ بود ولی هیچ سروری از آن استخراج نشد
+  unknown,
+}
 
-  SubscriptionFetchException(this.message, {this.statusCode, this.kind = 'network'});
+/// خطای دریافت اشتراک با جزئیات کافی برای نمایش به کاربر و تصمیم‌گیری
+/// دربارهٔ نگه‌داشتن کش قبلی.
+class SubscriptionFetchException implements Exception {
+  final SubFetchErrorKind kind;
+  final int? statusCode;
+  final String? reasonPhrase;
+  final String message;
+
+  const SubscriptionFetchException(
+    this.kind,
+    this.message, {
+    this.statusCode,
+    this.reasonPhrase,
+  });
 
   @override
-  String toString() {
-    if (statusCode != null) return 'HTTP $statusCode · $message';
-    return message;
-  }
+  String toString() => message;
 }
 
 class SubscriptionService {
   static const String _key = 'subscriptions_v3';
   static const String _removedDefaultsKey = 'subscriptions_removed_defaults_v1';
 
-  /// Browser-like UA — some providers block non-browser clients.
-  static const String _userAgent =
-      'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
-
-  /// اشتراک‌های پیش‌فرض.
-  /// - لینک‌های محافظت‌شده از [ProtectedDefaults] (CI secret) می‌آیند.
-  /// - hasanzeus-2 به‌صورت عمومی (غیررمز) اضافه شده تا بدون به‌روزکردن secret
-  ///   هم در دسترس باشد. Spider/Zeus را از secret حذف کنید.
-  static List<Subscription> get defaultSubscriptions {
-    final fromProtected = [
-      for (final e in ProtectedDefaults.entries)
-        if (e[0] != 'spider' && e[0] != 'zeus' &&
-            e[0] != 'Spider-Hasan' && e[0] != 'Zeus')
+  /// اشتراک‌های پیش‌فرض. لینک‌ها اینجا نیستند: از جدول رمزشدهٔ
+  /// [ProtectedDefaults] (ساخته‌شده در CI) فقط لحظهٔ دانلود خوانده می‌شوند.
+  static List<Subscription> get defaultSubscriptions => [
+        for (final e in ProtectedDefaults.entries)
           Subscription(id: e[0], name: e[1], url: '', isDefault: true),
-    ];
-    // Public default — auto-refresh ON, 12h (model defaults).
-    final publicDefaults = [
-      Subscription(
-        id: 'hasanzeus-2',
-        name: 'HasanZeus-2',
-        url: 'https://1oz95lepua0s.ekz8gsezum2s.workers.dev/feed/hasanzeus-2',
-        isDefault: true,
-        autoUpdate: true,
-        intervalHours: 12,
-      ),
-    ];
-    return [...publicDefaults, ...fromProtected];
-  }
+      ];
 
   /// آدرس واقعی برای دانلود. برای اشتراک پیش‌فرض از جدول محافظت‌شده می‌آید.
-  /// hasanzeus-2 و هر پیش‌فرض عمومی، url ذخیره‌شده را برمی‌گرداند.
   static String urlFor(Subscription sub) {
     if (sub.isDefault) {
       final u = ProtectedDefaults.urlFor(sub.id);
@@ -135,8 +126,7 @@ class SubscriptionService {
       _key,
       jsonEncode(subscriptions.map((s) {
         final json = s.toJson();
-        // لینک اشتراک پیش‌فرض محافظت‌شده هرگز روی دستگاه ذخیره نمی‌شود.
-        // hasanzeus-2 و سایر پیش‌فرض‌های عمومی url خود را نگه می‌دارند.
+        // لینک اشتراک پیش‌فرض هرگز روی دستگاه ذخیره نمی‌شود.
         if (s.isDefault && ProtectedDefaults.has(s.id)) json['url'] = '';
         return json;
       }).toList()),
@@ -145,69 +135,57 @@ class SubscriptionService {
 
   // ---------------------------------------------------------------- network
 
-  /// Fetch servers. On 404 / network failure keeps previous cachedLinks
-  /// (does not wipe). Throws [SubscriptionFetchException] with clear message.
-  static Future<List<VpnServer>> fetch(Subscription subscription) async {
-    final url = urlFor(subscription);
-    if (url.isEmpty) {
-      throw SubscriptionFetchException(
-        'URL is empty or decrypt failed',
-        kind: 'format',
-      );
-    }
+  // برخی ارائه‌دهنده‌ها User-Agent غیرمرورگری را بلاک می‌کنند (403/404 جعلی).
+  static const String _browserUserAgent =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+  static Future<List<VpnServer>> fetch(Subscription subscription) async {
     final http.Response response;
     try {
       response = await http
           .get(
-            Uri.parse(url),
+            Uri.parse(urlFor(subscription)),
             headers: const {
-              'User-Agent': _userAgent,
+              'User-Agent': _browserUserAgent,
               'Accept': '*/*',
-              'Accept-Language': 'en-US,en;q=0.9',
-              'Cache-Control': 'no-cache',
             },
           )
-          .timeout(const Duration(seconds: 25));
+          .timeout(const Duration(seconds: 20));
     } on TimeoutException {
-      throw SubscriptionFetchException(
-        'Request timed out (25s)',
-        kind: 'timeout',
+      throw const SubscriptionFetchException(
+        SubFetchErrorKind.timeout,
+        'Timeout — سرور در ۲۰ ثانیه پاسخ نداد',
       );
     } on SocketException catch (e) {
-      final msg = e.message.toLowerCase();
-      if (msg.contains('failed host lookup') ||
-          msg.contains('name or service not known') ||
-          msg.contains('nodename nor servname')) {
-        throw SubscriptionFetchException(
-          'DNS failure · cannot resolve host',
-          kind: 'dns',
-        );
-      }
+      // پیام e.message معمولاً شامل آدرس کامل است؛ برای اشتراک پیش‌فرض
+      // (لینک محافظت‌شده) نباید در پیام خطا لو برود.
+      final isDns = e.osError?.errorCode == 7 || // EAI_NONAME (Android/Linux)
+          e.message.toLowerCase().contains('lookup') ||
+          e.message.toLowerCase().contains('nodename') ||
+          e.message.toLowerCase().contains('resolve');
       throw SubscriptionFetchException(
-        'Network error · ${e.message}',
-        kind: 'network',
+        isDns ? SubFetchErrorKind.dnsFailure : SubFetchErrorKind.networkError,
+        subscription.isDefault
+            ? (isDns ? 'DNS resolution failed' : 'Network error')
+            : (isDns
+                ? 'DNS resolution failed: ${e.message}'
+                : 'Network error: ${e.message}'),
       );
     } catch (e) {
-      if (subscription.isDefault) {
-        throw SubscriptionFetchException('network error', kind: 'network');
-      }
-      throw SubscriptionFetchException(e.toString(), kind: 'network');
-    }
-
-    if (response.statusCode == 404) {
-      // Keep old cached servers — do not wipe.
       throw SubscriptionFetchException(
-        'Not Found (subscription URL may have changed)',
-        statusCode: 404,
-        kind: 'http',
+        SubFetchErrorKind.unknown,
+        subscription.isDefault ? 'Network error' : 'Error: $e',
       );
     }
+
     if (response.statusCode != 200) {
       throw SubscriptionFetchException(
-        'Unexpected status',
+        SubFetchErrorKind.httpError,
+        'HTTP ${response.statusCode}'
+        '${response.reasonPhrase != null ? ' ${response.reasonPhrase}' : ''}',
         statusCode: response.statusCode,
-        kind: 'http',
+        reasonPhrase: response.reasonPhrase,
       );
     }
 
@@ -218,10 +196,11 @@ class SubscriptionService {
 
     final servers = parseContent(content, subscription.id);
     if (servers.isEmpty) {
-      // پاسخ خراب یا خالی نباید کش قبلی را پاک کند.
-      throw SubscriptionFetchException(
-        'No servers found in response (invalid or empty body)',
-        kind: 'empty',
+      // پاسخ خراب یا خالی نباید کش قبلی را پاک کند — throw می‌کنیم قبل از
+      // این‌که subscription.cachedLinks/serverCount دست بخورد.
+      throw const SubscriptionFetchException(
+        SubFetchErrorKind.emptyOrInvalid,
+        'پاسخ ۲۰۰ بود ولی هیچ سروری از آن استخراج نشد (فرمت نامعتبر؟)',
       );
     }
 

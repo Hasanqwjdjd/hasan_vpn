@@ -217,8 +217,15 @@ class _HasanAppState extends State<HasanApp> {
             final servers = await SubscriptionService.fetch(s);
             s.lastUpdated = DateTime.now();
             s.serverCount = servers.length;
+            s.lastError = null;
+            s.lastErrorCode = null;
             return servers;
-          } catch (_) {
+          } catch (e) {
+            // کش قبلی همین الان نگه داشته می‌شود؛ فقط پیام خطا را برای
+            // نوار هشدار صفحه‌ی اشتراک‌ها ذخیره می‌کنیم.
+            s.lastError = e is SubscriptionFetchException ? e.message : e.toString();
+            s.lastErrorCode =
+                e is SubscriptionFetchException ? e.statusCode : null;
             return SubscriptionService.fromCache(s);
           }
         }
