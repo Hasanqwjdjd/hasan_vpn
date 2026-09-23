@@ -69,7 +69,16 @@ class PsiphonAuto {
   /// پروفایل‌ها به ترتیب اولویت پیش‌فرض.
   ///  - oblivion: مقادیر bepass-org/warp-plus (همان پیش‌فرض قبلی این برنامه)
   ///  - aether:   مقادیر AetherST
+  // PSIPHON_SPONSOR_FIX: قالب SponsorId عوض شد چون FFFFFFFF روی سرورها
+  // مجاز نبود (restricted provider ID).
   static const List<PsiphonProfile> profiles = <PsiphonProfile>[
+    // تست: Psiphon رسمی این رو برای تست تأیید کرده
+    PsiphonProfile(
+      id: 'test',
+      sponsorId: '0000000000000000',
+      channelId: '0000000000000000',
+    ),
+    // قدیمی‌ها به‌عنوان fallback
     PsiphonProfile(
       id: 'oblivion',
       sponsorId: 'FFFFFFFFFFFFFFFF',
