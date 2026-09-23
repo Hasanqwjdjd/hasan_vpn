@@ -236,10 +236,10 @@ object TorService {
         sb.appendLine("DataDirectory ${dataDir.absolutePath}")
         sb.appendLine("Log notice stdout")
         sb.appendLine("SafeLogging 0")
-        sb.appendLine("AvoidDiskWrites 1")
+        // AvoidDiskWrites removed — allows caching consensus/guards/circuits to disk for faster reconnect
         // بهینه‌سازی سرعت/پایداری مدار
-        sb.appendLine("CircuitBuildTimeout 12")
-        sb.appendLine("LearnCircuitBuildTimeout 0")
+        sb.appendLine("CircuitBuildTimeout 15")
+        sb.appendLine("LearnCircuitBuildTimeout 1")
         sb.appendLine("CircuitStreamTimeout 15")
         sb.appendLine("KeepalivePeriod 60")
         sb.appendLine("NewCircuitPeriod 30")
@@ -249,15 +249,15 @@ object TorService {
         sb.appendLine("ConnectionPadding 0")
         sb.appendLine("ReducedConnectionPadding 1")
         // ─── بهینه‌سازی سرعت ───
-        sb.appendLine("NumEntryGuards 2")
-        sb.appendLine("NumDirectoryGuards 1")
+        sb.appendLine("NumEntryGuards 3")
+        sb.appendLine("NumDirectoryGuards 2")
         sb.appendLine("UseEntryGuards 1")
         sb.appendLine("StrictNodes 0")
         // دانلود سریع‌تر consensus
         sb.appendLine("ClientBootstrapConsensusAuthorityDownloadInitialDelay 0")
-        sb.appendLine("ClientBootstrapConsensusAuthorityDownloadSchedule 1, 2, 4")
+        sb.appendLine("ClientBootstrapConsensusAuthorityDownloadSchedule 0, 1, 2, 4")
         sb.appendLine("ClientBootstrapConsensusFallbackDownloadInitialDelay 0")
-        sb.appendLine("ClientBootstrapConsensusFallbackDownloadSchedule 1, 2, 4")
+        sb.appendLine("ClientBootstrapConsensusFallbackDownloadSchedule 0, 1, 2, 4")
 
         when (bridgeType) {
             "vanilla" -> {
