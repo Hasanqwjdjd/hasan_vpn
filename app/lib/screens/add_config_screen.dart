@@ -34,9 +34,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   String _selectedType = 'manual'; // manual | aether | oblivion | siphon | tor
 
   // تنظیمات Aether (مقدارهای پیش‌فرض همان پیش‌فرض AetherProfile هستند)
-  String _aetherProtocol = 'auto';
-  String _aetherScan = 'smart';
-  String _aetherNoize = 'auto';
+  String _aetherProtocol = 'masque';
+  String _aetherScan = 'balanced';
+  String _aetherNoize = 'balanced';
   String _aetherIp = 'v4';
   String _aetherPerf = 'auto';
   bool _aetherQuickReconnect = true;
@@ -413,8 +413,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         name: 'Oblivion · Auto',
         flag: '☁️',
         profile: const AetherProfile(
-          protocol: 'auto',
-          scan: 'smart',
+          protocol: 'masque',
+          scan: 'balanced',
           noize: 'auto',
           quickReconnect: true,
           blockQuic: true,
@@ -485,7 +485,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       return;
     }
 
-    // پیش‌فرض‌های نزدیک به Oblivion: اسکن هوشمند + MASQUE/WG خودکار
+    // پیش‌فرض‌های PattNG: MASQUE/H3 + balanced + balanced noize
     final profile = AetherProfile(
       protocol: _aetherProtocol == 'auto' ? 'auto' : _aetherProtocol,
       scan: _aetherScan,

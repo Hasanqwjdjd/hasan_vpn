@@ -4,6 +4,7 @@ import 'dart:io';
 
 import '../models/server.dart';
 import 'test_budget.dart';
+import 'aether_service.dart';
 import 'v2ray_engine.dart';
 
 /// توکن لغو برای یک دور تست.
@@ -72,9 +73,13 @@ class ServerTester {
   }) async {
     await V2RayEngine.loadDelayUrl();
     final budget = await TestBudget.load();
-    final targets = servers.where((s) => !s.isAether && !s.isPsiphon).toList();
+    // Regular configs: high concurrency. Aether: low concurrency (native process).
+    final regular = servers.where((s) => !s.isAether && !s.isPsiphon).toList();
+    final aetherTargets = servers.where((s) => s.isAether).toList();
+    final targets = [...regular, ...aetherTargets];
     final summary = TestSummary()..total = targets.length;
     final gate = _Semaphore(budget.realConcurrency);
+    final aetherGate = _Semaphore(budget.aetherConcurrency);
     final tcpGate = _Semaphore(budget.direct);
 
     Timer? throttle;
@@ -99,7 +104,7 @@ class ServerTester {
           server,
           session: session,
           retries: 1,
-          gate: gate,
+          gate: server.isAether ? aetherGate : gate,
           tcpGate: tcpGate,
           budget: budget,
           summary: summary,
@@ -230,13 +235,36 @@ class ServerTester {
     required void Function() notify,
   }) async {
     if (session.cancelled) return;
-    if (server.isAether || server.isPsiphon) return;
+    if (server.isPsiphon) return;
 
     await gate.acquire();
     try {
       if (session.cancelled) return;
       server.status = ServerStatus.testing;
       notify();
+
+      // Aether: PattNG-style native delay (SOCKS generate_204), not Xray getServerDelay.
+      if (server.isAether) {
+        final ms = await AetherService.measureDelay(
+          server,
+          budget: Duration(seconds: budget.timeoutSec.clamp(8, 15)),
+        );
+        if (session.cancelled) return;
+        if (ms > 0) {
+          server.ping = ms;
+          server.jitter = null;
+          server.pingKind = PingKind.real;
+          server.status = ServerStatus.online;
+          summary.online++;
+        } else {
+          server.ping = null;
+          server.jitter = null;
+          server.pingKind = PingKind.none;
+          server.status = ServerStatus.offline;
+          summary.offline++;
+        }
+        return;
+      }
 
       var (ms, jitter) = await _measure(server, budget, retries, session);
       if (session.cancelled) return;

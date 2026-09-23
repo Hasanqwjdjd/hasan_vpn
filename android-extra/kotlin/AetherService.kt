@@ -33,6 +33,7 @@ class AetherService : Service() {
         private const val CHANNEL_ID = "aether_core"
         private const val NOTIFICATION_ID = 4242
         private const val EXTRA_ENV = "env"
+        private const val EXTRA_ARGS = "args"
         private const val EXTRA_REMARK = "remark"
         private const val BINARY_NAME = "libaether.so"
         private const val PID_FILE = "aether.pid"
@@ -84,7 +85,12 @@ class AetherService : Service() {
             )
         }
 
-        fun start(context: Context, envJson: String, remark: String): Boolean {
+        fun start(
+            context: Context,
+            envJson: String,
+            remark: String,
+            argsJson: String = "[]",
+        ): Boolean {
             val binary = binaryFile(context)
             if (!binary.isFile) {
                 synchronized(lock) { lastError = "$BINARY_NAME not found in ${binary.parent}" }
@@ -104,6 +110,7 @@ class AetherService : Service() {
 
                 val intent = Intent(context, AetherService::class.java)
                     .putExtra(EXTRA_ENV, envJson)
+                    .putExtra(EXTRA_ARGS, argsJson)
                     .putExtra(EXTRA_REMARK, remark)
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -203,7 +210,8 @@ class AetherService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val envJson = intent?.getStringExtra(EXTRA_ENV)
+        val envJson = intent?.getStringExtra(EXTRA_ENV) ?: "{}"
+        val argsJson = intent?.getStringExtra(EXTRA_ARGS) ?: "[]"
         val remark = intent?.getStringExtra(EXTRA_REMARK) ?: "Aether"
 
         instance = this
@@ -216,12 +224,7 @@ class AetherService : Service() {
             return START_NOT_STICKY
         }
 
-        if (envJson.isNullOrEmpty()) {
-            fail("Missing environment for Aether")
-            return START_NOT_STICKY
-        }
-
-        launch(envJson)
+        launch(envJson, argsJson)
         return START_NOT_STICKY
     }
 
@@ -256,7 +259,16 @@ class AetherService : Service() {
         return out
     }
 
-    private fun launch(envJson: String) {
+    private fun parseArgs(json: String): List<String> {
+        return try {
+            val arr = org.json.JSONArray(json)
+            (0 until arr.length()).map { arr.optString(it, "") }.filter { it.isNotEmpty() }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun launch(envJson: String, argsJson: String = "[]") {
         val binary = binaryFile(this)
         if (!binary.isFile) {
             fail("$BINARY_NAME not found in ${binary.parent}")
@@ -270,11 +282,18 @@ class AetherService : Service() {
             return
         }
 
+        val cliArgs = parseArgs(argsJson)
+
         // اگر اپ قبلاً ناگهانی بسته شده باشد ممکن است یک Aether یتیم مانده باشد.
         killLeftover()
         destroyProcess()
 
-        val builder = ProcessBuilder(binary.absolutePath)
+        // PattNG-style: binary + CLI flags (primary). Env kept as fallback.
+        val cmd = ArrayList<String>(1 + cliArgs.size)
+        cmd.add(binary.absolutePath)
+        cmd.addAll(cliArgs)
+
+        val builder = ProcessBuilder(cmd)
             .directory(filesDir)
             .redirectErrorStream(true)
 
@@ -306,7 +325,11 @@ class AetherService : Service() {
         val gen = current
 
         writePid(pid)
-        SafeLog.i(TAG, "Aether started (${env["AETHER_PROTOCOL"]}, ${env["AETHER_SCAN"]})")
+        SafeLog.i(
+            TAG,
+            "Aether started args=${cliArgs.joinToString(" ")} " +
+                "(${env["AETHER_PROTOCOL"]}, ${env["AETHER_SCAN"]})",
+        )
 
         thread(name = "aether-log", isDaemon = true) { readLoop(proc, gen) }
 

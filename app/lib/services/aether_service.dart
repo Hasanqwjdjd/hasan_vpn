@@ -70,11 +70,22 @@ class AetherService {
     }
   }
 
+  /// PattNG default listen port; fall back to ephemeral if taken.
+  static const int preferredSocksPort = 10819;
+
   static Future<int> _freePort() async {
-    final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-    final port = socket.port;
-    await socket.close();
-    return port;
+    try {
+      final preferred =
+          await ServerSocket.bind(InternetAddress.loopbackIPv4, preferredSocksPort);
+      final port = preferred.port;
+      await preferred.close();
+      return port;
+    } catch (_) {
+      final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final port = socket.port;
+      await socket.close();
+      return port;
+    }
   }
 
   // ------------------------------------------------------- last good profile
@@ -230,11 +241,13 @@ class AetherService {
     required bool Function() cancelled,
   }) async {
     final env = profile.buildEnv(attempt, port);
+    final args = profile.buildArgs(attempt, port);
 
     final started = await _channel.invokeMethod<bool>(
           'start',
           <String, dynamic>{
             'env': jsonEncode(env),
+            'args': jsonEncode(args),
             'remark': server.name,
           },
         ) ??
@@ -275,10 +288,11 @@ class AetherService {
       }
 
       if (await SocksProbe.isPortOpen(port)) {
+        // PattNG-style real probe: generate_204 via SOCKS (200/204).
         final probe = await SocksProbe.measure(
           port: port,
-          samples: 1,
-          timeout: const Duration(seconds: 5),
+          samples: 2,
+          timeout: const Duration(seconds: 8),
         );
         if (probe.ok) return true;
       }
@@ -294,6 +308,64 @@ class AetherService {
   static String _shorten(String value) {
     final text = value.trim();
     return text.length <= 72 ? text : '${text.substring(0, 72)}…';
+  }
+
+  /// PattNG-style delay test for an Aether profile (no system VPN).
+  /// Budget ~12s: spin core → SOCKS generate_204 → stop. Returns ms or -1.
+  static Future<int> measureDelay(
+    VpnServer server, {
+    Duration budget = const Duration(seconds: 12),
+  }) async {
+    if (!server.isAether) return -1;
+    await _stopNative();
+    final profile = AetherProfile.fromLink(server.shareLink);
+    final attempt = profile.plan().isNotEmpty
+        ? profile.plan().first
+        : AetherAttempt(
+            protocol: 'masque',
+            scan: 'balanced',
+            noize: 'balanced',
+            timeout: budget,
+          );
+    final port = await _freePort();
+    final env = profile.buildEnv(attempt, port);
+    final args = profile.buildArgs(attempt, port);
+    final started = await _channel.invokeMethod<bool>(
+          'start',
+          <String, dynamic>{
+            'env': jsonEncode(env),
+            'args': jsonEncode(args),
+            'remark': 'ping',
+          },
+        ) ??
+        false;
+    if (!started) {
+      await _stopNative();
+      return -1;
+    }
+    final deadline = DateTime.now().add(budget);
+    int best = -1;
+    try {
+      while (DateTime.now().isBefore(deadline)) {
+        if (await SocksProbe.isPortOpen(port)) {
+          final remaining = deadline.difference(DateTime.now());
+          if (remaining.inMilliseconds < 500) break;
+          final probe = await SocksProbe.measure(
+            port: port,
+            samples: 2,
+            timeout: remaining,
+          );
+          if (probe.ms != null && probe.ms! > 0) {
+            if (best < 0 || probe.ms! < best) best = probe.ms!;
+            break; // first success is enough for ranking
+          }
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      }
+    } finally {
+      await _stopNative();
+    }
+    return best;
   }
 
   // ------------------------------------------------------------- disconnect
@@ -363,27 +435,11 @@ class AetherService {
     bool blockQuic = true,
   }) {
     final rules = <Map<String, dynamic>>[
-      // DNS queries (UDP:53) must be answered locally by Xray's built-in DNS
-      // client (outbound tag 'dns-out'), NOT forwarded raw as UDP to the
-      // 'proxy' SOCKS outbound.
-      //
-      // Root cause of the "Psiphon completely broken" regression: Psiphon's
-      // local SOCKS proxy (LocalSocksProxyPort) only implements the SOCKS
-      // CONNECT command — it has no UDP ASSOCIATE support. When this rule
-      // pointed 'proxy' (outbound protocol 'socks' → 127.0.0.1:<psiphon
-      // socks port>), Xray tried to relay every UDP:53 packet through that
-      // SOCKS outbound's UDP path, which Psiphon rejects/ignores. Every DNS
-      // lookup then times out, so nothing resolves and the connection looks
-      // completely dead (worse than before, when DNS simply leaked direct).
-      //
-      // 'dns-out' (protocol 'dns', defined below) instead answers the query
-      // itself using the DoH servers in the 'dns' block — those lookups are
-      // ordinary TCP/443 connections, which the catch-all rule below already
-      // routes through 'proxy' correctly (Psiphon handles TCP CONNECT fine).
+      // DNS queries (UDP:53) must go through the tunnel — otherwise DNS
+      // resolution fails and Psiphon appears connected but no traffic flows.
       <String, dynamic>{
         'type': 'field',
         'port': '53',
-        'network': 'udp',
         'outboundTag': 'dns-out',
       },
       // Block QUIC (UDP:443) so browsers fall back to TCP-over-proxy.

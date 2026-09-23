@@ -35,13 +35,12 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "info" -> result.success(AetherService.info(applicationContext))
                     "start" -> {
-                        val env = call.argument<String>("env")
+                        val env = call.argument<String>("env") ?: "{}"
+                        val args = call.argument<String>("args") ?: "[]"
                         val remark = call.argument<String>("remark") ?: "Aether"
-                        if (env.isNullOrEmpty()) {
-                            result.error("bad_args", "env is missing", null)
-                        } else {
-                            result.success(AetherService.start(applicationContext, env, remark))
-                        }
+                        result.success(
+                            AetherService.start(applicationContext, env, remark, args)
+                        )
                     }
                     "status" -> result.success(AetherService.status())
                     "stop" -> { AetherService.stop(applicationContext); result.success(true) }

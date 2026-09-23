@@ -95,25 +95,11 @@ class AetherProfile {
   /// auto | low | medium | high  (AETHER_PERF_PROFILE؛ auto = تشخیص خودکار)
   final String perf;
 
-  /// Aether v2.1.0 Psiphon chaining: off | chain | reverse | only
-  /// chain  = Apps → Xray → SOCKS → Aether(WARP) → Psiphon → Internet  (--psiphon)
-  /// reverse = dial WARP through Psiphon (--psiphon-reverse)
-  /// only   = plain Psiphon on the proxy port (--psiphon-only)
-  final String psiphonMode;
-
-  /// cdn | direct  (--psiphon-mode)
-  final String psiphonTransport;
-
-  /// ISO region e.g. DE, NL  (--psiphon-region)
-  final String psiphonRegion;
-
-  /// enable --psiphon-http
-  final bool psiphonHttp;
-
+  /// Defaults match PattNG (patterniha/PattNG): masque + HTTP/3 + balanced + v4.
   const AetherProfile({
-    this.protocol = 'auto',
-    this.scan = 'smart',
-    this.noize = 'auto',
+    this.protocol = 'masque',
+    this.scan = 'balanced',
+    this.noize = 'balanced',
     this.ip = 'v4',
     this.dns = '',
     this.peer = '',
@@ -121,10 +107,6 @@ class AetherProfile {
     this.quickReconnect = true,
     this.blockQuic = true,
     this.perf = 'auto',
-    this.psiphonMode = 'off',
-    this.psiphonTransport = 'cdn',
-    this.psiphonRegion = '',
-    this.psiphonHttp = false,
   });
 
   static const List<String> protocols = <String>[
@@ -202,10 +184,6 @@ class AetherProfile {
       quickReconnect: query['qr'] != '0',
       blockQuic: query['quic'] != 'allow',
       perf: _pick(query['perf'], perfs, 'auto'),
-      psiphonMode: _pick(query['psiphon'], const ['off', 'chain', 'reverse', 'only'], 'off'),
-      psiphonTransport: _pick(query['psiphon_mode'], const ['cdn', 'direct'], 'cdn'),
-      psiphonRegion: (query['psiphon_region'] ?? '').trim().toUpperCase(),
-      psiphonHttp: query['psiphon_http'] == '1' || query['psiphon_http'] == 'true',
     );
   }
 
@@ -245,11 +223,6 @@ class AetherProfile {
       if (!quickReconnect) 'qr': '0',
       if (!blockQuic) 'quic': 'allow',
       if (perf != 'auto') 'perf': perf,
-      if (psiphonMode != 'off') 'psiphon': psiphonMode,
-      if (psiphonMode != 'off' && psiphonTransport != 'cdn')
-        'psiphon_mode': psiphonTransport,
-      if (psiphonRegion.isNotEmpty) 'psiphon_region': psiphonRegion,
-      if (psiphonHttp) 'psiphon_http': '1',
     };
     return Uri(scheme: 'aether', host: 'config', queryParameters: query)
         .toString();
@@ -287,13 +260,16 @@ class AetherProfile {
     final attempts = <AetherAttempt>[];
 
     if (protocol == 'auto') {
-      final fixedScan = scan == 'smart' ? null : scan;
+      // PattNG-style order: MASQUE/H3 balanced first (best on Iranian nets),
+      // then H2, WG, Gool.
+      final fixedScan = (scan == 'smart' || scan == 'auto') ? null : scan;
+      attempts.add(_attempt('masque', false, fixedScan ?? 'balanced'));
       attempts.add(_attempt('masque', false, fixedScan ?? 'turbo'));
       attempts.add(_attempt('masque', true, fixedScan ?? 'balanced'));
       attempts.add(_attempt('wg', false, fixedScan ?? 'balanced',
-          forceNoize: 'gfw'));
+          forceNoize: 'balanced'));
       attempts.add(_attempt('gool', false, fixedScan ?? 'ironclad',
-          forceNoize: 'gfw'));
+          forceNoize: 'balanced'));
     } else {
       final String proto;
       final bool h2;
@@ -357,10 +333,43 @@ class AetherProfile {
     return attempts;
   }
 
-  // ------------------------------------------------------------ environment
+  // ------------------------------------------------------------ environment / CLI
 
-  /// متغیرهای محیطی Aether. همه‌ی سؤال‌های تعاملی Aether (پروتکل، اسکن، IP،
-  /// نوع MASQUE) با متغیر پاسخ داده می‌شوند تا پردازه هرگز منتظر ورودی نماند.
+  /// PattNG-compatible CLI args (same flags as AetherCoreManager.buildArguments).
+  /// Preferred over env-only: CluvexStudio/Aether and PattNG both honor these.
+  List<String> buildArgs(AetherAttempt attempt, int socksPort, {bool scan = false}) {
+    final args = <String>[
+      '--bind', '127.0.0.1:$socksPort',
+      '--protocol', attempt.protocol,
+      '--scan', attempt.scan,
+      '--ip', ip,
+      '--log-level', 'info',
+    ];
+
+    final nz = attempt.noize;
+    if (nz != null && nz.isNotEmpty && nz != 'auto') {
+      args.addAll(['--noize', nz]);
+    } else if (noize != 'auto' && noize.isNotEmpty) {
+      args.addAll(['--noize', noize]);
+    } else {
+      args.addAll(['--noize', 'balanced']);
+    }
+
+    if ((attempt.protocol == 'masque' || attempt.protocol == 'mim') && attempt.h2) {
+      args.add('--h2');
+    }
+
+    if (attempt.protocol == 'gool') {
+      args.add('--wiw-scan');
+    } else if (!scan && peer.isNotEmpty) {
+      args.addAll(['--peer', peer]);
+    }
+
+    args.add(scan || !quickReconnect ? '--no-quick-reconnect' : '--quick-reconnect');
+    return args;
+  }
+
+  /// Env fallback (older cores / debugging). CLI args are primary.
   Map<String, String> buildEnv(AetherAttempt attempt, int socksPort) {
     final env = <String, String>{
       'AETHER_SOCKS': '127.0.0.1:$socksPort',
@@ -380,7 +389,11 @@ class AetherProfile {
     }
 
     final nz = attempt.noize;
-    if (nz != null && nz.isNotEmpty) env['AETHER_NOIZE'] = nz;
+    if (nz != null && nz.isNotEmpty) {
+      env['AETHER_NOIZE'] = nz;
+    } else {
+      env['AETHER_NOIZE'] = noize == 'auto' ? 'balanced' : noize;
+    }
 
     if (dns.isNotEmpty) env['AETHER_DNS'] = dns;
 
@@ -392,26 +405,6 @@ class AetherProfile {
     if (upstream.isNotEmpty) env['AETHER_UPSTREAM'] = upstream;
 
     if (perf != 'auto') env['AETHER_PERF_PROFILE'] = perf;
-
-    // Aether v2.1.0 Psiphon chaining (env equivalents of --psiphon* flags)
-    switch (psiphonMode) {
-      case 'chain':
-        env['AETHER_PSIPHON'] = '1';
-        break;
-      case 'reverse':
-        env['AETHER_PSIPHON_REVERSE'] = '1';
-        break;
-      case 'only':
-        env['AETHER_PSIPHON_ONLY'] = '1';
-        break;
-    }
-    if (psiphonMode != 'off') {
-      env['AETHER_PSIPHON_MODE'] = psiphonTransport; // cdn | direct
-      if (psiphonRegion.isNotEmpty) {
-        env['AETHER_PSIPHON_REGION'] = psiphonRegion;
-      }
-      if (psiphonHttp) env['AETHER_PSIPHON_HTTP'] = '1';
-    }
 
     return env;
   }
