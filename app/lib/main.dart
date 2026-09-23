@@ -44,15 +44,17 @@ Future<void> widgetHeadlessMain() async {
   try {
     if (action == 'disconnect') {
       await V2RayEngine.init();
-      await V2RayEngine.disconnect();
-      // FIX_DISCONNECT: wait for disconnect to settle
-      // اگه پلاگین یا اپ اصلی، بعد از disconnect سعی در reconnect داشته باشه،
-      // این تأخیر باعث می‌شه که روند قطع کامل بشه.
-      for (int i = 0; i < 20; i++) {
-        await Future.delayed(const Duration(milliseconds: 300));
-        if (!V2RayEngine.isConnected) break;
+      // FIX_DISCONNECT_V2: چند بار پشت سر هم disconnect کن تا اگر پلاگین
+      // یا native layer خودش دوباره وصل کرد، دوباره قطع بشه.
+      for (int attempt = 0; attempt < 4; attempt++) {
+        try {
+          await V2RayEngine.disconnect();
+        } catch (_) {}
+        // بین هر تلاش کمی صبر کن
+        await Future.delayed(const Duration(milliseconds: 700));
       }
-      await Future.delayed(const Duration(seconds: 1));
+      // آخرین تأخیر تا مطمئن شیم state اپ اصلی هم پاک بشه
+      await Future.delayed(const Duration(milliseconds: 500));
       ok = true;
     } else if (payload.isNotEmpty) {
       // type می‌تونه 'server' باشه یا اسم پروتکل (vless, trojan, ...).
