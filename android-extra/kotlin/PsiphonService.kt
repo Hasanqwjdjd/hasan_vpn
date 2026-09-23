@@ -54,7 +54,9 @@ object PsiphonService {
             try {
                 val t = PsiphonTunnel.newPsiphonTunnel(host)
                 tunnel = t
-                t.startTunneling(loadEmbeddedServerEntries(context))
+                val entries = loadEmbeddedServerEntries(context)
+                SafeLog.d(TAG, "startTunneling with embedded entries length=${entries.length}")
+                t.startTunneling(entries)
             } catch (e: Throwable) {
                 SafeLog.e(TAG, "start failed", e)
                 lastError = e.message ?: e.toString()
@@ -70,7 +72,8 @@ object PsiphonService {
         }
 
         if (!ok) {
-            lastError = host.failReason ?: host.lastDiag ?: "Psiphon connect timeout"
+            lastError = host.failReason ?: host.lastDiag ?: "Psiphon connect timeout after ${timeoutSec}s"
+            SafeLog.w(TAG, "connect failed: $lastError")
             synchronized(lock) { stopLocked() }
             return failed()
         }
@@ -86,18 +89,21 @@ object PsiphonService {
         }
 
         running = true
+        SafeLog.d(TAG, "connected socks=${socksPort.get()} region=$region")
         return status().toMutableMap().apply { put("ok", true) }
     }
 
     /**
-     * لیست سرورهای توکار (اختیاری): اگر فایل assets/server_entries.txt در بیلد
-     * باشد به هسته داده می‌شود تا بدون دانلود لیست سرور هم بتواند شروع کند.
-     * نبودنش مشکلی ایجاد نمی‌کند.
+     * لیست سرورهای توکار: اگر assets/server_entries.txt موجود باشد لود می‌شود.
+     * در غیر این صورت رشتهٔ خالی → SDK از RemoteServerListUrl دانلود می‌کند.
      */
     private fun loadEmbeddedServerEntries(context: Context): String {
-        // FIX_SKIP_EMBEDDED: بذار SDK خودش از S3 دانلود کنه
-        // چون لیست embedded ما (از 2024) احتمالاً همه‌شون برای ISP ایران بلاک شدن
-        return ""
+        return try {
+            context.assets.open("server_entries.txt").bufferedReader().use { it.readText() }
+        } catch (e: Exception) {
+            SafeLog.d(TAG, "no embedded server_entries.txt: ${e.message}")
+            ""
+        }
     }
 
     fun stop(context: Context? = null) {

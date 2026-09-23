@@ -42,12 +42,20 @@ jobs:
       - name: Compute app version
         id: appver
         run: |
-          BASE=322
+          # BASE = run_number that should produce 2.11.0
+          # Latest release was run 362 → 2.10.0; next run 363 → 2.11.0
+          BASE=363
           N=$(( ${{ github.run_number }} - BASE ))
           if [ "$N" -lt 0 ]; then N=0; fi
-          MINOR=$(( 2 + N / 5 ))
+          MINOR=$(( 11 + N / 5 ))
           PATCH=$(( (N % 5) * 2 ))
-          CLEAN="2.${MINOR}.${PATCH}"
+          if [ "$MINOR" -ge 20 ]; then
+            MAJOR=3
+            MINOR=$(( MINOR - 20 ))
+          else
+            MAJOR=2
+          fi
+          CLEAN="${MAJOR}.${MINOR}.${PATCH}"
           echo "version=$CLEAN" >> "$GITHUB_OUTPUT"
           echo "Computed version: $CLEAN (run: ${{ github.run_number }})"
 

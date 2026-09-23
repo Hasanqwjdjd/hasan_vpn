@@ -23,7 +23,7 @@ class PsiphonProfile {
 class PsiphonAttempt {
   final String label;
   final String profileId;
-  final String mode; // 'auto' | 'stealth'
+  final String mode; // 'auto' | 'stealth' | 'narrow' | 'region'
   final String configJson;
   final int timeoutSec;
 
@@ -41,10 +41,10 @@ class PsiphonAttempt {
 ///
 /// روش کار:
 ///  ۱) چند پروفایل آماده (SponsorId/Channel) داریم.
-///  ۲) برای هر پروفایل دو حالت داریم: «همهٔ پروتکل‌ها» و «مخفی‌کار»
-///     (فقط مسیرهای meek/fronted که برای فیلتر سخت مناسب‌ترند).
+///  ۲) برای هر پروفایل چند حالت: همهٔ پروتکل‌ها، مخفی‌کار، فقط SSH/OSSH، فقط meek.
 ///  ۳) تلاش‌ها به ترتیب امتحان می‌شوند؛ آخرین ترکیبِ موفق ذخیره می‌شود و
 ///     دفعهٔ بعد اول همان امتحان می‌شود.
+///  ۴) چند منطقه و timeout مختلف برای افزایش شانس روی WiFi.
 class PsiphonAuto {
   PsiphonAuto._();
 
@@ -67,23 +67,20 @@ class PsiphonAuto {
       'xalKxF5szhGm8lccoc5MZr8kfE0uxMgsxz4er68iCID+rsCAQM=';
 
   /// پروفایل‌ها به ترتیب اولویت پیش‌فرض.
-  ///  - oblivion: مقادیر bepass-org/warp-plus (همان پیش‌فرض قبلی این برنامه)
-  ///  - aether:   مقادیر AetherST
-  // PSIPHON_SPONSOR_FIX: قالب SponsorId عوض شد چون FFFFFFFF روی سرورها
-  // مجاز نبود (restricted provider ID).
   static const List<PsiphonProfile> profiles = <PsiphonProfile>[
-    // تست: Psiphon رسمی این رو برای تست تأیید کرده
+    // تست رسمی
     PsiphonProfile(
       id: 'test',
       sponsorId: '0000000000000000',
       channelId: '0000000000000000',
     ),
-    // قدیمی‌ها به‌عنوان fallback
+    // oblivion / bepass style
     PsiphonProfile(
       id: 'oblivion',
       sponsorId: 'FFFFFFFFFFFFFFFF',
       channelId: 'FFFFFFFFFFFFFFFF',
     ),
+    // aether style
     PsiphonProfile(
       id: 'aether',
       sponsorId: '1111111111111111',
@@ -95,6 +92,12 @@ class PsiphonAuto {
             'DpXzloJk1Hw6aSzmKKky0xcahsEHubch81Mi6K0XMlU=',
       },
     ),
+    // alternate common values
+    PsiphonProfile(
+      id: 'alt1',
+      sponsorId: '0000000000000001',
+      channelId: '0000000000000001',
+    ),
   ];
 
   /// پروتکل‌های مناسب فیلتر سخت (نام‌ها از خود کتابخانهٔ Psiphon).
@@ -104,6 +107,13 @@ class PsiphonAuto {
     'UNFRONTED-MEEK-HTTPS-OSSH',
     'UNFRONTED-MEEK-SESSION-TICKET-OSSH',
   ];
+
+  static const List<String> sshOnly = <String>['SSH', 'OSSH'];
+  static const List<String> meekOnly = <String>[
+    'FRONTED-MEEK-OSSH',
+    'FRONTED-MEEK-HTTP-OSSH',
+  ];
+  static const List<String> quicOnly = <String>['QUICv1'];
 
   static const String _lastOkKey = 'psiphon_auto_last_ok_v1';
   static const String _regionsKey = 'psiphon_regions_cache_v1';
@@ -116,24 +126,35 @@ class PsiphonAuto {
     String region = '',
     List<String>? limitProtocols,
     int establishTimeoutSec = 60,
+    int workerPool = 8,
+    bool disableHttpProxy = true,
+    int localSocksPort = 0,
+    String? networkId,
+    bool emptyRemoteList = false,
   }) {
     final map = <String, dynamic>{
       'SponsorId': profile.sponsorId,
       'PropagationChannelId': profile.channelId,
-      'RemoteServerListUrl': remoteServerListUrl,
-      'RemoteServerListSignaturePublicKey': remoteServerListSigKey,
-      'RemoteServerListDownloadFilename': 'remote_server_list',
       'ClientPlatform': clientPlatform,
       'ClientVersion': '1',
-      'LocalSocksProxyPort': 0,
+      'LocalSocksProxyPort': localSocksPort,
       'LocalHttpProxyPort': 0,
-      'DisableLocalHTTPProxy': true,
+      'DisableLocalHTTPProxy': disableHttpProxy,
       'EgressRegion': normalizeRegion(region),
-      'ConnectionWorkerPoolSize': 8,
+      'ConnectionWorkerPoolSize': workerPool,
       'EstablishTunnelTimeoutSeconds': establishTimeoutSec,
-      'NetworkID': 'hasan_vpn',
       'AllowDefaultDNSResolverWithBindToDevice': true,
     };
+    if (networkId != null && networkId.isNotEmpty) {
+      map['NetworkID'] = networkId;
+    } else {
+      map['NetworkID'] = 'hasan_vpn';
+    }
+    if (!emptyRemoteList) {
+      map['RemoteServerListUrl'] = remoteServerListUrl;
+      map['RemoteServerListSignaturePublicKey'] = remoteServerListSigKey;
+      map['RemoteServerListDownloadFilename'] = 'remote_server_list';
+    }
     map.addAll(profile.extra);
     if (limitProtocols != null && limitProtocols.isNotEmpty) {
       map['LimitTunnelProtocols'] = limitProtocols;
@@ -142,46 +163,95 @@ class PsiphonAuto {
   }
 
   /// فهرست تلاش‌ها برای حالت خودکار (به ترتیب امتحان).
+  /// Expanded: more protocols, regions, timeouts, worker sizes for WiFi reliability.
   static Future<List<PsiphonAttempt>> attempts({String region = ''}) async {
     final reg = normalizeRegion(region);
-    final regLabel = reg.isEmpty ? '' : ' · $reg';
+    final out = <PsiphonAttempt>[];
 
-    final combos = <List<String>>[];
-    for (final p in profiles) {
-      combos.add(<String>[p.id, 'auto']);
-      combos.add(<String>[p.id, 'stealth']);
+    void add(
+      PsiphonProfile p,
+      String mode,
+      String label, {
+      List<String>? protocols,
+      int timeout = 50,
+      String r = '',
+      int workers = 8,
+      bool emptyRemote = false,
+    }) {
+      final cfg = buildConfig(
+        p,
+        region: r.isEmpty ? reg : r,
+        limitProtocols: protocols,
+        establishTimeoutSec: timeout,
+        workerPool: workers,
+        emptyRemoteList: emptyRemote,
+      );
+      out.add(PsiphonAttempt(
+        label: label,
+        profileId: p.id,
+        mode: mode,
+        configJson: jsonEncode(cfg),
+        timeoutSec: timeout + 15,
+      ));
     }
 
-    // آخرین ترکیب موفق اول امتحان شود.
+    // Prefer last successful first.
     final last = await _loadLastOk();
-    if (last != null) {
-      final idx = combos.indexWhere((c) => c[0] == last[0] && c[1] == last[1]);
-      if (idx > 0) {
-        final c = combos.removeAt(idx);
-        combos.insert(0, c);
+    final preferredProfile = last != null
+        ? profiles.cast<PsiphonProfile?>().firstWhere(
+              (p) => p!.id == last[0],
+              orElse: () => null,
+            )
+        : null;
+
+    final ordered = <PsiphonProfile>[
+      if (preferredProfile != null) preferredProfile,
+      ...profiles.where((p) => p.id != preferredProfile?.id),
+    ];
+
+    // 1) Preferred / first profile, auto + stealth with user region
+    for (final p in ordered.take(2)) {
+      add(p, 'auto', '${p.id}·auto', timeout: 45);
+      add(p, 'stealth', '${p.id}·stealth', protocols: stealthProtocols, timeout: 55);
+    }
+
+    // 2) Specific regions on first two profiles (WiFi often works with DE/NL/US)
+    const tryRegions = ['DE', 'NL', 'US', 'GB', 'JP', 'CA'];
+    for (final p in ordered.take(2)) {
+      for (final rr in tryRegions) {
+        if (reg == rr) continue;
+        add(p, 'region', '${p.id}·$rr', r: rr, timeout: 50);
       }
     }
 
-    final out = <PsiphonAttempt>[];
-    for (final c in combos) {
-      final profile = profiles.firstWhere((p) => p.id == c[0]);
-      final stealth = c[1] == 'stealth';
-      final timeout = stealth ? 55 : 40;
-      final cfg = buildConfig(
-        profile,
-        region: reg,
-        limitProtocols: stealth ? stealthProtocols : null,
-        establishTimeoutSec: timeout,
-      );
-      out.add(PsiphonAttempt(
-        label: '${stealth ? 'stealth' : 'auto'}$regLabel',
-        profileId: profile.id,
-        mode: c[1],
-        configJson: jsonEncode(cfg),
-        // کمی بیشتر از مهلت داخلی هسته، تا خود هسته اول تمام کند.
-        timeoutSec: timeout + 10,
-      ));
+    // 3) Narrow protocol sets
+    for (final p in ordered.take(2)) {
+      add(p, 'narrow', '${p.id}·ssh', protocols: sshOnly, timeout: 40, workers: 4);
+      add(p, 'narrow', '${p.id}·meek', protocols: meekOnly, timeout: 60, workers: 4);
+      add(p, 'narrow', '${p.id}·quic', protocols: quicOnly, timeout: 40, workers: 4);
     }
+
+    // 4) Longer timeout + different workers
+    for (final p in ordered.take(1)) {
+      add(p, 'auto', '${p.id}·long', timeout: 120, workers: 4);
+      add(p, 'auto', '${p.id}·pool1', timeout: 60, workers: 1);
+      add(p, 'auto', '${p.id}·pool16', timeout: 45, workers: 16);
+    }
+
+    // 5) Empty remote list (force SDK download / use any embedded)
+    for (final p in ordered.take(1)) {
+      add(p, 'auto', '${p.id}·no-remote', timeout: 90, emptyRemote: true);
+    }
+
+    // Re-order so last success is first if present.
+    if (last != null) {
+      final idx = out.indexWhere((a) => a.profileId == last[0] && a.mode == last[1]);
+      if (idx > 0) {
+        final a = out.removeAt(idx);
+        out.insert(0, a);
+      }
+    }
+
     return out;
   }
 

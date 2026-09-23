@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,9 +11,28 @@ import 'link_parser.dart';
 import 'protected_defaults.dart';
 import 'xray_json.dart';
 
+/// Structured error so UI can show HTTP code + reason clearly.
+class SubscriptionFetchException implements Exception {
+  final String message;
+  final int? statusCode;
+  final String kind; // 'http', 'timeout', 'dns', 'network', 'format', 'empty'
+
+  SubscriptionFetchException(this.message, {this.statusCode, this.kind = 'network'});
+
+  @override
+  String toString() {
+    if (statusCode != null) return 'HTTP $statusCode · $message';
+    return message;
+  }
+}
+
 class SubscriptionService {
   static const String _key = 'subscriptions_v3';
   static const String _removedDefaultsKey = 'subscriptions_removed_defaults_v1';
+
+  /// Browser-like UA — some providers block non-browser clients.
+  static const String _userAgent =
+      'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
 
   /// اشتراک‌های پیش‌فرض. لینک‌ها اینجا نیستند: از جدول رمزشدهٔ
   /// [ProtectedDefaults] (ساخته‌شده در CI) فقط لحظهٔ دانلود خوانده می‌شوند.
@@ -105,28 +125,70 @@ class SubscriptionService {
 
   // ---------------------------------------------------------------- network
 
+  /// Fetch servers. On 404 / network failure keeps previous cachedLinks
+  /// (does not wipe). Throws [SubscriptionFetchException] with clear message.
   static Future<List<VpnServer>> fetch(Subscription subscription) async {
+    final url = urlFor(subscription);
+    if (url.isEmpty) {
+      throw SubscriptionFetchException(
+        'URL is empty or decrypt failed',
+        kind: 'format',
+      );
+    }
+
     final http.Response response;
     try {
       response = await http
           .get(
-            Uri.parse(urlFor(subscription)),
+            Uri.parse(url),
             headers: const {
-              'User-Agent': 'HasanVPN/10.0',
+              'User-Agent': _userAgent,
               'Accept': '*/*',
+              'Accept-Language': 'en-US,en;q=0.9',
+              'Cache-Control': 'no-cache',
             },
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 25));
     } on TimeoutException {
-      throw Exception('timeout');
+      throw SubscriptionFetchException(
+        'Request timed out (25s)',
+        kind: 'timeout',
+      );
+    } on SocketException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (msg.contains('failed host lookup') ||
+          msg.contains('name or service not known') ||
+          msg.contains('nodename nor servname')) {
+        throw SubscriptionFetchException(
+          'DNS failure · cannot resolve host',
+          kind: 'dns',
+        );
+      }
+      throw SubscriptionFetchException(
+        'Network error · ${e.message}',
+        kind: 'network',
+      );
     } catch (e) {
-      // پیام خطای http شامل آدرس کامل است؛ برای اشتراک پیش‌فرض نباید لو برود.
-      if (subscription.isDefault) throw Exception('network error');
-      rethrow;
+      if (subscription.isDefault) {
+        throw SubscriptionFetchException('network error', kind: 'network');
+      }
+      throw SubscriptionFetchException(e.toString(), kind: 'network');
     }
 
+    if (response.statusCode == 404) {
+      // Keep old cached servers — do not wipe.
+      throw SubscriptionFetchException(
+        'Not Found (subscription URL may have changed)',
+        statusCode: 404,
+        kind: 'http',
+      );
+    }
     if (response.statusCode != 200) {
-      throw Exception('HTTP ${response.statusCode}');
+      throw SubscriptionFetchException(
+        'Unexpected status',
+        statusCode: response.statusCode,
+        kind: 'http',
+      );
     }
 
     // بدنه را خودمان UTF-8 رمزگشایی می‌کنیم؛ response.body بدون charset در هدر
@@ -137,7 +199,10 @@ class SubscriptionService {
     final servers = parseContent(content, subscription.id);
     if (servers.isEmpty) {
       // پاسخ خراب یا خالی نباید کش قبلی را پاک کند.
-      throw Exception('no servers found');
+      throw SubscriptionFetchException(
+        'No servers found in response (invalid or empty body)',
+        kind: 'empty',
+      );
     }
 
     subscription.cachedLinks = servers.map((s) => s.shareLink).toList();
