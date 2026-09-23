@@ -254,12 +254,20 @@ class ServerTester {
         }
       }
 
-      if (ms > 0) {
+      if (ms > 0 && kind == PingKind.real) {
+        // Real tunnel ping → server is truly online
         server.ping = ms;
         server.jitter = jitter;
-        server.pingKind = kind;
+        server.pingKind = PingKind.real;
         server.status = ServerStatus.online;
         summary.online++;
+      } else if (ms > 0 && kind == PingKind.tcp) {
+        // TCP-only → approximate, NOT online (avoids false positives)
+        server.ping = ms;
+        server.jitter = jitter;
+        server.pingKind = PingKind.tcp;
+        server.status = ServerStatus.idle;
+        summary.unknown++;
       } else if (ms == -2) {
         summary.realUnavailable = true;
         server.ping = null;

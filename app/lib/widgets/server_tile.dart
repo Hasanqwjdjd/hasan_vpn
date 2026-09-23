@@ -76,6 +76,7 @@ class ServerTile extends StatelessWidget {
     final ping = server.ping;
     if (ping == null) return AppColors.muted2(context);
 
+    if (server.pingKind == PingKind.tcp) return AppColors.muted2(context);
     if (ping < 700) return AppColors.accent;
     if (ping < 1400) return AppColors.warn;
     return AppColors.danger;
@@ -87,7 +88,7 @@ class ServerTile extends StatelessWidget {
     if (ping != null) {
       final testing = server.status == ServerStatus.testing;
       return Text(
-        '$ping',
+        (server.pingKind == PingKind.tcp ? '~$ping' : '$ping'),
         style: TextStyle(
           color: testing ? AppColors.muted2(context) : _pingColor(context),
           fontSize: 12,

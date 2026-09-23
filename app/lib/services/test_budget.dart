@@ -14,14 +14,14 @@ class TestBudget {
   final bool tcpFallback;
 
   const TestBudget({
-    this.timeoutSec = 10,
+    this.timeoutSec = 5,
     this.direct = 16,
     this.samples = 1,
     this.tcpFallback = true,
   });
 
   /// هم‌زمانی بالاتر = تست سریع‌تر؛ سقف ۸ برای حفظ دقت پینگ واقعی
-  int get realConcurrency => direct.clamp(4, 8).toInt();
+  int get realConcurrency => direct.clamp(6, 16).toInt();
   int get worstCaseSec => timeoutSec * samples;
 
   static int _pick(dynamic raw, List<int> options, int fallback) {
@@ -38,7 +38,7 @@ class TestBudget {
       final m = jsonDecode(raw);
       if (m is! Map) return const TestBudget();
       return TestBudget(
-        timeoutSec: _pick(m['timeoutSec'], timeoutOptions, 10),
+        timeoutSec: _pick(m['timeoutSec'], timeoutOptions, 5),
         direct: _pick(m['directConcurrency'], directOptions, 16),
         samples: _pick(m['samples'], sampleOptions, 1),
         tcpFallback: m['tcpFallback'] != false,
