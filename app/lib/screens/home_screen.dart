@@ -890,7 +890,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _bindServerToWidget(int widgetId, VpnServer server) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = '${server.protocol.name}|${server.shareLink}|${server.displayName}';
+      final raw = 'server|${server.shareLink}|${server.displayName}';
       await prefs.setString('widget_server_$widgetId', raw);
     } catch (_) {}
   }

@@ -47,10 +47,9 @@ Future<void> widgetHeadlessMain() async {
       await V2RayEngine.disconnect();
       ok = true;
     } else if (payload.isNotEmpty) {
-      VpnServer? server;
-      if (type == 'server') {
-        server = _buildServerFromShareLink(payload, title);
-      }
+      // type می‌تونه 'server' باشه یا اسم پروتکل (vless, trojan, ...).
+      // در هر صورت، payload یک shareLink است و از روی آن server ساخته می‌شود.
+      VpnServer? server = _buildServerFromShareLink(payload, title);
       if (server == null) {
         error = 'cannot build server from payload';
       } else {
