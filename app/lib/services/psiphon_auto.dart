@@ -131,11 +131,12 @@ class PsiphonAuto {
     int localSocksPort = 0,
     String? networkId,
     bool emptyRemoteList = false,
+    String? platformOverride,
   }) {
     final map = <String, dynamic>{
       'SponsorId': profile.sponsorId,
       'PropagationChannelId': profile.channelId,
-      'ClientPlatform': clientPlatform,
+      'ClientPlatform': platformOverride ?? clientPlatform,
       'ClientVersion': '1',
       'LocalSocksProxyPort': localSocksPort,
       'LocalHttpProxyPort': 0,
@@ -177,6 +178,9 @@ class PsiphonAuto {
       String r = '',
       int workers = 8,
       bool emptyRemote = false,
+      int socksPort = 0,
+      bool disableHttp = true,
+      String? platform,
     }) {
       final cfg = buildConfig(
         p,
@@ -185,6 +189,9 @@ class PsiphonAuto {
         establishTimeoutSec: timeout,
         workerPool: workers,
         emptyRemoteList: emptyRemote,
+        localSocksPort: socksPort,
+        disableHttpProxy: disableHttp,
+        platformOverride: platform,
       );
       out.add(PsiphonAttempt(
         label: label,
@@ -241,6 +248,20 @@ class PsiphonAuto {
     // 5) Empty remote list (force SDK download / use any embedded)
     for (final p in ordered.take(1)) {
       add(p, 'auto', '${p.id}·no-remote', timeout: 90, emptyRemote: true);
+    }
+
+    // 6) Fixed SOCKS port + enable HTTP proxy (some networks prefer this)
+    for (final p in ordered.take(1)) {
+      add(p, 'auto', '${p.id}·port1080', timeout: 60, socksPort: 1080, workers: 4);
+      add(p, 'auto', '${p.id}·http-on', timeout: 55, disableHttp: false, workers: 4);
+    }
+
+    // 7) Alternate ClientPlatform strings (some server lists key off platform)
+    for (final p in ordered.take(1)) {
+      add(p, 'auto', '${p.id}·plat-psi', timeout: 50,
+          platform: 'Android_11_com.psiphon3');
+      add(p, 'auto', '${p.id}·plat-obv', timeout: 50,
+          platform: 'Android_10_com.android.psiphon');
     }
 
     // Re-order so last success is first if present.

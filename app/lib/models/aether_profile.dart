@@ -95,6 +95,21 @@ class AetherProfile {
   /// auto | low | medium | high  (AETHER_PERF_PROFILE؛ auto = تشخیص خودکار)
   final String perf;
 
+  /// Aether v2.1.0 Psiphon chaining: off | chain | reverse | only
+  /// chain  = Apps → Xray → SOCKS → Aether(WARP) → Psiphon → Internet  (--psiphon)
+  /// reverse = dial WARP through Psiphon (--psiphon-reverse)
+  /// only   = plain Psiphon on the proxy port (--psiphon-only)
+  final String psiphonMode;
+
+  /// cdn | direct  (--psiphon-mode)
+  final String psiphonTransport;
+
+  /// ISO region e.g. DE, NL  (--psiphon-region)
+  final String psiphonRegion;
+
+  /// enable --psiphon-http
+  final bool psiphonHttp;
+
   const AetherProfile({
     this.protocol = 'auto',
     this.scan = 'smart',
@@ -106,6 +121,10 @@ class AetherProfile {
     this.quickReconnect = true,
     this.blockQuic = true,
     this.perf = 'auto',
+    this.psiphonMode = 'off',
+    this.psiphonTransport = 'cdn',
+    this.psiphonRegion = '',
+    this.psiphonHttp = false,
   });
 
   static const List<String> protocols = <String>[
@@ -183,6 +202,10 @@ class AetherProfile {
       quickReconnect: query['qr'] != '0',
       blockQuic: query['quic'] != 'allow',
       perf: _pick(query['perf'], perfs, 'auto'),
+      psiphonMode: _pick(query['psiphon'], const ['off', 'chain', 'reverse', 'only'], 'off'),
+      psiphonTransport: _pick(query['psiphon_mode'], const ['cdn', 'direct'], 'cdn'),
+      psiphonRegion: (query['psiphon_region'] ?? '').trim().toUpperCase(),
+      psiphonHttp: query['psiphon_http'] == '1' || query['psiphon_http'] == 'true',
     );
   }
 
@@ -222,6 +245,11 @@ class AetherProfile {
       if (!quickReconnect) 'qr': '0',
       if (!blockQuic) 'quic': 'allow',
       if (perf != 'auto') 'perf': perf,
+      if (psiphonMode != 'off') 'psiphon': psiphonMode,
+      if (psiphonMode != 'off' && psiphonTransport != 'cdn')
+        'psiphon_mode': psiphonTransport,
+      if (psiphonRegion.isNotEmpty) 'psiphon_region': psiphonRegion,
+      if (psiphonHttp) 'psiphon_http': '1',
     };
     return Uri(scheme: 'aether', host: 'config', queryParameters: query)
         .toString();
@@ -364,6 +392,26 @@ class AetherProfile {
     if (upstream.isNotEmpty) env['AETHER_UPSTREAM'] = upstream;
 
     if (perf != 'auto') env['AETHER_PERF_PROFILE'] = perf;
+
+    // Aether v2.1.0 Psiphon chaining (env equivalents of --psiphon* flags)
+    switch (psiphonMode) {
+      case 'chain':
+        env['AETHER_PSIPHON'] = '1';
+        break;
+      case 'reverse':
+        env['AETHER_PSIPHON_REVERSE'] = '1';
+        break;
+      case 'only':
+        env['AETHER_PSIPHON_ONLY'] = '1';
+        break;
+    }
+    if (psiphonMode != 'off') {
+      env['AETHER_PSIPHON_MODE'] = psiphonTransport; // cdn | direct
+      if (psiphonRegion.isNotEmpty) {
+        env['AETHER_PSIPHON_REGION'] = psiphonRegion;
+      }
+      if (psiphonHttp) env['AETHER_PSIPHON_HTTP'] = '1';
+    }
 
     return env;
   }

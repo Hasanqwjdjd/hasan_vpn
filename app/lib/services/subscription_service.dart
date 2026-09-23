@@ -34,14 +34,33 @@ class SubscriptionService {
   static const String _userAgent =
       'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
 
-  /// اشتراک‌های پیش‌فرض. لینک‌ها اینجا نیستند: از جدول رمزشدهٔ
-  /// [ProtectedDefaults] (ساخته‌شده در CI) فقط لحظهٔ دانلود خوانده می‌شوند.
-  static List<Subscription> get defaultSubscriptions => [
-        for (final e in ProtectedDefaults.entries)
+  /// اشتراک‌های پیش‌فرض.
+  /// - لینک‌های محافظت‌شده از [ProtectedDefaults] (CI secret) می‌آیند.
+  /// - hasanzeus-2 به‌صورت عمومی (غیررمز) اضافه شده تا بدون به‌روزکردن secret
+  ///   هم در دسترس باشد. Spider/Zeus را از secret حذف کنید.
+  static List<Subscription> get defaultSubscriptions {
+    final fromProtected = [
+      for (final e in ProtectedDefaults.entries)
+        if (e[0] != 'spider' && e[0] != 'zeus' &&
+            e[0] != 'Spider-Hasan' && e[0] != 'Zeus')
           Subscription(id: e[0], name: e[1], url: '', isDefault: true),
-      ];
+    ];
+    // Public default — auto-refresh ON, 12h (model defaults).
+    final publicDefaults = [
+      Subscription(
+        id: 'hasanzeus-2',
+        name: 'HasanZeus-2',
+        url: 'https://1oz95lepua0s.ekz8gsezum2s.workers.dev/feed/hasanzeus-2',
+        isDefault: true,
+        autoUpdate: true,
+        intervalHours: 12,
+      ),
+    ];
+    return [...publicDefaults, ...fromProtected];
+  }
 
   /// آدرس واقعی برای دانلود. برای اشتراک پیش‌فرض از جدول محافظت‌شده می‌آید.
+  /// hasanzeus-2 و هر پیش‌فرض عمومی، url ذخیره‌شده را برمی‌گرداند.
   static String urlFor(Subscription sub) {
     if (sub.isDefault) {
       final u = ProtectedDefaults.urlFor(sub.id);
@@ -116,7 +135,8 @@ class SubscriptionService {
       _key,
       jsonEncode(subscriptions.map((s) {
         final json = s.toJson();
-        // لینک اشتراک پیش‌فرض هرگز روی دستگاه ذخیره نمی‌شود.
+        // لینک اشتراک پیش‌فرض محافظت‌شده هرگز روی دستگاه ذخیره نمی‌شود.
+        // hasanzeus-2 و سایر پیش‌فرض‌های عمومی url خود را نگه می‌دارند.
         if (s.isDefault && ProtectedDefaults.has(s.id)) json['url'] = '';
         return json;
       }).toList()),

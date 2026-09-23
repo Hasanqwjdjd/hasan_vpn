@@ -362,14 +362,16 @@ class AetherService {
     required int socksPort,
     bool blockQuic = true,
   }) {
+    // Psiphon / Aether SOCKS is TCP-oriented. Sending raw UDP:53 through the
+    // SOCKS outbound often fails (no UDP ASSOCIATE) → "connected but no
+    // traffic". Use Xray's internal DNS outbound + DoH (TCP/HTTPS) which
+    // travels over the same SOCKS path as normal HTTPS.
     final rules = <Map<String, dynamic>>[
-      // DNS queries (UDP:53) must go through the tunnel — otherwise DNS
-      // resolution fails and Psiphon appears connected but no traffic flows.
+      // System DNS (UDP/TCP 53) → Xray DNS module (resolves via DoH over proxy).
       <String, dynamic>{
         'type': 'field',
         'port': '53',
-        'network': 'udp',
-        'outboundTag': 'proxy',
+        'outboundTag': 'dns-out',
       },
       // Block QUIC (UDP:443) so browsers fall back to TCP-over-proxy.
       if (blockQuic)
@@ -463,11 +465,16 @@ class AetherService {
         <String, dynamic>{'tag': 'dns-out', 'protocol': 'dns'},
       ],
       'dns': <String, dynamic>{
-        'servers': <String>[
+        // DoH is TCP/HTTPS → goes through the SOCKS proxy via catch-all.
+        // Pure IP fallback only if DoH cannot bootstrap (rare on WiFi).
+        'servers': <dynamic>[
           'https://1.1.1.1/dns-query',
           'https://8.8.8.8/dns-query',
+          '1.1.1.1',
+          '8.8.8.8',
         ],
         'queryStrategy': 'UseIPv4',
+        'disableCache': false,
       },
       'routing': <String, dynamic>{
         'domainStrategy': 'AsIs',
