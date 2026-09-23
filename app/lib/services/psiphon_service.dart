@@ -192,6 +192,10 @@ class PsiphonService {
 
       onProgress?.call('Psiphon · VPN ($port)');
       final xrayConfig = AetherService.buildXrayConfig(socksPort: port, blockQuic: true);
+      // Diagnostic: dump first 400 chars of config so we can verify
+      // routing rules actually point to the SOCKS outbound.
+      debugPrint('PSIPHON_DIAG: socksPort=$port region=$lastRegion');
+      debugPrint('PSIPHON_DIAG: config_head=${xrayConfig.substring(0, xrayConfig.length.clamp(0, 400))}');
       final started = await V2RayEngine.startConfig(
         remark: server.name,
         config: xrayConfig,

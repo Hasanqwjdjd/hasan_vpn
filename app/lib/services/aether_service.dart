@@ -363,12 +363,15 @@ class AetherService {
     bool blockQuic = true,
   }) {
     final rules = <Map<String, dynamic>>[
+      // DNS queries (UDP:53) must go through the tunnel — otherwise DNS
+      // resolution fails and Psiphon appears connected but no traffic flows.
       <String, dynamic>{
         'type': 'field',
         'port': '53',
         'network': 'udp',
-        'outboundTag': 'dns-out',
+        'outboundTag': 'proxy',
       },
+      // Block QUIC (UDP:443) so browsers fall back to TCP-over-proxy.
       if (blockQuic)
         <String, dynamic>{
           'type': 'field',
@@ -376,10 +379,18 @@ class AetherService {
           'network': 'udp',
           'outboundTag': 'block',
         },
+      // Private / LAN ranges stay direct (prevents loop with SOCKS port).
       <String, dynamic>{
         'type': 'field',
         'ip': _privateRanges,
         'outboundTag': 'direct',
+      },
+      // ─── CRITICAL: final catch-all rule → proxy ───
+      // Without this, Xray's default is 'direct' and ALL non-matched
+      // traffic (i.e. every HTTP/HTTPS connection) bypasses the tunnel.
+      <String, dynamic>{
+        'type': 'field',
+        'outboundTag': 'proxy',
       },
     ];
 
