@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'log_viewer_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
@@ -353,6 +354,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 16),
 
           // ------- تم -------
+          _sectionTitle(_t('عیب‌یابی', 'Diagnostics')),
+          _card(
+            context,
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.bug_report_outlined,
+                  color: AppColors.accent, size: 20),
+              title: Text(
+                _t('لاگ‌های برنامه', 'App Logs'),
+                style: TextStyle(color: AppColors.fg(context), fontSize: 14),
+              ),
+              subtitle: Text(
+                _t('مشاهده‌ی کامل لاگ‌های هسته‌ها (Psiphon/Tor/Xray/...)',
+                    'Full log of all cores (Psiphon/Tor/Xray/...)'),
+                style: TextStyle(color: AppColors.muted2(context), fontSize: 11),
+              ),
+              trailing: Icon(Icons.chevron_left,
+                  color: AppColors.muted2(context), size: 20),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => LogViewerScreen(language: widget.language),
+                ),
+              ),
+            ),
+          ),
+
           _sectionTitle(_t('تم برنامه', 'Theme')),
           _card(
             context,

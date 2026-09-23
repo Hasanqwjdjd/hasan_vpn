@@ -19,6 +19,7 @@ class MainActivity : FlutterActivity() {
     private val monitorChannel = "com.hasan.hasan_vpn/monitor"
     private val widgetChannel = "com.hasan.hasan_vpn/widget"
     private val widgetsChannel = "com.hasan.hasan_vpn/widgets"
+    private val logsChannel = "com.hasan.hasan_vpn/logs"
 
     private var widgetChannelRef: MethodChannel? = null
     private var widgetsChannelRef: MethodChannel? = null
@@ -149,6 +150,16 @@ class MainActivity : FlutterActivity() {
                 }
             }, 150)
         }
+        // Log viewer channel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, logsChannel)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getLogs" -> result.success(SafeLog.dump())
+                    "clearLogs" -> { SafeLog.clear(); result.success(true) }
+                    else -> result.notImplemented()
+                }
+            }
+
     }
 
     override fun onNewIntent(intent: Intent) {
