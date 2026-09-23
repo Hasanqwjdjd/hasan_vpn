@@ -54,11 +54,9 @@ Future<void> widgetHeadlessMain() async {
         error = 'cannot build server from payload';
       } else {
         await V2RayEngine.init();
-        ok = await V2RayEngine.startConfig(
-          remark: server.displayName,
-          config: server.shareLink,
-          server: server,
-        );
+        // FIX: use V2RayEngine.connect (which builds the JSON config from
+        // shareLink internally) instead of startConfig (which expects raw JSON)
+        ok = await V2RayEngine.connect(server);
         if (!ok) error = V2RayEngine.lastError;
       }
     } else {
