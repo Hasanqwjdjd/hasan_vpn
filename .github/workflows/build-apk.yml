@@ -46,7 +46,7 @@ jobs:
           # Set this to (current latest Actions run number) + 1 before merging, so the very
           # next workflow run lands on 2.11.0. Check the Actions tab for the latest run
           # number, e.g. if the latest run shown is 418, set BASE=419.
-          BASE=419
+          BASE=369
           N=$(( ${{ github.run_number }} - BASE ))
           if [ "$N" -lt 0 ]; then N=0; fi
           MINOR=$(( 11 + N / 5 ))
