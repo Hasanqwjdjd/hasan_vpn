@@ -1,6 +1,12 @@
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Live speed / status notification (Dart side).
+///
+/// Uses a SINGLE Android notification ID (TelemetryNotifier.NOTIFICATION_ID
+/// = 4240). Enabling "show speed" only changes the *body* of that same
+/// notification; it does not post a second one. Disabling speed keeps one
+/// minimal status notification until [hide] is called.
 class TelemetryService {
   TelemetryService._();
 
@@ -12,6 +18,7 @@ class TelemetryService {
   static int? livePing;
   static bool _shown = false;
   static DateTime _last = DateTime.fromMillisecondsSinceEpoch(0);
+  static String? _lastServer;
 
   static Future<void> load() async {
     try {
@@ -28,8 +35,21 @@ class TelemetryService {
     } catch (_) {}
     if (v) {
       await _call('notifPermission');
+      // Re-post same ID with speed lines if we already had a status notif.
+      if (_shown) {
+        onSpeed(down: 0, up: 0, server: _lastServer, force: true);
+      }
     } else {
-      await hide(force: true);
+      // Speed off: one minimal status line on the SAME notification id.
+      if (_shown) {
+        final title = (_lastServer == null || _lastServer!.isEmpty)
+            ? 'Hasan VPN'
+            : 'Hasan VPN · $_lastServer';
+        await _call('telemetryShow', <String, dynamic>{
+          'title': title,
+          'text': 'Connected · tap to manage',
+        });
+      }
     }
   }
 
@@ -39,21 +59,38 @@ class TelemetryService {
     } catch (_) {}
   }
 
-  static void onSpeed({required int down, required int up, String? server}) {
-    if (!enabled) return;
+  static void onSpeed({
+    required int down,
+    required int up,
+    String? server,
+    bool force = false,
+  }) {
+    if (!enabled && !force) return;
     final now = DateTime.now();
-    if (now.difference(_last) < const Duration(milliseconds: 1500)) return;
+    if (!force &&
+        now.difference(_last) < const Duration(milliseconds: 1500)) {
+      return;
+    }
     _last = now;
+    if (server != null) _lastServer = server;
 
-    final p = livePing;
-    final pingText = (p != null && p > 0) ? '$p ms' : '-';
-    final title = (server == null || server.isEmpty)
+    final title = (_lastServer == null || _lastServer!.isEmpty)
         ? 'Hasan VPN'
-        : 'Hasan VPN · $server';
+        : 'Hasan VPN · $_lastServer';
+
+    final String text;
+    if (enabled) {
+      final p = livePing;
+      final pingText = (p != null && p > 0) ? '$p ms' : '-';
+      text = '↓ ${_fmt(down)}   ↑ ${_fmt(up)}   •   Ping $pingText';
+    } else {
+      text = 'Connected · tap to manage';
+    }
+
     _shown = true;
     _call('telemetryShow', <String, dynamic>{
       'title': title,
-      'text': '↓ ${_fmt(down)}   ↑ ${_fmt(up)}   •   Ping $pingText',
+      'text': text,
     });
   }
 

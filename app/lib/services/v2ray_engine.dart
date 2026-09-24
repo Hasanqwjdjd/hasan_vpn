@@ -530,10 +530,16 @@ class V2RayEngine {
       if (s.contains('connected') && !s.contains('disconnect')) return true;
 
       final elapsed = DateTime.now().difference(started);
+      // Chain grace: when Xray sits on a freshly-opened Psiphon/Aether SOCKS,
+      // the plugin can report a transient 'disconnect' before real connect.
+      // 6s was too short and caused stop of a working Psiphon ~7s after win.
       if (_sawState &&
           s.contains('disconnect') &&
-          elapsed > const Duration(seconds: 6)) {
-        final ms = await connectedDelay(timeout: const Duration(seconds: 5));
+          elapsed > const Duration(seconds: 15)) {
+        debugPrint(
+            'V2Ray _waitConnected: disconnect-like state after ${elapsed.inSeconds}s '
+            '(state="$s") — probing real connectivity before giving up');
+        final ms = await connectedDelay(timeout: const Duration(seconds: 8));
         if (ms > 0) return true;
         lastError ??= 'VPN service stopped before it connected (state: $s)';
         return false;
@@ -586,9 +592,8 @@ class V2RayEngine {
   /// چند URL تأخیر — بعضی هسته‌ها فقط HTTP ساده را پشتیبانی می‌کنند.
   /// PattNG DELAY_TEST_URL / DELAY_TEST_URL2 order (https gstatic first).
   static const List<String> _delayUrls = <String>[
-    'https://www.gstatic.com/generate_204',
-    'https://www.google.com/generate_204',
     'http://www.gstatic.com/generate_204',
+    'https://www.gstatic.com/generate_204',
     'http://cp.cloudflare.com/generate_204',
     'http://connectivitycheck.gstatic.com/generate_204',
   ];

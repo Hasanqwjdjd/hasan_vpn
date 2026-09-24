@@ -18,12 +18,13 @@ import android.os.IBinder
  * توجه: این سرویس خودش Tor را اجرا نمی‌کند؛ فقط وضعیت foreground را نگه می‌دارد.
  * اجرای واقعی Tor در TorService انجام می‌شود که یک object است.
  */
+/** FG notif ID 4241 — separate from unified status notif 4240 (TelemetryNotifier). */
 class TorForegroundService : Service() {
 
     companion object {
         private const val TAG = "TorForegroundService"
         private const val CHANNEL_ID = "tor_core"
-        private const val NOTIFICATION_ID = 4243
+        private const val NOTIFICATION_ID = 4241 // was 4243; must not collide with TelemetryNotifier(4240)
 
         fun start(context: Context) {
             try {
