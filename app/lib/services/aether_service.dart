@@ -590,7 +590,7 @@ class AetherService {
 
   /// اندازه‌گیری تأخیر واقعی Aether برای تست پینگ.
   static Future<int> measureDelay(
-    Server server, {
+    dynamic server, {
     Duration? budget,
   }) async {
     final p = await probeCore();
