@@ -95,11 +95,10 @@ class AetherProfile {
   /// auto | low | medium | high  (AETHER_PERF_PROFILE؛ auto = تشخیص خودکار)
   final String perf;
 
-  /// Defaults match PattNG (patterniha/PattNG): masque + HTTP/3 + balanced + v4.
   const AetherProfile({
-    this.protocol = 'masque',
-    this.scan = 'balanced',
-    this.noize = 'balanced',
+    this.protocol = 'auto',
+    this.scan = 'smart',
+    this.noize = 'auto',
     this.ip = 'v4',
     this.dns = '',
     this.peer = '',
@@ -233,13 +232,13 @@ class AetherProfile {
   static Duration _timeoutFor(String scan) {
     switch (scan) {
       case 'turbo':
-        return const Duration(seconds: 25);
+        return const Duration(seconds: 15);
       case 'balanced':
-        return const Duration(seconds: 40);
+        return const Duration(seconds: 25);
       case 'ironclad':
-        return const Duration(seconds: 75);
+        return const Duration(seconds: 45);
       default: // thorough, stealth
-        return const Duration(seconds: 80);
+        return const Duration(seconds: 45);
     }
   }
 
@@ -260,16 +259,13 @@ class AetherProfile {
     final attempts = <AetherAttempt>[];
 
     if (protocol == 'auto') {
-      // PattNG-style order: MASQUE/H3 balanced first (best on Iranian nets),
-      // then H2, WG, Gool.
-      final fixedScan = (scan == 'smart' || scan == 'auto') ? null : scan;
-      attempts.add(_attempt('masque', false, fixedScan ?? 'balanced'));
+      final fixedScan = scan == 'smart' ? null : scan;
       attempts.add(_attempt('masque', false, fixedScan ?? 'turbo'));
       attempts.add(_attempt('masque', true, fixedScan ?? 'balanced'));
       attempts.add(_attempt('wg', false, fixedScan ?? 'balanced',
-          forceNoize: 'balanced'));
+          forceNoize: 'gfw'));
       attempts.add(_attempt('gool', false, fixedScan ?? 'ironclad',
-          forceNoize: 'balanced'));
+          forceNoize: 'gfw'));
     } else {
       final String proto;
       final bool h2;
@@ -333,43 +329,10 @@ class AetherProfile {
     return attempts;
   }
 
-  // ------------------------------------------------------------ environment / CLI
+  // ------------------------------------------------------------ environment
 
-  /// PattNG-compatible CLI args (same flags as AetherCoreManager.buildArguments).
-  /// Preferred over env-only: CluvexStudio/Aether and PattNG both honor these.
-  List<String> buildArgs(AetherAttempt attempt, int socksPort, {bool scan = false}) {
-    final args = <String>[
-      '--bind', '127.0.0.1:$socksPort',
-      '--protocol', attempt.protocol,
-      '--scan', attempt.scan,
-      '--ip', ip,
-      '--log-level', 'info',
-    ];
-
-    final nz = attempt.noize;
-    if (nz != null && nz.isNotEmpty && nz != 'auto') {
-      args.addAll(['--noize', nz]);
-    } else if (noize != 'auto' && noize.isNotEmpty) {
-      args.addAll(['--noize', noize]);
-    } else {
-      args.addAll(['--noize', 'balanced']);
-    }
-
-    if ((attempt.protocol == 'masque' || attempt.protocol == 'mim') && attempt.h2) {
-      args.add('--h2');
-    }
-
-    if (attempt.protocol == 'gool') {
-      args.add('--wiw-scan');
-    } else if (!scan && peer.isNotEmpty) {
-      args.addAll(['--peer', peer]);
-    }
-
-    args.add(scan || !quickReconnect ? '--no-quick-reconnect' : '--quick-reconnect');
-    return args;
-  }
-
-  /// Env fallback (older cores / debugging). CLI args are primary.
+  /// متغیرهای محیطی Aether. همه‌ی سؤال‌های تعاملی Aether (پروتکل، اسکن، IP،
+  /// نوع MASQUE) با متغیر پاسخ داده می‌شوند تا پردازه هرگز منتظر ورودی نماند.
   Map<String, String> buildEnv(AetherAttempt attempt, int socksPort) {
     final env = <String, String>{
       'AETHER_SOCKS': '127.0.0.1:$socksPort',
@@ -389,11 +352,7 @@ class AetherProfile {
     }
 
     final nz = attempt.noize;
-    if (nz != null && nz.isNotEmpty) {
-      env['AETHER_NOIZE'] = nz;
-    } else {
-      env['AETHER_NOIZE'] = noize == 'auto' ? 'balanced' : noize;
-    }
+    if (nz != null && nz.isNotEmpty) env['AETHER_NOIZE'] = nz;
 
     if (dns.isNotEmpty) env['AETHER_DNS'] = dns;
 

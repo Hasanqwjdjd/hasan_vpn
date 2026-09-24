@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/aether_profile.dart';
 import '../models/server.dart';
+import '../services/aether_service.dart';
 import '../services/app_colors.dart';
 import '../services/link_parser.dart';
 import '../services/psiphon_auto.dart';
@@ -34,14 +35,18 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   String _selectedType = 'manual'; // manual | aether | oblivion | siphon | tor
 
   // تنظیمات Aether (مقدارهای پیش‌فرض همان پیش‌فرض AetherProfile هستند)
-  String _aetherProtocol = 'masque';
-  String _aetherScan = 'balanced';
-  String _aetherNoize = 'balanced';
+  String _aetherProtocol = 'auto';
+  String _aetherScan = 'smart';
+  String _aetherNoize = 'auto';
   String _aetherIp = 'v4';
   String _aetherPerf = 'auto';
   bool _aetherQuickReconnect = true;
   bool _aetherBlockQuic = true;
   bool _aetherAdvanced = false;
+
+  // پنل اسکن / کلید WARP جدید / لاگ (فرم Aether)
+  bool _aetherWorking = false;
+  String? _aetherLiveLog;
 
   final TextEditingController _aetherDnsController = TextEditingController();
   final TextEditingController _aetherPeerController = TextEditingController();
@@ -401,6 +406,186 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _showMsg(_t('سرور Aether اضافه شد', 'Aether server added'));
   }
 
+  AetherProfile _currentAetherProfile() {
+    final peer = _aetherPeerController.text.trim();
+    final upstream = _aetherUpstreamController.text.trim();
+    final dns = _aetherDnsController.text
+        .split(RegExp(r'[\s,]+'))
+        .where((e) => e.isNotEmpty)
+        .join(',');
+    return AetherProfile(
+      protocol: _aetherProtocol,
+      scan: _aetherScan,
+      noize: _aetherNoize,
+      ip: _aetherIp,
+      dns: dns,
+      peer: peer,
+      upstream: upstream,
+      quickReconnect: _aetherQuickReconnect,
+      blockQuic: _aetherBlockQuic,
+      perf: _aetherPerf,
+    );
+  }
+
+  /// اسکن برای یافتن سرور: با تنظیمات فعلی فرم یک مسیر سالم Aether پیدا
+  /// می‌کند، بدون این‌که VPN واقعی را بالا بیاورد یا وصل‌شده نگه دارد.
+  Future<void> _aetherScanNow() async {
+    if (_aetherWorking) return;
+    setState(() {
+      _aetherWorking = true;
+      _aetherLiveLog = _t('در حال اسکن…', 'Scanning…');
+    });
+
+    final ok = await AetherService.scanOnly(
+      _currentAetherProfile(),
+      onProgress: (msg) {
+        if (!mounted) return;
+        setState(() => _aetherLiveLog = msg);
+      },
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _aetherWorking = false;
+      _aetherLiveLog = ok
+          ? '${_aetherLiveLog ?? ''}\n${_t('✅ یک مسیر سالم پیدا شد', '✅ Found a working route')}'
+              .trim()
+          : '${_aetherLiveLog ?? ''}\n❌ ${AetherService.lastError ?? _t('هیچ مسیر سالمی پیدا نشد', 'No working route found')}'
+              .trim();
+    });
+    _showMsg(ok
+        ? _t('مسیر سالم پیدا شد — «افزودن Aether» را بزن', 'Working route found — tap "Add Aether"')
+        : _t('هیچ مسیر سالمی پیدا نشد', 'No working route found'));
+  }
+
+  /// دریافت کلید WARP جدید: هویت WARP فعلی را پاک می‌کند تا اتصال بعدی یک
+  /// حساب رایگان تازه بسازد. فقط وقتی Aether وصل نیست کار می‌کند.
+  Future<void> _aetherGetNewKey() async {
+    if (_aetherWorking) return;
+    if (AetherService.isConnected) {
+      _showMsg(_t('اول Aether را قطع کن', 'Disconnect Aether first'));
+      return;
+    }
+    setState(() => _aetherWorking = true);
+    final ok = await AetherService.resetIdentity();
+    if (!mounted) return;
+    setState(() => _aetherWorking = false);
+    _showMsg(ok
+        ? _t('هویت WARP پاک شد — اتصال بعدی یک حساب تازه می‌سازد',
+            'WARP identity cleared — next connect creates a fresh account')
+        : _t('نشد — اول Aether را قطع کن و دوباره امتحان کن',
+            'Failed — disconnect Aether first and try again'));
+  }
+
+  Widget _buildAetherScanPanel() {
+    const color = Color(0xFF7C4DFF);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _aetherWorking ? null : _aetherScanNow,
+                  icon: _aetherWorking
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: color))
+                      : const Icon(Icons.wifi_find, size: 16, color: color),
+                  label: Text(_t('اسکن برای یافتن سرور', 'Scan for server'),
+                      style: const TextStyle(color: color, fontSize: 12.5)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: color),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _aetherWorking ? null : _aetherGetNewKey,
+                  icon: const Icon(Icons.vpn_key_outlined,
+                      size: 16, color: color),
+                  label: Text(_t('کلید WARP جدید', 'New WARP key'),
+                      style: const TextStyle(color: color, fontSize: 12.5)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: color),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_aetherLiveLog != null && _aetherLiveLog!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(_t('لاگ', 'Log'),
+                      style: TextStyle(
+                          color: AppColors.muted(context),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600)),
+                ),
+                InkWell(
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: _aetherLiveLog!));
+                    _showMsg(_t('کپی شد', 'Copied'));
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.copy, size: 13, color: AppColors.muted(context)),
+                      const SizedBox(width: 4),
+                      Text(_t('کپی', 'Copy'),
+                          style: TextStyle(
+                              color: AppColors.muted(context), fontSize: 11)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.bg(context),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.border(context)),
+              ),
+              child: Directionality(
+                textDirection: TextDirection.ltr,
+                child: Text(
+                  _aetherLiveLog!,
+                  style: TextStyle(
+                      color: AppColors.muted2(context),
+                      fontSize: 10.5,
+                      fontFamily: 'monospace'),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   // ---------- Oblivion (WARP روی هسته Aether) ----------
   // Oblivion کلاینت غیررسمی WARP است و همین برنامه از هستهٔ Aether
   // (همان هسته‌ای که Oblivion جدید استفاده می‌کند) پشتیبانی می‌کند.
@@ -413,8 +598,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         name: 'Oblivion · Auto',
         flag: '☁️',
         profile: const AetherProfile(
-          protocol: 'masque',
-          scan: 'balanced',
+          protocol: 'auto',
+          scan: 'smart',
           noize: 'auto',
           quickReconnect: true,
           blockQuic: true,
@@ -485,7 +670,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       return;
     }
 
-    // پیش‌فرض‌های PattNG: MASQUE/H3 + balanced + balanced noize
+    // پیش‌فرض‌های نزدیک به Oblivion: اسکن هوشمند + MASQUE/WG خودکار
     final profile = AetherProfile(
       protocol: _aetherProtocol == 'auto' ? 'auto' : _aetherProtocol,
       scan: _aetherScan,
@@ -763,51 +948,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
-  /// Tor-mode = حداکثر پنهان‌کاری روی هسته Aether (stealth + noize قوی)
-  /// توجه: این شبکهٔ رسمی Tor نیست؛ از obfs/stealth روی Aether استفاده می‌کند.
-  void _addTorServer() {
-    final peer = _aetherPeerController.text.trim();
-    if (peer.isNotEmpty && !_peerRegex.hasMatch(peer)) {
-      _showMsg(
-          _t('آدرس Endpoint باید به شکل ip:port باشد', 'Endpoint must look like ip:port'));
-      return;
-    }
-
-    final profile = AetherProfile(
-      protocol: _aetherProtocol == 'auto' ? 'masque' : _aetherProtocol,
-      scan: 'stealth',
-      noize: 'aggressive',
-      ip: _aetherIp,
-      dns: _aetherDnsController.text
-          .split(RegExp(r'[\s,]+'))
-          .where((e) => e.isNotEmpty)
-          .join(','),
-      peer: peer,
-      quickReconnect: false,
-      blockQuic: true,
-      perf: 'medium',
-    );
-
-    final name = _nameController.text.trim().isNotEmpty
-        ? _nameController.text.trim()
-        : 'Tor · ${profile.summary}';
-
-    final server = VpnServer(
-      id: 'tor_${DateTime.now().millisecondsSinceEpoch}',
-      name: name,
-      flag: '🧅',
-      shareLink: profile.toLink(),
-      protocol: VpnProtocol.aether,
-      host: peer.isNotEmpty ? peer.split(':').first : 'stealth-auto',
-      port: 0,
-      isDeletable: true,
-    );
-
-    widget.onServerAdded(server);
-    Navigator.pop(context);
-    _showMsg(_t('سرور Tor-mode اضافه شد — وصل شو', 'Tor-mode server added — connect'));
-  }
-
   Widget _buildTorForm() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -882,142 +1022,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                 ),
               ),
             ],
-          ),
-        ),
-        const SizedBox(height: 20),
-        // ---- حالت Stealth روی Aether (نه Tor واقعی) ----
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: const Color(0xFFEF5350).withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFEF5350).withOpacity(0.35)),
-          ),
-          child: Text(
-            _t(
-              'حالت Tor · Stealth در این بخش از مسیر stealth هسته Aether استفاده '
-              'می‌کند (نه شبکهٔ رسمی Tor). برای فیلترینگ خیلی سخت مناسب است.',
-              'Tor · Stealth here uses Aether stealth path '
-              '(not the official Tor network). Best for heavy filtering.',
-            ),
-            style: TextStyle(
-              color: AppColors.muted(context),
-              fontSize: 12,
-              height: 1.5,
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          _t('پروتکل پایه (Stealth)', 'Base protocol (Stealth)'),
-          style: TextStyle(
-              color: AppColors.muted(context),
-              fontSize: 13,
-              fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final p in const ['masque', 'masque_h2', 'wg', 'mim'])
-              ChoiceChip(
-                label: Text(p.toUpperCase()),
-                selected: _aetherProtocol == p ||
-                    (_aetherProtocol == 'auto' && p == 'masque'),
-                selectedColor: const Color(0xFFEF5350).withOpacity(0.25),
-                labelStyle: TextStyle(
-                  color: (_aetherProtocol == p ||
-                          (_aetherProtocol == 'auto' && p == 'masque'))
-                      ? const Color(0xFFEF5350)
-                      : AppColors.muted(context),
-                  fontSize: 12,
-                ),
-                onSelected: (_) => setState(() => _aetherProtocol = p),
-              ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Text(
-          _t('Endpoint دستی (اختیاری)', 'Manual endpoint (optional)'),
-          style: TextStyle(
-              color: AppColors.muted(context),
-              fontSize: 13,
-              fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _aetherPeerController,
-          style: TextStyle(color: AppColors.fg(context), fontSize: 13),
-          decoration: InputDecoration(
-            hintText: '162.159.192.1:2408',
-            hintStyle: TextStyle(color: AppColors.muted2(context)),
-            filled: true,
-            fillColor: AppColors.surface(context),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFFEF5350), width: 1.5),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          _t('نام (اختیاری)', 'Name (optional)'),
-          style: TextStyle(
-              color: AppColors.muted(context),
-              fontSize: 13,
-              fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _nameController,
-          style: TextStyle(color: AppColors.fg(context)),
-          decoration: InputDecoration(
-            hintText: _t('مثال: Tor من', 'e.g. My Tor'),
-            hintStyle: TextStyle(color: AppColors.muted2(context)),
-            filled: true,
-            fillColor: AppColors.surface(context),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFFEF5350), width: 1.5),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: ElevatedButton(
-            onPressed: _addTorServer,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFEF5350),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-            child: Text(
-              _t('افزودن Tor-mode', 'Add Tor-mode'),
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
           ),
         ),
       ],
@@ -1618,6 +1622,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 20),
+        _buildAetherScanPanel(),
         const SizedBox(height: 24),
         SizedBox(
           width: double.infinity,
@@ -1698,8 +1704,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             ),
             _buildTypeCard(
               title: 'Tor',
-              subtitle: _t('مسیر stealth ضد فیلتر سخت',
-                  'Stealth path for heavy filtering'),
+              subtitle: _t('اتصال واقعی به شبکهٔ رسمی Tor با پل‌های رایگان',
+                  'Real connection to the official Tor network with free bridges'),
               icon: Icons.security,
               type: 'tor',
               color: const Color(0xFFEF5350),

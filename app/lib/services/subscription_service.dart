@@ -141,6 +141,28 @@ class SubscriptionService {
       '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
   static Future<List<VpnServer>> fetch(Subscription subscription) async {
+    // ۴۲۹ (Too Many Requests) معمولاً موقتی است؛ قبل از تسلیم‌شدن با یک کمی
+    // فاصله دوباره امتحان می‌کنیم (حداکثر ۲ تلاش اضافه).
+    const maxRetries = 2;
+    SubscriptionFetchException? lastRateLimitError;
+
+    for (var attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await _fetchOnce(subscription);
+      } on SubscriptionFetchException catch (e) {
+        final is429 = e.kind == SubFetchErrorKind.httpError && e.statusCode == 429;
+        if (!is429 || attempt == maxRetries) rethrow;
+        lastRateLimitError = e;
+        await Future<void>.delayed(Duration(seconds: attempt == 0 ? 2 : 5));
+      }
+    }
+    // به این خط نمی‌رسیم؛ فقط برای رضایت آنالایزر.
+    throw lastRateLimitError ??
+        const SubscriptionFetchException(
+            SubFetchErrorKind.unknown, 'Unknown fetch error');
+  }
+
+  static Future<List<VpnServer>> _fetchOnce(Subscription subscription) async {
     final http.Response response;
     try {
       response = await http
@@ -207,6 +229,7 @@ class SubscriptionService {
     subscription.cachedLinks = servers.map((s) => s.shareLink).toList();
     return servers;
   }
+
 
   static List<VpnServer> fromCache(Subscription subscription) {
     return _build(subscription.cachedLinks, subscription.id);

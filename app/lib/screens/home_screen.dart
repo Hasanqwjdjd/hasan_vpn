@@ -1430,24 +1430,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.security, color: AppColors.accent),
-                title: Text(_t('اتصال Tor', 'Tor Connection'),
-                    style: TextStyle(color: AppColors.fg(context))),
-                subtitle: Text(
-                  _t('اتصال از طریق شبکه Tor', 'Connect via Tor network'),
-                  style: TextStyle(color: AppColors.muted2(context), fontSize: 11),
-                ),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => TorScreen(language: widget.language),
-                    ),
-                  );
-                },
-              ),
-              ListTile(
                 leading:
                     Icon(Icons.search, color: AppColors.muted(context)),
                 title: Text(_t('جستجو در سرورها', 'Search Servers'),

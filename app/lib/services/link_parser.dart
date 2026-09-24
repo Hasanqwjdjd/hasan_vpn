@@ -355,7 +355,24 @@ class LinkParser {
   }
 
   static String _cleanName(String value, {required String fallback}) {
-    final collapsed = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    var v = value;
+
+    // باگ شناخته‌شده در بعضی اشتراک‌ها: به‌جای متن ساده، نام سرور به شکل یک
+    // tuple/repr مثل "(this, 'حسن')" سریالایز شده. اگر این الگو تشخیص داده
+    // شد، فقط آخرین بخش رشته‌ای/کوتیشن‌دار داخلش را به‌عنوان نام واقعی نگه
+    // می‌داریم؛ در غیر این صورت پرانتز/کوتیشن اضافه‌ی ابتدا یا انتهای رشته
+    // پاک می‌شود.
+    final trimmed = v.trim();
+    final tupleMatch =
+        RegExp(r'''^\((?:.*,\s*)?['"]([^'"]*)['"]\s*\)$''').firstMatch(trimmed);
+    if (tupleMatch != null && (tupleMatch.group(1) ?? '').isNotEmpty) {
+      v = tupleMatch.group(1)!;
+    } else {
+      v = v.replaceFirst(RegExp(r'''^\(\s*[A-Za-z_][A-Za-z0-9_.]*\s*,\s*['"]?'''), '');
+      v = v.replaceFirst(RegExp(r'''['"]?\s*\)\s*$'''), '');
+    }
+
+    final collapsed = v.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (collapsed.isEmpty) return fallback;
     return collapsed.length > 80 ? collapsed.substring(0, 80) : collapsed;
   }
