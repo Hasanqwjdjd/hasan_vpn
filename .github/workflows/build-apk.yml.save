@@ -1,0 +1,430 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.27.4
+          channel: stable
+          cache: true
+
+      - name: Setup Gradle properties for retry
+        run: |
+          mkdir -p ~/.gradle
+          cat > ~/.gradle/gradle.properties << 'EOF'
+          systemProp.org.gradle.internal.repository.max.retries=10
+          systemProp.org.gradle.internal.repository.initial.backoff=1000
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g
+          org.gradle.parallel=true
+          org.gradle.caching=true
+          EOF
+          echo "✅ Gradle retry settings configured"
+
+      - name: Compute app version
+        id: appver
+        run: |
+          # BASE = the github.run_number of the FIRST build that should be tagged 2.11.0.
+          # Set this to (current latest Actions run number) + 1 before merging, so the very
+          # next workflow run lands on 2.11.0. Check the Actions tab for the latest run
+          # number, e.g. if the latest run shown is 418, set BASE=419.
+          BASE=419
+          N=$(( ${{ github.run_number }} - BASE ))
+          if [ "$N" -lt 0 ]; then N=0; fi
+          MINOR=$(( 11 + N / 5 ))
+          PATCH=$(( (N % 5) * 2 ))
+          MAJOR=2
+          while [ "$MINOR" -ge 20 ]; do
+            MAJOR=$(( MAJOR + 1 ))
+            MINOR=$(( MINOR - 20 ))
+          done
+          CLEAN="${MAJOR}.${MINOR}.${PATCH          echo "version=$CLEAN" >> "$GITHUB_OUTPUT"
+          echo "Computed version: $CLEAN (run: ${{ github.run_number }})"
+
+      - name: Prepare signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -e
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > hasan.keystore
+            SP="$KEYSTORE_PASSWORD"
+            echo "STORE_PASS=$SP" >> "$GITHUB_ENV"
+            echo "KEY_PASS=${KEY_PASSWORD:-$SP}" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS_NAME=${KEY_ALIAS:-hasan}" >> "$GITHUB_ENV"
+            echo "Using keystore from GitHub Secrets"
+          else
+            echo "::warning::KEYSTORE_BASE64 تنظیم نشده؛ از کلید پیش‌فرض استفاده می‌شود."
+            if [ ! -f hasan.keystore ]; then
+              keytool -genkey -v \
+                -keystore hasan.keystore \
+                -alias hasan \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -storepass hasan12345 \
+                -keypass hasan12345 \
+                -dname "CN=Hasan, OU=Hasan, O=Hasan, L=Tehran, S=Tehran, C=IR"
+            fi
+            SP="hasan12345"
+            echo "STORE_PASS=$SP" >> "$GITHUB_ENV"
+            echo "KEY_PASS=hasan12345" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS_NAME=hasan" >> "$GITHUB_ENV"
+          fi
+          keytool -list -keystore hasan.keystore -storepass "$SP" >/dev/null
+          echo "keystore OK"
+
+      - name: Create Flutter Android project
+        run: |
+          set -e
+          flutter create --org com.hasan --project-name hasan_vpn --platforms android build_src
+          cp -r app/lib/. build_src/lib/
+          cp app/pubspec.yaml build_src/pubspec.yaml
+          cp hasan.keystore build_src/android/app/hasan.keystore
+
+          # Patch gradle-wrapper.properties: bump Gradle from 8.3 to 8.9
+          WRAPPER="build_src/android/gradle/wrapper/gradle-wrapper.properties"
+          sed -i 's|gradle-8.3-all.zip|gradle-8.9-all.zip|g; s|gradle-8.3-bin.zip|gradle-8.9-all.zip|g' "$WRAPPER"
+          echo "----- gradle-wrapper.properties -----"
+          cat "$WRAPPER"
+
+          # Patch settings.gradle: bump Kotlin + AGP + add Aliyun mirrors
+          python3 << 'PYEOF'
+          path = "build_src/android/settings.gradle"
+          with open(path, "r") as f:
+              text = f.read()
+
+          text = text.replace(
+              'org.jetbrains.kotlin.android" version "1.8.22"',
+              'org.jetbrains.kotlin.android" version "2.1.0"'
+          )
+          text = text.replace(
+              'com.android.application" version "8.1.0"',
+              'com.android.application" version "8.7.0"'
+          )
+          mirrors = '''        maven { url "https://maven.aliyun.com/repository/google" }
+                  maven { url "https://maven.aliyun.com/repository/public" }
+                  maven { url "https://maven.aliyun.com/repository/gradle-plugin" }
+                  '''
+          # Aliyun به‌عنوان fallback بعد از google() و mavenCentral()
+          if 'maven.aliyun.com' not in text:
+              text = text.replace('mavenCentral()', 'mavenCentral()\n' + mirrors, 1)
+
+          with open(path, "w") as f:
+              f.write(text)
+          print("✅ settings.gradle patched (Kotlin 2.1.0, AGP 8.7.0, Aliyun mirrors)")
+          PYEOF
+          cat build_src/android/settings.gradle
+
+      - name: Generate protected default subscriptions
+        env:
+          DEFAULT_SUBS_JSON: ${{ secrets.DEFAULT_SUBS_JSON }}
+        run: |
+          python3 tools/gen_protected_defaults.py build_src/lib/services/protected_defaults.g.dart
+
+      - name: Install Aether native (Kotlin) sources
+        run: |
+          set -e
+          KT_DIR="build_src/android/app/src/main/kotlin/com/hasan/hasan_vpn"
+          mkdir -p "$KT_DIR"
+          rm -f build_src/android/app/src/main/java/com/hasan/hasan_vpn/MainActivity.java 2>/dev/null || true
+          cp -f android-extra/kotlin/MainActivity.kt "$KT_DIR/MainActivity.kt"
+          cp -f android-extra/kotlin/AetherService.kt "$KT_DIR/AetherService.kt"
+          cp -f android-extra/kotlin/TelemetryNotifier.kt "$KT_DIR/TelemetryNotifier.kt"
+          cp -f android-extra/kotlin/SafeLog.kt "$KT_DIR/SafeLog.kt"
+          cp -f android-extra/kotlin/TorService.kt "$KT_DIR/TorService.kt"
+          cp -f android-extra/kotlin/TorForegroundService.kt "$KT_DIR/TorForegroundService.kt"
+          cp -f android-extra/kotlin/LiveMonitorService.kt "$KT_DIR/LiveMonitorService.kt"
+          cp -f android-extra/kotlin/QuickConnectWidget.kt "$KT_DIR/QuickConnectWidget.kt"
+          cp -f android-extra/kotlin/QuickConnectWidget1x1.kt "$KT_DIR/QuickConnectWidget1x1.kt"
+          cp -f android-extra/kotlin/WidgetBgConnectActivity.kt "$KT_DIR/WidgetBgConnectActivity.kt"
+          cp -f android-extra/kotlin/WidgetConnectService.kt "$KT_DIR/WidgetConnectService.kt"
+          cp -f android-extra/kotlin/WidgetHeadlessActivity.kt "$KT_DIR/WidgetHeadlessActivity.kt"
+          if [ -d android-extra/psiphon ] && [ "$(find android-extra/psiphon -name '*.aar' | wc -l)" -gt 0 ]; then
+            echo "Using real Psiphon AAR"
+            cp -f android-extra/kotlin/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
+            mkdir -p build_src/android/app/libs
+            cp -f android-extra/psiphon/*.aar build_src/android/app/libs/
+          else
+            echo "Using Psiphon stub (no AAR)"
+            cp -f android-extra/kotlin-stub/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
+          fi
+
+      - name: Install Android widget resources
+        run: |
+          set -e
+          RES_DIR="build_src/android/app/src/main/res"
+          mkdir -p "$RES_DIR/drawable" "$RES_DIR/layout" "$RES_DIR/xml" "$RES_DIR/values"
+          if [ -d android-extra/res ]; then
+            cp -rf android-extra/res/. "$RES_DIR/"
+            echo "Widget resources copied"
+          fi
+          STRINGS="$RES_DIR/values/strings.xml"
+          if [ ! -f "$STRINGS" ]; then
+            {
+              echo '<?xml version="1.0" encoding="utf-8"?>'
+              echo '<resources>'
+              echo '    <string name="widget_description">Quick connect 2x1</string>'
+              echo '    <string name="widget_description_1x1">Quick connect 1x1</string>'
+              echo '    <string name="app_name">Hasan VPN</string>'
+              echo '</resources>'
+            } > "$STRINGS"
+          fi
+
+
+      - name: Psiphon embedded server list (optional)
+        run: |
+          if [ -f android-extra/assets/server_entries.txt ]; then
+            mkdir -p build_src/android/app/src/main/assets
+            cp -f android-extra/assets/server_entries.txt build_src/android/app/src/main/assets/server_entries.txt
+            echo "Embedded Psiphon server list included"
+          else
+            echo "No android-extra/assets/server_entries.txt - Psiphon will download its server list"
+          fi
+
+      - name: Install Aether native binaries (jniLibs)
+        run: |
+          set -e
+          JNI_DIR="build_src/android/app/src/main/jniLibs"
+          mkdir -p "$JNI_DIR/arm64-v8a" "$JNI_DIR/armeabi-v7a" "$JNI_DIR/x86_64"
+          if [ -d android-extra/jniLibs ]; then
+            cp -rf android-extra/jniLibs/. "$JNI_DIR/"
+          fi
+          find "$JNI_DIR" -type f -name "*.so" -exec chmod +x {} \;
+          echo "Native binaries installed:"
+          find "$JNI_DIR" -type f -name "*.so" || true
+
+      - name: Write v1+v2+v3 signing and VPN manifest
+        run: |
+          {
+            echo "storePassword=${STORE_PASS}"
+            echo "keyPassword=${KEY_PASS}"
+            echo "keyAlias=${KEY_ALIAS_NAME}"
+            echo "storeFile=hasan.keystore"
+          } > build_src/android/key.properties
+
+          rm -f build_src/android/app/build.gradle.kts
+          cat > build_src/android/app/build.gradle << 'EOF'
+          plugins {
+              id "com.android.application"
+              id "kotlin-android"
+              id "dev.flutter.flutter-gradle-plugin"
+          }
+
+          def keystoreProperties = new Properties()
+          def keystorePropertiesFile = rootProject.file("key.properties")
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+          }
+
+          def localProperties = new Properties()
+          def localPropertiesFile = rootProject.file("local.properties")
+          if (localPropertiesFile.exists()) {
+              localPropertiesFile.withReader("UTF-8") { reader ->
+                  localProperties.load(reader)
+              }
+          }
+
+          def flutterVersionCode = localProperties.getProperty("flutter.versionCode") ?: "1"
+          def flutterVersionName = localProperties.getProperty("flutter.versionName") ?: "1.0"
+
+          android {
+              namespace = "com.hasan.hasan_vpn"
+              compileSdk = 35
+              ndkVersion = "27.0.12077973"
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = "17"
+                  freeCompilerArgs += ["-Xskip-metadata-version-check"]
+              }
+
+              signingConfigs {
+                  release {
+                      keyAlias = keystoreProperties["keyAlias"]
+                      keyPassword = keystoreProperties["keyPassword"]
+                      storeFile = keystoreProperties["storeFile"] ? file(keystoreProperties["storeFile"]) : null
+                      storePassword = keystoreProperties["storePassword"]
+                      enableV1Signing = true
+                      enableV2Signing = true
+                      enableV3Signing = true
+                  }
+              }
+
+              defaultConfig {
+                  applicationId = "com.hasan.hasan_vpn"
+                  minSdk = 23
+                  targetSdk = 35
+                  versionCode = flutterVersionCode.toInteger()
+                  versionName = flutterVersionName
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig = signingConfigs.release
+                      minifyEnabled = false
+                      shrinkResources = false
+                  }
+              }
+          }
+
+          flutter {
+              source = "../.."
+          }
+
+          dependencies {
+              implementation fileTree(dir: "libs", include: ["*.jar", "*.aar"])
+          }
+          EOF
+
+          MF="build_src/android/app/src/main/AndroidManifest.xml"
+          python3 - << 'PYEOF'
+          import re
+          path = "build_src/android/app/src/main/AndroidManifest.xml"
+          with open(path, "r", encoding="utf-8") as f:
+              text = f.read()
+          perms = """    <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+          """
+          if 'android.permission.INTERNET' not in text:
+              text = text.replace("<application", perms + "    <application", 1)
+          if 'android:extractNativeLibs' not in text:
+              text = text.replace("<application", '<application android:extractNativeLibs="true" android:usesCleartextTraffic="true"', 1)
+          if 'android:allowBackup' not in text:
+              text = text.replace("<application", '<application android:allowBackup="false"', 1)
+          queries = """    <queries>
+              <intent>
+                  <action android:name="android.net.VpnService"/>
+              </intent>
+          </queries>
+          """
+          if '<queries>' not in text:
+              text = text.replace("</manifest>", queries + "</manifest>", 1)
+          # ثبت TorForegroundService در Manifest
+          if 'TorForegroundService' not in text:
+              svc = """    <service
+                  android:name="com.hasan.hasan_vpn.TorForegroundService"
+                  android:enabled="true"
+                  android:exported="false"
+                  android:foregroundServiceType="specialUse" />
+          """
+              text = text.replace("</application>", svc + "</application>", 1)
+
+          if 'QuickConnectWidget' not in text:
+              widget = """    <receiver
+                  android:name="com.hasan.hasan_vpn.QuickConnectWidget"
+                  android:enabled="true"
+                  android:exported="true"
+                  android:label="Hasan VPN 2x1">
+                  <intent-filter>
+                      <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                  </intent-filter>
+                  <meta-data
+                      android:name="android.appwidget.provider"
+                      android:resource="@xml/quick_connect_widget_info" />
+              </receiver>
+
+              <receiver
+                  android:name="com.hasan.hasan_vpn.QuickConnectWidget1x1"
+                  android:enabled="true"
+                  android:exported="true"
+                  android:label="Hasan VPN 1x1">
+                  <intent-filter>
+                      <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                  </intent-filter>
+                  <meta-data
+                      android:name="android.appwidget.provider"
+                      android:resource="@xml/quick_connect_widget_1x1_info" />
+              </receiver>
+
+              <activity
+                  android:name="com.hasan.hasan_vpn.WidgetBgConnectActivity"
+                  android:theme="@android:style/Theme.Translucent.NoTitleBar"
+                  android:excludeFromRecents="true"
+                  android:taskAffinity=""
+                  android:exported="true"
+                  android:noHistory="true" />
+
+              <activity
+                  android:name="com.hasan.hasan_vpn.WidgetHeadlessActivity"
+                  android:theme="@style/Theme.HasanVPN.NoDisplay"
+                  android:excludeFromRecents="true"
+                  android:taskAffinity=""
+                  android:exported="false"
+                  android:noHistory="true" />
+
+              <service
+                  android:name="com.hasan.hasan_vpn.WidgetConnectService"
+                  android:enabled="true"
+                  android:exported="false"
+                  android:foregroundServiceType="specialUse" />
+          """
+              text = text.replace("</application>", widget + "</application>", 1)
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(text)
+          PYEOF
+
+      - name: Flutter pub get
+        working-directory: build_src
+        run: flutter pub get
+
+      - name: Build release APK
+        working-directory: build_src
+        run: >
+          flutter build apk --release --no-shrink
+          --obfuscate
+          --split-debug-info=build/symbols
+          --split-per-abi
+          --target-platform android-arm,android-arm64,android-x64
+          --build-name=${{ steps.appver.outputs.version }}
+          --build-number=${{ github.run_number }}
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-v${{ steps.appver.outputs.version }}
+          path: build_src/build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.appver.outputs.version }}
+          name: نسخه ${{ steps.appver.outputs.version }}
+          body: |
+            بیلد خودکار نسخه ${{ steps.appver.outputs.version }}
+            شماره اجرا: ${{ github.run_number }}
+          files: build_src/build/app/outputs/flutter-apk/*.apk
+          draft: false
+          prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
