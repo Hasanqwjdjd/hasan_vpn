@@ -48,7 +48,28 @@ class SubscriptionService {
   /// [ProtectedDefaults] (ساخته‌شده در CI) فقط لحظهٔ دانلود خوانده می‌شوند.
   static List<Subscription> get defaultSubscriptions => [
         for (final e in ProtectedDefaults.entries)
-          Subscription(id: e[0], name: e[1], url: '', isDefault: true),
+          // Aetris / GitVerse را از پیش‌فرض‌ها حذف می‌کنیم (۴۰۴/timeout مکرر)
+          if (!e[1].toLowerCase().contains('aetris') &&
+              !e[1].toLowerCase().contains('gitverse'))
+            Subscription(id: e[0], name: e[1], url: '', isDefault: true),
+        Subscription(
+          id: 'sync_base64',
+          name: 'Sync-Base64',
+          url:
+              'https://vy2i69-z707bh-2sjvq6.ekz8gsezum2s.workers.dev/sync?flag=base64',
+          isDefault: true,
+          autoUpdate: true,
+          intervalHours: 12,
+        ),
+        Subscription(
+          id: 'sync_hasan',
+          name: 'Sync-حسن',
+          url:
+              'https://vy2i69-z707bh-2sjvq6.ekz8gsezum2s.workers.dev/sync?sub=%D8%AD%D8%B3%D9%86',
+          isDefault: true,
+          autoUpdate: true,
+          intervalHours: 12,
+        ),
       ];
 
   /// آدرس واقعی برای دانلود. برای اشتراک پیش‌فرض از جدول محافظت‌شده می‌آید.
@@ -173,11 +194,11 @@ class SubscriptionService {
               'Accept': '*/*',
             },
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 40));
     } on TimeoutException {
       throw const SubscriptionFetchException(
         SubFetchErrorKind.timeout,
-        'Timeout — سرور در ۲۰ ثانیه پاسخ نداد',
+        'Timeout — سرور در ۴۰ ثانیه پاسخ نداد',
       );
     } on SocketException catch (e) {
       // پیام e.message معمولاً شامل آدرس کامل است؛ برای اشتراک پیش‌فرض

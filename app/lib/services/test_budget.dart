@@ -17,8 +17,8 @@ class TestBudget {
   final bool tcpPrecheck;
 
   const TestBudget({
-    this.timeoutSec = 12,
-    this.direct = 16,
+    this.timeoutSec = 8,
+    this.direct = 32,
     this.samples = 1,
     this.tcpFallback = true,
     this.tcpPrecheck = true,
@@ -49,8 +49,8 @@ class TestBudget {
       final m = jsonDecode(raw);
       if (m is! Map) return const TestBudget();
       return TestBudget(
-        timeoutSec: _pick(m['timeoutSec'], timeoutOptions, 12),
-        direct: _pick(m['directConcurrency'], directOptions, 16),
+        timeoutSec: _pick(m['timeoutSec'], timeoutOptions, 8),
+        direct: _pick(m['directConcurrency'], directOptions, 32),
         samples: _pick(m['samples'], sampleOptions, 1),
         tcpFallback: m['tcpFallback'] != false,
         tcpPrecheck: m['tcpPrecheck'] != false,

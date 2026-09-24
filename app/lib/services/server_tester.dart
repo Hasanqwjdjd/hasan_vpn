@@ -59,8 +59,8 @@ class _Semaphore {
 class ServerTester {
   ServerTester._();
 
-  static const int _tcpTimeoutMs = 1000;
-  static const int _realBudgetSec = 12;
+  static const int _tcpTimeoutMs = 800;
+  static const int _realBudgetSec = 8;
 
   static Future<TestSummary> testAll(
     List<VpnServer> servers, {

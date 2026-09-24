@@ -115,11 +115,11 @@ class PsiphonAuto {
     ),
   ];
 
-  /// پروتکل‌های مناسب فیلتر سخت / موبایل ایران (نام‌ها از پروتکل‌های SDK).
+  /// پروتکل‌های معتبر در SupportedTunnelProtocols (psiphon-tunnel-core).
+  /// FRONTED-MEEK-HTTPS-OSSH وجود ندارد — SDK فوری invalid می‌دهد (لاگ Irancell).
   static const List<String> stealthProtocols = <String>[
-    'FRONTED-MEEK-HTTPS-OSSH',
-    'FRONTED-MEEK-HTTP-OSSH',
     'FRONTED-MEEK-OSSH',
+    'FRONTED-MEEK-HTTP-OSSH',
     'UNFRONTED-MEEK-HTTPS-OSSH',
     'UNFRONTED-MEEK-SESSION-TICKET-OSSH',
     'UNFRONTED-MEEK-OSSH',
@@ -128,16 +128,16 @@ class PsiphonAuto {
   static const List<String> sshOnly = <String>['SSH', 'OSSH'];
   static const List<String> osshOnly = <String>['OSSH'];
   static const List<String> meekOnly = <String>[
-    'FRONTED-MEEK-HTTPS-OSSH',
-    'FRONTED-MEEK-HTTP-OSSH',
     'FRONTED-MEEK-OSSH',
+    'FRONTED-MEEK-HTTP-OSSH',
   ];
   static const List<String> unfrontedMeek = <String>[
     'UNFRONTED-MEEK-HTTPS-OSSH',
     'UNFRONTED-MEEK-SESSION-TICKET-OSSH',
     'UNFRONTED-MEEK-OSSH',
   ];
-  static const List<String> quicOnly = <String>['QUICv1'];
+  /// نام صحیح در SDK: QUIC-OSSH نه QUICv1
+  static const List<String> quicOnly = <String>['QUIC-OSSH', 'FRONTED-MEEK-QUIC-OSSH'];
 
   static const String _lastOkKey = 'psiphon_auto_last_ok_v1';
   static const String _regionsKey = 'psiphon_regions_cache_v1';
@@ -244,8 +244,9 @@ class PsiphonAuto {
 
     // ─── 1) Meek/fronted اول — شبیه HTTPS، بهترین شانس روی 4G ایران ───
     for (final p in ordered.take(3)) {
-      add(p, 'mobile', '${p.id}·meek-https',
-          protocols: const ['FRONTED-MEEK-HTTPS-OSSH'],
+      // همیشه اول یک پروتکل معتبر (نه نام ساختگی)
+      add(p, 'mobile', '${p.id}·fronted-meek',
+          protocols: const ['FRONTED-MEEK-OSSH'],
           timeout: 100,
           workers: 16);
       add(p, 'mobile', '${p.id}·meek-http',

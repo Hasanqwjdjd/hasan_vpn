@@ -1109,30 +1109,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: const Color(0xFF29B6F6).withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF29B6F6).withOpacity(0.35)),
-          ),
-          child: Text(
-            _t(
-              'Oblivion روی هستهٔ Aether (همان WARP / MASQUE / WireGuard) کار می‌کند. '
-              'بدون نیاز به لینک سرور؛ مسیر آزاد را خودش پیدا می‌کند. '
-              'در صورت نیاز می‌توانی Endpoint دستی (ip:port) بگذاری.',
-              'Oblivion runs on the Aether core (WARP / MASQUE / WireGuard). '
-              'No server link needed; it finds a working route. '
-              'Optionally set a manual Endpoint (ip:port).',
-            ),
-            style: TextStyle(
-              color: AppColors.muted(context),
-              fontSize: 12,
-              height: 1.5,
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
         // پروتکل
         Text(
           _t('پروتکل', 'Protocol'),

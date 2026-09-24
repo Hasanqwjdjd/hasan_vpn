@@ -1,35 +1,31 @@
-# MERGE REPORT — Grok ZIP + Claude ZIP + HEAD
+# MERGE REPORT — Grok ZIP (A) + Claude ZIP (B)
 
 Base: GitHub main (Hasanqwjdjd/hasan_vpn) at merge time.
-Inputs:
-- Grok: artifacts/hasan_vpn_final_fix.zip (full earlier pass)
-- Claude: attachments/hasan_vpn_final_fix.zip (3 files only)
-- HEAD: raw.githubusercontent.com main
+- ZIP A (Grok / artifacts): aether WIW env, valid Psiphon protocols, subs, name clean, ping budget
+- ZIP B (Claude / attachments): v2ray_engine, psiphon_service, tor_screen only (older)
 
 ## Classifications
 
 | File | Decision | Reason |
 |------|----------|--------|
-| app/lib/services/v2ray_engine.dart | MERGE_MANUAL | HEAD base + Claude chain-grace 6s→15s + HTTP delay URL preference |
-| app/lib/services/psiphon_service.dart | KEEP_HEAD / KEEP_YOURS | Generation tokens already on HEAD; Claude ZIP lacked them |
-| app/lib/services/psiphon_auto.dart | KEEP_HEAD | Mobile-first already on HEAD |
-| app/lib/screens/tor_screen.dart | KEEP_HEAD | Mobile-first + extraPool callers; Claude older |
-| app/lib/services/tor_bridges.dart | KEEP_HEAD | extraPool restored on HEAD; do not drop |
-| android-extra/kotlin/PsiphonService.kt | KEEP_HEAD | Kotlin generation guard on HEAD |
-| android-extra/kotlin/AetherService.kt | KEEP_HEAD | testBinary + ELF already on HEAD |
-| .github/workflows/build-apk.yml | KEEP_HEAD | tag + FALLBACK_BASE=369 |
-| HEV screens/settings | KEEP_HEAD | Already on HEAD if present |
-| android-extra/kotlin/TelemetryNotifier.kt | NEW FIX | Single notif ID 4240; actions; cancel legacy 4243 |
-| android-extra/kotlin/TorForegroundService.kt | NEW FIX | FG ID 4243→4241 so it does not collide with status |
-| app/lib/services/telemetry_service.dart | NEW FIX | Same-ID update when toggling speed |
+| app/lib/models/aether_profile.dart | KEEP_A | WIW outer/inner env, scan verified, noize gfw/firewall, ACCESS_CLIENT_* |
+| app/lib/services/psiphon_auto.dart | KEEP_A | No FRONTED-MEEK-HTTPS-OSSH; FRONTED-MEEK-OSSH first |
+| app/lib/services/link_parser.dart | KEEP_A | this,'حسن' cleaning |
+| app/lib/services/subscription_service.dart | KEEP_A | Sync defaults + 40s timeout; Aetris filtered |
+| app/lib/screens/add_config_screen.dart | KEEP_A | Oblivion info block removed |
+| app/lib/services/server_tester.dart | KEEP_A | Faster TCP/real budgets |
+| app/lib/services/test_budget.dart | KEEP_A | concurrency default 32 |
+| B: app/lib/services/v2ray_engine.dart | SKIP (HEAD) | Chain-grace 15s already on main |
+| B: app/lib/services/psiphon_service.dart | SKIP (HEAD) | HEAD has generation tokens; B lacks them |
+| B: app/lib/screens/tor_screen.dart | SKIP (HEAD) | HEAD mobile-first bridges already present |
 
 ## Conflicts
 
-None requiring human decision. Claude's psiphon_service was strictly weaker (no gen tokens).
+None. File sets barely overlap; B's unique files are already superseded on HEAD.
 
-## Notification strategy
+## Critical checklist
 
-- User-facing status+speed: ID **4240**, channel `hasan_status`
-- Tor core FG (required by Android): ID **4241**
-- Aether core FG: ID **4242** (unchanged)
-- Legacy ID **4243** cancelled on each status update
+- [x] No LimitTunnelProtocols value FRONTED-MEEK-HTTPS-OSSH
+- [x] AETHER_WIW_OUTER_PEER / AETHER_WIW_INNER_PEER for gool link outer=/inner=
+- [x] scan stealth → verified
+- [x] noize includes light, firewall, gfw

@@ -355,21 +355,35 @@ class LinkParser {
   }
 
   static String _cleanName(String value, {required String fallback}) {
-    var v = value;
+    var v = value.trim();
 
-    // باگ شناخته‌شده در بعضی اشتراک‌ها: به‌جای متن ساده، نام سرور به شکل یک
-    // tuple/repr مثل "(this, 'حسن')" سریالایز شده. اگر این الگو تشخیص داده
-    // شد، فقط آخرین بخش رشته‌ای/کوتیشن‌دار داخلش را به‌عنوان نام واقعی نگه
-    // می‌داریم؛ در غیر این صورت پرانتز/کوتیشن اضافه‌ی ابتدا یا انتهای رشته
-    // پاک می‌شود.
-    final trimmed = v.trim();
-    final tupleMatch =
-        RegExp(r'''^\((?:.*,\s*)?['"]([^'"]*)['"]\s*\)$''').firstMatch(trimmed);
-    if (tupleMatch != null && (tupleMatch.group(1) ?? '').isNotEmpty) {
-      v = tupleMatch.group(1)!;
+    // Patterns seen in broken subscription remarks:
+    //   (this, 'حسن')
+    //   this,'حسن'
+    //   this, "حسن"
+    // Keep only the quoted Persian/name part.
+    final quoted = RegExp(
+      r"""this\s*,\s*['"]([^'"]+)['"]""",
+      caseSensitive: false,
+    ).firstMatch(v);
+    if (quoted != null && (quoted.group(1) ?? '').isNotEmpty) {
+      v = quoted.group(1)!;
     } else {
-      v = v.replaceFirst(RegExp(r'''^\(\s*[A-Za-z_][A-Za-z0-9_.]*\s*,\s*['"]?'''), '');
-      v = v.replaceFirst(RegExp(r'''['"]?\s*\)\s*$'''), '');
+      final tupleMatch = RegExp(
+        r"""^\(\s*(?:this\s*,\s*)?['"]([^'"]*)['"]\s*\)$""",
+        caseSensitive: false,
+      ).firstMatch(v);
+      if (tupleMatch != null && (tupleMatch.group(1) ?? '').isNotEmpty) {
+        v = tupleMatch.group(1)!;
+      } else {
+        v = v.replaceFirst(
+            RegExp(r"""^\(\s*[A-Za-z_][A-Za-z0-9_.]*\s*,\s*['"]?"""), '');
+        v = v.replaceFirst(RegExp(r"""['"]?\s*\)\s*$"""), '');
+        // bare prefix without parens
+        v = v.replaceFirst(
+            RegExp(r"""^this\s*,\s*['"]?""", caseSensitive: false), '');
+        v = v.replaceFirst(RegExp(r"""['"]\s*$"""), '');
+      }
     }
 
     final collapsed = v.replaceAll(RegExp(r'\s+'), ' ').trim();

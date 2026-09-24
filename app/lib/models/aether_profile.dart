@@ -6,7 +6,7 @@ class AetherAttempt {
   /// فقط برای masque و mim: HTTP/2 روی TCP (شبیه HTTPS) به‌جای HTTP/3 روی QUIC.
   final bool h2;
 
-  /// turbo | balanced | thorough | stealth | ironclad
+  /// turbo | balanced | thorough | verified | ironclad
   final String scan;
 
   /// null یعنی پیش‌فرض خود Aether.
@@ -68,7 +68,7 @@ class AetherProfile {
   /// auto | masque | masque_h2 | wg | gool | mim
   final String protocol;
 
-  /// smart | turbo | balanced | thorough | stealth | ironclad
+  /// smart | turbo | balanced | thorough | verified | ironclad
   final String scan;
 
   /// auto | off | light | firewall | balanced | gfw | aggressive
@@ -80,8 +80,14 @@ class AetherProfile {
   /// لیست DNS داخل تونل، با کاما. خالی = پیش‌فرض Aether.
   final String dns;
 
-  /// نقطه‌ی اتصال دستی ip:port (اختیاری).
+  /// نقطه‌ی اتصال دستی ip:port (اختیاری) — masque/wg.
   final String peer;
+
+  /// هاپ بیرونی GOOL/WIW (ip:port) — از لینک outer=
+  final String outer;
+
+  /// هاپ داخلی GOOL/WIW (ip:port) — از لینک inner=
+  final String inner;
 
   /// پراکسی بالادستی مثل socks5://127.0.0.1:1080 (اختیاری).
   final String upstream;
@@ -149,6 +155,8 @@ class AetherProfile {
     this.ip = 'v4',
     this.dns = '',
     this.peer = '',
+    this.outer = '',
+    this.inner = '',
     this.upstream = '',
     this.quickReconnect = true,
     this.blockQuic = true,
@@ -185,7 +193,7 @@ class AetherProfile {
     'turbo',
     'balanced',
     'thorough',
-    'stealth',
+    'verified',
     'ironclad',
   ];
 
@@ -205,11 +213,16 @@ class AetherProfile {
 
   /// مقدارهای معتبر برای AETHER_PROTOCOL و AETHER_SCAN
   static const List<String> enginesOf = <String>['masque', 'wg', 'gool', 'mim'];
+
+  /// scan modes accepted by libaether.so v2.1.0 (--help)
+  static const List<String> validScans = <String>[
+    'turbo', 'balanced', 'thorough', 'verified', 'ironclad',
+  ];
   static const List<String> scanEngines = <String>[
     'turbo',
     'balanced',
     'thorough',
-    'stealth',
+    'verified',
     'ironclad',
   ];
 
@@ -242,6 +255,8 @@ class AetherProfile {
       ip: _pick(query['ip'], ips, 'v4'),
       dns: (query['dns'] ?? '').trim(),
       peer: (query['peer'] ?? '').trim(),
+      outer: (query['outer'] ?? query['wiw_outer'] ?? '').trim(),
+      inner: (query['inner'] ?? query['wiw_inner'] ?? '').trim(),
       upstream: (query['upstream'] ?? '').trim(),
       quickReconnect: query['qr'] != '0',
       blockQuic: query['quic'] != 'allow',
@@ -295,6 +310,8 @@ class AetherProfile {
       'ip': ip,
       if (dns.isNotEmpty) 'dns': dns,
       if (peer.isNotEmpty) 'peer': peer,
+    if (outer.isNotEmpty) 'outer': outer,
+    if (inner.isNotEmpty) 'inner': inner,
       if (upstream.isNotEmpty) 'upstream': upstream,
       if (!quickReconnect) 'qr': '0',
       if (!blockQuic) 'quic': 'allow',
@@ -328,7 +345,7 @@ class AetherProfile {
         return const Duration(seconds: 25);
       case 'ironclad':
         return const Duration(seconds: 45);
-      default: // thorough, stealth
+      default: // thorough, verified
         return const Duration(seconds: 45);
     }
   }
@@ -348,6 +365,21 @@ class AetherProfile {
   /// اول از همه امتحان می‌شود تا اتصال‌های بعدی سریع‌تر شوند.
   List<AetherAttempt> plan({AetherAttempt? lastGood}) {
     final attempts = <AetherAttempt>[];
+
+    // لینک pattng با outer/inner: مستقیم GOOL با همان endpointها
+    if (outer.isNotEmpty && inner.isNotEmpty &&
+        (protocol == 'auto' || protocol == 'gool')) {
+      attempts.add(_attempt('gool', false, scan == 'smart' ? 'balanced' : scan,
+          forceNoize: noize == 'auto' ? 'balanced' : null));
+      if (protocol == 'gool') {
+        // فقط gool با endpoint ثابت — بدون اسکن طولانی ironclad
+        if (lastGood != null && quickReconnect) {
+          attempts.removeWhere((a) => a.sameAs(lastGood));
+          attempts.insert(0, lastGood);
+        }
+        return attempts;
+      }
+    }
 
     if (protocol == 'auto') {
       // mobile-first: TCP/443 (MASQUE H2) و تودرتو (GOOL/MIM) قبل از H3/QUIC.
@@ -399,18 +431,18 @@ class AetherProfile {
           attempts.add(_attempt(proto, h2, 'balanced', forceNoize: 'gfw'));
           attempts.add(_attempt(proto, h2, 'thorough', forceNoize: 'gfw'));
           attempts.add(_attempt(proto, h2, 'ironclad', forceNoize: 'aggressive'));
-          attempts.add(_attempt(proto, h2, 'stealth', forceNoize: 'aggressive'));
+          attempts.add(_attempt(proto, h2, 'verified', forceNoize: 'aggressive'));
         } else if (h2) {
           // MASQUE/H2: TCP 443 — اولویت برای 4G
           attempts.add(_attempt(proto, true, 'balanced', forceNoize: 'gfw'));
           attempts.add(_attempt(proto, true, 'thorough', forceNoize: 'aggressive'));
-          attempts.add(_attempt(proto, true, 'stealth', forceNoize: 'gfw'));
+          attempts.add(_attempt(proto, true, 'verified', forceNoize: 'gfw'));
           attempts.add(_attempt(proto, false, 'turbo')); // H3 fallback
         } else {
           attempts.add(_attempt(proto, h2, 'turbo'));
           attempts.add(_attempt(proto, h2, 'balanced'));
           attempts.add(_attempt(proto, h2, 'thorough'));
-          attempts.add(_attempt(proto, h2, 'stealth', forceNoize: 'gfw'));
+          attempts.add(_attempt(proto, h2, 'verified', forceNoize: 'gfw'));
         }
       } else {
         attempts.add(_attempt(proto, h2, scan));
@@ -442,6 +474,24 @@ class AetherProfile {
 
   /// متغیرهای محیطی Aether. همه‌ی سؤال‌های تعاملی Aether (پروتکل، اسکن، IP،
   /// نوع MASQUE) با متغیر پاسخ داده می‌شوند تا پردازه هرگز منتظر ورودی نماند.
+
+  static String _normalizeScan(String s) {
+    switch (s) {
+      case 'verified':
+        return 'verified';
+      case 'smart':
+        return 'balanced';
+      case 'turbo':
+      case 'balanced':
+      case 'thorough':
+      case 'verified':
+      case 'ironclad':
+        return s;
+      default:
+        return 'balanced';
+    }
+  }
+
   Map<String, String> buildEnv(AetherAttempt attempt, int socksPort) {
     // Verified against CluvexStudio/Aether Docs/DOCS.en.md + cli.rs help:
     // AETHER_SOCKS, AETHER_PROTOCOL, AETHER_SCAN, AETHER_IP (v4|v6|both),
@@ -450,7 +500,7 @@ class AetherProfile {
     final env = <String, String>{
       'AETHER_SOCKS': '127.0.0.1:$socksPort',
       'AETHER_PROTOCOL': attempt.protocol,
-      'AETHER_SCAN': attempt.scan,
+      'AETHER_SCAN': _normalizeScan(attempt.scan),
       'AETHER_IP': ip, // v4 | v6 | both  (cli --ip)
       'AETHER_QUICK_RECONNECT': quickReconnect ? '1' : '0',
       'AETHER_LOG_LEVEL': 'info',
@@ -474,6 +524,26 @@ class AetherProfile {
       env['AETHER_PEER'] = peer;
     }
 
+    // GOOL / WARP-in-WARP — real --help env names (libaether.so 2.1.0)
+    // Link: aether://?protocol=gool&outer=IP:PORT&inner=IP:PORT
+    // CLI:  --gool --wiw-outer IP:PORT --wiw-inner IP:PORT
+    if (attempt.protocol == 'gool') {
+      final o = outer.isNotEmpty ? outer : peer;
+      if (o.isNotEmpty) env['AETHER_WIW_OUTER_PEER'] = o;
+      if (inner.isNotEmpty) env['AETHER_WIW_INNER_PEER'] = inner;
+      if (o.isNotEmpty && inner.isNotEmpty) {
+        env['AETHER_WIW_PEERS'] = '$o,$inner';
+      }
+    }
+    if (attempt.protocol == 'mim') {
+      final o = outer.isNotEmpty ? outer : peer;
+      if (o.isNotEmpty) env['AETHER_MIM_OUTER_PEER'] = o;
+      if (inner.isNotEmpty) env['AETHER_MIM_INNER_PEER'] = inner;
+      if (o.isNotEmpty && inner.isNotEmpty) {
+        env['AETHER_MIM_PEERS'] = '$o,$inner';
+      }
+    }
+
     if (upstream.isNotEmpty) env['AETHER_UPSTREAM'] = upstream;
 
     // AETHER_PERF_PROFILE: not in official public help table; kept for
@@ -486,8 +556,8 @@ class AetherProfile {
       if (accessToken.isNotEmpty) {
         env['AETHER_ACCESS_TOKEN'] = accessToken;
       } else if (accessId.isNotEmpty && accessSecret.isNotEmpty) {
-        env['AETHER_ACCESS_ID'] = accessId;
-        env['AETHER_ACCESS_SECRET'] = accessSecret;
+        env['AETHER_ACCESS_CLIENT_ID'] = accessId;
+        env['AETHER_ACCESS_CLIENT_SECRET'] = accessSecret;
       } else if (accessEmail.isNotEmpty) {
         env['AETHER_ACCESS_EMAIL'] = accessEmail;
       }
@@ -527,8 +597,14 @@ class AetherProfile {
       // AETHER_TOR_BRIDGE / AETHER_TOR_RELAYS: used by AetherST; official
       // help lists Tor modes as --tor / --tor-reverse / --tor-only. Bridge
       // override may be accepted as AETHER_TOR_BRIDGE when present.
-      if (torBridge.isNotEmpty) env['AETHER_TOR_BRIDGE'] = torBridge;
-      if (torRelays) env['AETHER_TOR_RELAYS'] = '1';
+      if (torBridge.isNotEmpty) {
+        env['AETHER_TOR_BRIDGES'] = torBridge;
+      } else {
+        env['AETHER_TOR_BRIDGES'] = 'auto';
+      }
+      if (torRelays) env['AETHER_TOR_RELAYS'] = 'only';
+      // Bridgedb country — Iran mobile
+      env['AETHER_TOR_COUNTRY'] = 'ir';
     }
 
     // ---- Routing ----
