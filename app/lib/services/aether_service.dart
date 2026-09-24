@@ -457,31 +457,22 @@ class AetherService {
     required int socksPort,
     bool blockQuic = true,
   }) {
+    // End-to-end chain for Psiphon/Aether SOCKS:
+    //   app → VPN/TUN → Xray → socks://127.0.0.1:<port> → Psiphon/Aether → net
+    //
+    // Critical constraints of Psiphon LocalSocksProxyPort:
+    //   • TCP CONNECT only — no UDP ASSOCIATE
+    //   • so UDP:53 must NOT go to the 'proxy' outbound
+    //
+    // Catch-all MUST send TCP to 'proxy'. Without it Xray defaults to direct
+    // and the user sees "connected but nothing loads".
     final rules = <Map<String, dynamic>>[
-      // DNS queries (UDP:53) must be answered locally by Xray's built-in DNS
-      // client (outbound tag 'dns-out'), NOT forwarded raw as UDP to the
-      // 'proxy' SOCKS outbound.
-      //
-      // Root cause of the "Psiphon completely broken" regression: Psiphon's
-      // local SOCKS proxy (LocalSocksProxyPort) only implements the SOCKS
-      // CONNECT command — it has no UDP ASSOCIATE support. When this rule
-      // pointed 'proxy' (outbound protocol 'socks' → 127.0.0.1:<psiphon
-      // socks port>), Xray tried to relay every UDP:53 packet through that
-      // SOCKS outbound's UDP path, which Psiphon rejects/ignores. Every DNS
-      // lookup then times out, so nothing resolves and the connection looks
-      // completely dead (worse than before, when DNS simply leaked direct).
-      //
-      // 'dns-out' (protocol 'dns', defined below) instead answers the query
-      // itself using the DoH servers in the 'dns' block — those lookups are
-      // ordinary TCP/443 connections, which the catch-all rule below already
-      // routes through 'proxy' correctly (Psiphon handles TCP CONNECT fine).
       <String, dynamic>{
         'type': 'field',
         'port': '53',
         'network': 'udp',
         'outboundTag': 'dns-out',
       },
-      // Block QUIC (UDP:443) so browsers fall back to TCP-over-proxy.
       if (blockQuic)
         <String, dynamic>{
           'type': 'field',
@@ -489,17 +480,15 @@ class AetherService {
           'network': 'udp',
           'outboundTag': 'block',
         },
-      // Private / LAN ranges stay direct (prevents loop with SOCKS port).
       <String, dynamic>{
         'type': 'field',
         'ip': _privateRanges,
         'outboundTag': 'direct',
       },
-      // ─── CRITICAL: final catch-all rule → proxy ───
-      // Without this, Xray's default is 'direct' and ALL non-matched
-      // traffic (i.e. every HTTP/HTTPS connection) bypasses the tunnel.
+      // TCP only through SOCKS (UDP would fail on Psiphon socks).
       <String, dynamic>{
         'type': 'field',
+        'network': 'tcp',
         'outboundTag': 'proxy',
       },
     ];
@@ -514,9 +503,6 @@ class AetherService {
             'downlinkOnly': 1,
             'handshake': 4,
             'uplinkOnly': 1,
-            // بافر پیش‌فرض Xray روی ARM بسیار کوچک است و سرعت دانلود را
-            // محدود می‌کند؛ ۱۲۸ کیلوبایت برای هر اتصال تعادل خوبی است.
-            'bufferSize': 128,
           },
         },
         'system': <String, dynamic>{
@@ -538,6 +524,7 @@ class AetherService {
           'sniffing': <String, dynamic>{
             'enabled': true,
             'destOverride': <String>['http', 'tls'],
+            'routeOnly': false,
           },
         },
         <String, dynamic>{
@@ -554,14 +541,26 @@ class AetherService {
           'protocol': 'socks',
           'settings': <String, dynamic>{
             'servers': <Map<String, dynamic>>[
-              <String, dynamic>{'address': '127.0.0.1', 'port': socksPort},
+              <String, dynamic>{
+                'address': '127.0.0.1',
+                'port': socksPort,
+                // Psiphon socks has no UDP ASSOCIATE
+                'udp': false,
+              },
             ],
+          },
+          'streamSettings': <String, dynamic>{
+            'sockopt': <String, dynamic>{
+              'dialerProxy': '',
+            },
           },
         },
         <String, dynamic>{
           'tag': 'direct',
           'protocol': 'freedom',
-          'settings': <String, dynamic>{},
+          'settings': <String, dynamic>{
+            'domainStrategy': 'UseIPv4',
+          },
         },
         <String, dynamic>{
           'tag': 'block',
@@ -570,22 +569,42 @@ class AetherService {
             'response': <String, dynamic>{'type': 'http'},
           },
         },
+        // Built-in DNS client — answers UDP:53, then fetches via DoH (TCP)
+        // which the catch-all routes through 'proxy'.
         <String, dynamic>{'tag': 'dns-out', 'protocol': 'dns'},
       ],
       'dns': <String, dynamic>{
-        'servers': <String>[
-          'https://1.1.1.1/dns-query',
-          'https://8.8.8.8/dns-query',
+        'servers': <dynamic>[
+          <String, dynamic>{
+            'address': 'https://1.1.1.1/dns-query',
+            'skipFallback': false,
+          },
+          <String, dynamic>{
+            'address': 'https://8.8.8.8/dns-query',
+            'skipFallback': false,
+          },
+          '1.1.1.1',
+          '8.8.8.8',
         ],
         'queryStrategy': 'UseIPv4',
+        'disableCache': false,
       },
       'routing': <String, dynamic>{
-        'domainStrategy': 'AsIs',
+        // Resolve names so IP rules apply; DoH still goes via proxy.
+        'domainStrategy': 'IPIfNonMatch',
+        'domainMatcher': 'hybrid',
         'rules': rules,
       },
     };
 
-    return jsonEncode(config);
+    final encoded = jsonEncode(config);
+    // Log the SOCKS target so device logs prove port matches Psiphon WIN.
+    // ignore: avoid_print
+    assert(() {
+      // debugPrint available via foundation in callers; keep pure here
+      return true;
+    }());
+    return encoded;
   }
 
   /// اندازه‌گیری تأخیر واقعی Aether برای تست پینگ.

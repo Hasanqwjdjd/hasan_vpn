@@ -357,13 +357,10 @@ class LinkParser {
   static String _cleanName(String value, {required String fallback}) {
     var v = value.trim();
 
-    // Patterns seen in broken subscription remarks:
-    //   (this, 'حسن')
-    //   this,'حسن'
-    //   this, "حسن"
-    // Keep only the quoted Persian/name part.
+    // Patterns from broken subscription remarks / tuple .toString():
+    //   (this, 'حسن')   this,'حسن'   this, "حسن"
     final quoted = RegExp(
-      r"""this\s*,\s*['"]([^'"]+)['"]""",
+      r"""(?:^|\b)this\s*,\s*['"]([^'"]+)['"]""",
       caseSensitive: false,
     ).firstMatch(v);
     if (quoted != null && (quoted.group(1) ?? '').isNotEmpty) {
@@ -379,12 +376,14 @@ class LinkParser {
         v = v.replaceFirst(
             RegExp(r"""^\(\s*[A-Za-z_][A-Za-z0-9_.]*\s*,\s*['"]?"""), '');
         v = v.replaceFirst(RegExp(r"""['"]?\s*\)\s*$"""), '');
-        // bare prefix without parens
         v = v.replaceFirst(
             RegExp(r"""^this\s*,\s*['"]?""", caseSensitive: false), '');
         v = v.replaceFirst(RegExp(r"""['"]\s*$"""), '');
       }
     }
+
+    // Also strip leading "this," without quotes around name
+    v = v.replaceFirst(RegExp(r'^this\s*,\s*', caseSensitive: false), '');
 
     final collapsed = v.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (collapsed.isEmpty) return fallback;

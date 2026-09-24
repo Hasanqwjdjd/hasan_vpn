@@ -25,7 +25,7 @@ class TorBridges {
   static const List<String> snowflake = <String>[
     'snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72',
     'snowflake 192.0.2.4:1 8838024498816A039FCBBAB14E6F40A0843051FA',
-    'snowflake 192.0.2.5:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ fronts=cdn.sstatic.net,ajax.aspnetcdn.com ice=stun:stun.l.google.com:19302,stun:stun.antisip.com:3478',
+    'snowflake 192.0.2.5:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://snowflake-broker.torproject.net/ fronts=cdn.sstatic.net,ajax.aspnetcdn.com ice=stun:stun.l.google.com:19302,stun:stun.antisip.com:3478',
   ];
 
   /// meek با جبهه Azure / CDNهای رایج (domain fronting).
@@ -55,7 +55,6 @@ class TorBridges {
     'obfs4 209.148.46.65:443 74FAD13168806246602538555B9351E037946476 cert=ssH+9rP8dG2NLDN2XuFw63hWP/zAYy2N6MzYqTgxfDQ iat-mode=0',
     'obfs4 146.57.248.225:22 10A6CD36A537FCE513A322361547444B393989F0 cert=K1gDtDAIcUfeLqbstggjIw2rtgI3xdX2xmnFTIqqpAH8mLuVKhM1WT3S40/b9aU2vz75XQ iat-mode=0',
     // 45.145.95.6 اغلب روی Irancell/MCI fail می‌شود — آخر لیست نگه داشته شده
-    'obfs4 45.145.95.6:27015 C5B7CD6946FF10C5B3E89691A7D3F2C122D2117C cert=TD7PbUO0/0k6xYHMvW7T2wEbmTm6x2D5aQh5v4mQzqE iat-mode=0',
   ];
 
   static const List<String> conjure = <String>[];
@@ -162,8 +161,8 @@ class TorBridges {
             .toList();
       case 'snowflake':
         return const [
-          'snowflake 192.0.2.6:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ fronts=ajax.aspnetcdn.com ice=stun:stun.l.google.com:19302',
-          'snowflake 192.0.2.7:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ fronts=www.google.com ice=stun:stun.voipgate.com:3478',
+          'snowflake 192.0.2.6:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://snowflake-broker.torproject.net/ fronts=ajax.aspnetcdn.com ice=stun:stun.l.google.com:19302',
+          'snowflake 192.0.2.7:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://snowflake-broker.torproject.net/ fronts=www.google.com ice=stun:stun.voipgate.com:3478',
         ];
       case 'conjure':
         return const [

@@ -244,7 +244,13 @@ class PsiphonService {
       onProgress?.call('Psiphon · VPN ($port)');
       final xrayConfig = AetherService.buildXrayConfig(socksPort: port, blockQuic: true);
       debugPrint('PSIPHON_DIAG: socksPort=$port region=$lastRegion');
-      debugPrint('PSIPHON_DIAG: config_head=${xrayConfig.substring(0, xrayConfig.length.clamp(0, 400))}');
+      debugPrint('PSIPHON_DIAG: proxy_outbound=socks://127.0.0.1:$port');
+      debugPrint('PSIPHON_DIAG: config_head=${xrayConfig.substring(0, xrayConfig.length.clamp(0, 600))}');
+      // Sanity: encoded JSON must embed the live port.
+      if (!xrayConfig.contains('"port":$port') &&
+          !xrayConfig.contains('"port": $port')) {
+        debugPrint('PSIPHON_DIAG: WARNING config missing port $port');
+      }
       final started = await V2RayEngine.startConfig(
         remark: server.name,
         config: xrayConfig,

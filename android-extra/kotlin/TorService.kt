@@ -238,26 +238,48 @@ object TorService {
         sb.appendLine("SafeLogging 0")
         // AvoidDiskWrites removed — allows caching consensus/guards/circuits to disk for faster reconnect
         // بهینه‌سازی سرعت/پایداری مدار
-        sb.appendLine("CircuitBuildTimeout 15")
-        sb.appendLine("LearnCircuitBuildTimeout 1")
-        sb.appendLine("CircuitStreamTimeout 15")
+        sb.appendLine("CircuitBuildTimeout 30")
+        sb.appendLine("LearnCircuitBuildTimeout 0")
+        sb.appendLine("CircuitStreamTimeout 45")
         sb.appendLine("KeepalivePeriod 60")
         sb.appendLine("NewCircuitPeriod 30")
         sb.appendLine("MaxCircuitDirtiness 600")
-        sb.appendLine("EnforceDistinctSubnets 0")
+        sb.appendLine("EnforceDistinctSubnets 1")
         sb.appendLine("ClientOnly 1")
         sb.appendLine("ConnectionPadding 0")
         sb.appendLine("ReducedConnectionPadding 1")
         // ─── بهینه‌سازی سرعت ───
-        sb.appendLine("NumEntryGuards 3")
+        sb.appendLine("NumEntryGuards 1")
         sb.appendLine("NumDirectoryGuards 2")
         sb.appendLine("UseEntryGuards 1")
+        sb.appendLine("ExitNodes {de},{nl},{gb},{us},{fr},{ca},{jp}")
         sb.appendLine("StrictNodes 0")
         // دانلود سریع‌تر consensus
         sb.appendLine("ClientBootstrapConsensusAuthorityDownloadInitialDelay 0")
         sb.appendLine("ClientBootstrapConsensusAuthorityDownloadSchedule 0, 1, 2, 4")
         sb.appendLine("ClientBootstrapConsensusFallbackDownloadInitialDelay 0")
         sb.appendLine("ClientBootstrapConsensusFallbackDownloadSchedule 0, 1, 2, 4")
+
+        // Register every available PT so mixed bridge lists never hit
+        // "there is no configured transport called …".
+        if (bridgeType != "vanilla") {
+            if (obfs4Path != null) {
+                sb.appendLine("ClientTransportPlugin obfs4 exec ${obfs4Path}")
+                sb.appendLine("ClientTransportPlugin obfs3 exec ${obfs4Path}")
+                sb.appendLine("ClientTransportPlugin scramblesuit exec ${obfs4Path}")
+                sb.appendLine("ClientTransportPlugin meek_lite exec ${obfs4Path}")
+            }
+            if (snowflakePath != null) {
+                sb.appendLine(
+                    "ClientTransportPlugin snowflake exec ${snowflakePath}" +
+                        " -url https://snowflake-broker.torproject.net/" +
+                        " -front cdn.sstatic.net,ajax.aspnetcdn.com"
+                )
+            }
+            if (conjurePath != null) {
+                sb.appendLine("ClientTransportPlugin conjure exec ${conjurePath}")
+            }
+        }
 
         when (bridgeType) {
             "vanilla" -> {
@@ -297,7 +319,7 @@ object TorService {
                     val front = if (!sni.isNullOrEmpty()) sni else "cdn.sstatic.net"
                     sb.appendLine(
                         "ClientTransportPlugin snowflake exec ${snowflakePath}" +
-                            " -url https://snowflake-broker.torproject.net.global.prod.fastly.net/" +
+                            " -url https://snowflake-broker.torproject.net/" +
                             " -front $front" +
                             " -ice stun:stun.l.google.com:19302,stun:stun.antisip.com:3478"
                     )
