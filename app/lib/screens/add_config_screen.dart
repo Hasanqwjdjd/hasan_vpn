@@ -32,8 +32,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _sniController = TextEditingController();
   bool _sniEnabled = false;
   bool _isFa = true;
-  String _selectedType = 'manual'; // manual | aether | oblivion | siphon | tor
-
+  String _selectedType = 'manual'; // aether|psiphon|tor|manual|sub 
   // تنظیمات Aether (مقدارهای پیش‌فرض همان پیش‌فرض AetherProfile هستند)
   String _aetherProtocol = 'auto';
   String _aetherScan = 'smart';
@@ -543,14 +542,56 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       return;
     }
     setState(() => _aetherWorking = true);
+    // Prefer Cloudflare reg API; fall back to clearing local identity.
+    final reg = await AetherService.registerWarpKey();
+    if (reg['ok'] == true) {
+      if (!mounted) return;
+      setState(() => _aetherWorking = false);
+      _showMsg(_t('کلید WARP ثبت شد', 'WARP key registered'));
+      return;
+    }
     final ok = await AetherService.resetIdentity();
     if (!mounted) return;
     setState(() => _aetherWorking = false);
     _showMsg(ok
         ? _t('هویت WARP پاک شد — اتصال بعدی یک حساب تازه می‌سازد',
             'WARP identity cleared — next connect creates a fresh account')
-        : _t('نشد — اول Aether را قطع کن و دوباره امتحان کن',
-            'Failed — disconnect Aether first and try again'));
+        : _t('ثبت کلید ناموفق: ${reg['error'] ?? reg['status']}',
+            'Key registration failed: ${reg['error'] ?? reg['status']}'));
+  }
+
+  Future<void> _aetherDumpEnv() async {
+    final env = AetherService.dumpEnvPreview(_currentAetherProfile());
+    final lines = env.entries.map((e) => '${e.key}=${e.value}').toList()
+      ..sort();
+    final text = lines.join('\n');
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(_t('Dump env', 'Dump env')),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(text, style: const TextStyle(fontSize: 11)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: text));
+              if (ctx.mounted) Navigator.pop(ctx);
+              _showMsg(_t('کپی شد', 'Copied'));
+            },
+            child: Text(_t('کپی', 'Copy')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(_t('بستن', 'Close')),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildAetherScanPanel() {
@@ -662,16 +703,13 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
-  // ---------- Oblivion (WARP روی هسته Aether) ----------
-  // Oblivion کلاینت غیررسمی WARP است و همین برنامه از هستهٔ Aether
-  // (همان هسته‌ای که Oblivion جدید استفاده می‌کند) پشتیبانی می‌کند.
-
+      
   void _addFreeEnginePack() {
     final stamp = DateTime.now().millisecondsSinceEpoch;
     final engines = <({String id, String name, String flag, AetherProfile profile})>[
       (
-        id: 'oblivion_$stamp',
-        name: 'Oblivion · Auto',
+        id: 'aether_$stamp',
+        name: 'Aether · Auto',
         flag: '☁️',
         profile: const AetherProfile(
           protocol: 'auto',
@@ -693,20 +731,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
           blockQuic: true,
         ),
       ),
-      (
-        id: 'tor_$stamp',
-        name: 'Tor · Stealth',
-        flag: '🧅',
-        profile: const AetherProfile(
-          protocol: 'masque',
-          scan: 'stealth',
-          noize: 'aggressive',
-          quickReconnect: false,
-          blockQuic: true,
-          perf: 'medium',
-        ),
-      ),
-    ];
+];
 
     for (final e in engines) {
       // host معنادار تا در لیست «host = host» یا خالی دیده نشود
@@ -728,124 +753,11 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     }
     Navigator.pop(context);
     _showMsg(_t(
-      '۳ موتور رایگان اضافه شد (Oblivion / Siphon / Tor)',
-      '3 free engines added (Oblivion / Siphon / Tor)',
+      '۲ موتور رایگان اضافه شد (Aether / Siphon)',
+      '2 free engines added (Aether / Siphon)',
     ));
   }
 
-  void _addOblivionServer() {
-    final peer = _aetherPeerController.text.trim();
-    final dns = _aetherDnsController.text
-        .split(RegExp(r'[\s,]+'))
-        .where((e) => e.isNotEmpty)
-        .join(',');
-
-    if (peer.isNotEmpty && !_peerRegex.hasMatch(peer)) {
-      _showMsg(
-          _t('آدرس Endpoint باید به شکل ip:port باشد', 'Endpoint must look like ip:port'));
-      return;
-    }
-
-    // پیش‌فرض‌های نزدیک به Oblivion: اسکن هوشمند + MASQUE/WG خودکار
-    final profile = AetherProfile(
-      protocol: _aetherProtocol == 'auto' ? 'auto' : _aetherProtocol,
-      scan: _aetherScan,
-      noize: _aetherNoize,
-      ip: _aetherIp,
-      dns: dns,
-      peer: peer,
-      upstream: '',
-      quickReconnect: _aetherQuickReconnect,
-      blockQuic: _aetherBlockQuic,
-      perf: _aetherPerf,
-    );
-
-    final name = _nameController.text.trim().isNotEmpty
-        ? _nameController.text.trim()
-        : 'Oblivion · ${profile.summary}';
-
-    final server = VpnServer(
-      id: 'oblivion_${DateTime.now().millisecondsSinceEpoch}',
-      name: name,
-      flag: '☁️',
-      shareLink: profile.toLink(),
-      protocol: VpnProtocol.aether,
-      host: peer.isNotEmpty ? peer.split(':').first : 'warp-auto',
-      port: 0,
-      isDeletable: true,
-    );
-
-    widget.onServerAdded(server);
-    Navigator.pop(context);
-    _showMsg(_t('سرور Oblivion اضافه شد — وصل شو', 'Oblivion server added — connect'));
-  }
-
-
-  /// سایفون واقعی (کتابخانهٔ ca.psiphon)
-  ///  - حالت خودکار: فقط کشور (اختیاری)؛ بقیه را برنامه خودش انتخاب می‌کند.
-  ///  - حالت دستی: SponsorId / Channel / JSON.
-  void _addSiphonServer() {
-    final String share;
-    final String defaultName;
-
-    if (_psiphonAuto) {
-      share = PsiphonService.toAutoLink(region: _psiphonRegion);
-      defaultName = _psiphonRegion.isEmpty
-          ? 'Psiphon · Auto'
-          : 'Psiphon · Auto · $_psiphonRegion';
-    } else {
-      final sponsor = _psiphonSponsorController.text.trim();
-      final channel = _psiphonChannelController.text.trim();
-      final raw = _psiphonConfigController.text.trim();
-      final region = _aetherPeerController.text.trim(); // فیلد منطقهٔ دستی
-
-      if (raw.startsWith('{')) {
-        share = PsiphonService.toShareLink(rawJson: raw);
-      } else {
-        share = PsiphonService.toShareLink(
-          sponsorId: sponsor,
-          channelId: channel,
-          region: region,
-        );
-      }
-      defaultName = 'Psiphon · Manual';
-    }
-
-    final typed = _nameController.text.trim();
-    final server = VpnServer(
-      id: 'psiphon_${DateTime.now().millisecondsSinceEpoch}',
-      name: typed.isNotEmpty ? typed : defaultName,
-      flag: _psiphonAuto ? PsiphonAuto.flagEmoji(_psiphonRegion) : '💧',
-      shareLink: share,
-      protocol: VpnProtocol.psiphon,
-      host: 'psiphon-network',
-      port: 0,
-      isDeletable: true,
-    );
-
-    widget.onServerAdded(server);
-    Navigator.pop(context);
-    _showMsg(_psiphonAuto
-        ? _t('سایفون خودکار اضافه شد — وصل شو',
-            'Automatic Psiphon added — connect')
-        : _t('سایفون دستی اضافه شد', 'Manual Psiphon added'));
-  }
-
-  InputDecoration _siphonDecoration(String hint, {double hintSize = 13}) {
-    OutlineInputBorder border(Color c, [double w = 1]) => OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: c, width: w),
-        );
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: TextStyle(color: AppColors.muted2(context), fontSize: hintSize),
-      filled: true,
-      fillColor: AppColors.surface(context),
-      border: border(AppColors.border(context)),
-      enabledBorder: border(AppColors.border(context)),
-      focusedBorder: border(const Color(0xFF26A69A), 1.5),
-    );
-  }
 
   Widget _siphonLabel(String text) {
     return Padding(
@@ -892,9 +804,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   )
                 : _t(
                     'حالت دستی: SponsorId / Channel یا JSON کامل را خودت بده. '
-                    'خالی بگذاری، مقادیر پیش‌فرض Oblivion استفاده می‌شود.',
+                    'خالی بگذاری، مقادیر پیش‌فرض استفاده می‌شود.',
                     'Manual mode: provide your own SponsorId / Channel or a '
-                    'full JSON. Leave empty to use the Oblivion defaults.',
+                    'full JSON. Leave empty to use defaults.',
                   ),
             style: TextStyle(
               color: AppColors.muted(context),
@@ -963,7 +875,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             controller: _psiphonSponsorController,
             style: TextStyle(color: AppColors.fg(context), fontSize: 13),
             decoration: _siphonDecoration(
-                'خالی = پیش‌فرض Oblivion (FFFFFFFFFFFFFFFF)'),
+                'خالی = پیش‌فرض (FFFFFFFFFFFFFFFF)'),
           ),
           const SizedBox(height: 12),
           _siphonLabel('PropagationChannelId'),
@@ -1105,169 +1017,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   }
 
 
-  Widget _buildOblivionForm() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // پروتکل
-        Text(
-          _t('پروتکل', 'Protocol'),
-          style: TextStyle(
-              color: AppColors.muted(context),
-              fontSize: 13,
-              fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final p in AetherProfile.protocols)
-              ChoiceChip(
-                label: Text(p == 'auto' ? _t('خودکار', 'Auto') : p.toUpperCase()),
-                selected: _aetherProtocol == p,
-                selectedColor: const Color(0xFF29B6F6).withOpacity(0.25),
-                labelStyle: TextStyle(
-                  color: _aetherProtocol == p
-                      ? const Color(0xFF29B6F6)
-                      : AppColors.muted(context),
-                  fontSize: 12,
-                ),
-                onSelected: (_) => setState(() => _aetherProtocol = p),
-              ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Text(
-          _t('حالت اسکن', 'Scan mode'),
-          style: TextStyle(
-              color: AppColors.muted(context),
-              fontSize: 13,
-              fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final s in AetherProfile.scans)
-              ChoiceChip(
-                label: Text(s),
-                selected: _aetherScan == s,
-                selectedColor: const Color(0xFF29B6F6).withOpacity(0.25),
-                labelStyle: TextStyle(
-                  color: _aetherScan == s
-                      ? const Color(0xFF29B6F6)
-                      : AppColors.muted(context),
-                  fontSize: 12,
-                ),
-                onSelected: (_) => setState(() => _aetherScan = s),
-              ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Text(
-          _t('Endpoint دستی (اختیاری)', 'Manual endpoint (optional)'),
-          style: TextStyle(
-              color: AppColors.muted(context),
-              fontSize: 13,
-              fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _aetherPeerController,
-          style: TextStyle(color: AppColors.fg(context), fontSize: 13),
-          decoration: InputDecoration(
-            hintText: '162.159.192.1:2408',
-            hintStyle: TextStyle(color: AppColors.muted2(context)),
-            filled: true,
-            fillColor: AppColors.surface(context),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFF29B6F6), width: 1.5),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          _t('نام (اختیاری)', 'Name (optional)'),
-          style: TextStyle(
-              color: AppColors.muted(context),
-              fontSize: 13,
-              fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _nameController,
-          style: TextStyle(color: AppColors.fg(context)),
-          decoration: InputDecoration(
-            hintText: _t('مثال: Oblivion من', 'e.g. My Oblivion'),
-            hintStyle: TextStyle(color: AppColors.muted2(context)),
-            filled: true,
-            fillColor: AppColors.surface(context),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border(context)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFF29B6F6), width: 1.5),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(_t('اتصال مجدد سریع', 'Quick reconnect'),
-              style: TextStyle(color: AppColors.fg(context), fontSize: 14)),
-          value: _aetherQuickReconnect,
-          activeColor: const Color(0xFF29B6F6),
-          onChanged: (v) => setState(() => _aetherQuickReconnect = v),
-        ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(_t('مسدود کردن QUIC', 'Block QUIC'),
-              style: TextStyle(color: AppColors.fg(context), fontSize: 14)),
-          value: _aetherBlockQuic,
-          activeColor: const Color(0xFF29B6F6),
-          onChanged: (v) => setState(() => _aetherBlockQuic = v),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: ElevatedButton(
-            onPressed: _addOblivionServer,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF29B6F6),
-              foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-            child: Text(
-              _t('افزودن Oblivion', 'Add Oblivion'),
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget _buildTypeCard({
     required String title,
@@ -1965,7 +1714,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: AppColors.accent,
             ),
             _buildTypeCard(
-              title: 'Aether / Oblivion',
+              title: 'Aether',
               subtitle: _t(
                 'WARP + اسکن مسیر + MASQUE/WireGuard (ادغام‌شده)',
                 'WARP + route scan + MASQUE/WireGuard (merged)',
@@ -1998,8 +1747,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                 onPressed: _addFreeEnginePack,
                 icon: const Icon(Icons.flash_on, size: 18),
                 label: Text(_t(
-                  'افزودن هر ۳ موتور رایگان (پیشنهادی)',
-                  'Add all 3 free engines (recommended)',
+                  'افزودن هر ۲ موتور رایگان (پیشنهادی)',
+                  'Add all 2 free engines (recommended)',
                 )),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.accent,
@@ -2225,11 +1974,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                 ),
               ),
             ] else if (_selectedType == 'aether' ||
-                _selectedType == 'oblivion') ...[
-              // بخش ادغام‌شده Aether + Oblivion
-              _buildAetherForm(),
+                false) ...[
+                            _buildAetherForm(),
               const SizedBox(height: 16),
-              _buildOblivionForm(),
             ] else if (_selectedType == 'siphon') ...[
               _buildSiphonForm(),
             ] else if (_selectedType == 'tor') ...[

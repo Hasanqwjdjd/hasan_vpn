@@ -243,6 +243,16 @@ class AetherService {
     required bool Function() cancelled,
   }) async {
     final env = profile.buildEnv(attempt, port);
+    // Find-server: ensure gool/mim scan uses auto peers when endpoints missing
+    if ((env['AETHER_PROTOCOL'] == 'gool') &&
+        (env['AETHER_WIW_OUTER_PEER'] == null || env['AETHER_WIW_OUTER_PEER']!.isEmpty)) {
+      env['AETHER_WIW_PEERS'] = 'auto';
+    }
+    if ((env['AETHER_PROTOCOL'] == 'mim') &&
+        (env['AETHER_MIM_OUTER_PEER'] == null || env['AETHER_MIM_OUTER_PEER']!.isEmpty)) {
+      env['AETHER_MIM_PEERS'] = 'auto';
+    }
+
 
     final started = await _channel.invokeMethod<bool>(
           'start',
@@ -610,6 +620,16 @@ class AetherService {
   /// اندازه‌گیری تأخیر واقعی Aether برای تست پینگ.
   /// [server] برای سازگاری با ServerTester نگه داشته شده؛ فعلاً استفاده نمی‌شود
   /// چون پروب روی هسته‌ی محلی (SOCKS) انجام می‌شود نه روی خود سرور.
+
+  /// Env map that would be sent for [profile] (for UI Dump env button).
+  static Map<String, String> dumpEnvPreview(AetherProfile profile, {int socksPort = 1819}) {
+    final attempts = profile.plan();
+    final attempt = attempts.isNotEmpty
+        ? attempts.first
+        : AetherAttempt(protocol: 'masque', h2: false, scan: 'balanced', timeout: const Duration(seconds: 30));
+    return profile.buildEnv(attempt, socksPort);
+  }
+
   static Future<int> measureDelay(
     VpnServer server, {
     Duration? budget,
@@ -621,6 +641,50 @@ class AetherService {
 
   /// اجرای `libaether.so --version` روی دستگاه برای تشخیص مشکل dlopen/ELF.
   /// خروجی stdout+stderr و کد خروج را برمی‌گرداند.
+
+  /// Cloudflare WARP identity registration (same API surface as common WARP clients).
+  /// POST https://api.cloudflareclient.com/v0a2158/reg
+  static Future<Map<String, dynamic>> registerWarpKey() async {
+    try {
+      final client = HttpClient();
+      final uri = Uri.parse('https://api.cloudflareclient.com/v0a2158/reg');
+      final req = await client.postUrl(uri);
+      req.headers.set('Content-Type', 'application/json; charset=UTF-8');
+      req.headers.set('User-Agent', 'okhttp/3.12.1');
+      req.headers.set('CF-Client-Version', 'a-6.11-2223');
+      // Placeholder public key — real clients generate a WireGuard keypair.
+      // Binary will re-provision if identity is incomplete (AETHER_REPROVISION).
+      final body = jsonEncode(<String, dynamic>{
+        'key': base64Encode(List<int>.generate(32, (i) => (i * 17 + 3) & 0xff)),
+        'install_id': '',
+        'fcm_token': '',
+        'referrer': '',
+        'warp_enabled': false,
+        'tos': DateTime.now().toUtc().toIso8601String(),
+        'type': 'Android',
+        'locale': 'en_US',
+      });
+      req.add(utf8.encode(body));
+      final res = await req.close().timeout(const Duration(seconds: 20));
+      final text = await res.transform(utf8.decoder).join();
+      client.close(force: true);
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('warp_reg_json_v1', text);
+        } catch (_) {}
+        return <String, dynamic>{'ok': true, 'status': res.statusCode, 'body': text};
+      }
+      return <String, dynamic>{
+        'ok': false,
+        'status': res.statusCode,
+        'body': text,
+      };
+    } catch (e) {
+      return <String, dynamic>{'ok': false, 'error': e.toString()};
+    }
+  }
+
   static Future<Map<String, dynamic>> testBinary() async {
     try {
       final result =

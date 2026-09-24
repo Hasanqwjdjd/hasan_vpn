@@ -23,6 +23,7 @@ import 'add_config_screen.dart';
 import 'announcements_screen.dart';
 import 'tor_screen.dart';
 import 'qr_share_screen.dart';
+import '../widgets/traffic_sparkline.dart';
 
 class HomeScreen extends StatefulWidget {
   final List<VpnServer> extraServers;
@@ -76,6 +77,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _testing = false;
   bool _connecting = false;
   bool _connected = false;
+  bool _selectionMode = false;
+  final Set<String> _selectedIds = <String>{};
   bool _sortAscending = true;
   bool _showSearch = false;
   bool _cancelConnect = false;
@@ -1781,6 +1784,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               ? AppColors.accent
                               : AppColors.muted2(context)),
                     ),
+                    if (_connected) ...[
+                      const SizedBox(height: 4),
+                      const SizedBox(
+                        height: 36,
+                        width: 120,
+                        child: TrafficSparkline(height: 32),
+                      ),
+                    ],
                     const SizedBox(height: 6),
                     Text(
                       _connected
@@ -1864,6 +1875,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         selected: _selected?.id == server.id,
                         active: _connected && _active?.id == server.id,
                         onTap: () async {
+                          if (_selectionMode) {
+                            setState(() {
+                              if (_selectedIds.contains(server.id)) {
+                                _selectedIds.remove(server.id);
+                                if (_selectedIds.isEmpty) _selectionMode = false;
+                              } else {
+                                _selectedIds.add(server.id);
+                              }
+                            });
+                            return;
+                          }
                           // اگر در حالت انتخاب سرور برای ویجت هستیم، bind کن
                           if (_pendingWidgetId != null) {
                             await _handleWidgetServerSelection(server);
@@ -1871,6 +1893,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           }
                           setState(() => _selected = server);
                           await SettingsService.setLastServer(server.id);
+                        },
+                        onLongPress: () {
+                          setState(() {
+                            _selectionMode = true;
+                            _selectedIds.add(server.id);
+                          });
                         },
                         onDelete: _customServers.any((s) => s.id == server.id)
                             ? () => _deleteServer(server)
@@ -1894,8 +1922,117 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   @override
+  bool _isPatternihaActive() {
+    if (_selectedSubId == null) return false;
+    try {
+      final sub = _subs.firstWhere((s) => s.id == _selectedSubId);
+      final key = '${sub.id} ${sub.name}'.toLowerCase();
+      return key.contains('patterniha');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Widget _buildPatternihaBanner() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF3A2A00),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF8A6A00)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline, color: Color(0xFFFFB300), size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _t(
+                'سرورهای این اشتراک فقط یوتیوب، ایکس و بیشتر وب‌سایت‌های معمولی را باز می‌کنند. اینستاگرام، تیک‌تاک، تلگرام و واتساپ از طریق این سرورها کار نمی‌کنند.',
+                'These servers only work for YouTube, X and most regular websites. Instagram, TikTok, Telegram and WhatsApp will NOT work.',
+              ),
+              style: const TextStyle(
+                color: Color(0xFFFFD54F),
+                fontSize: 11.5,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar: _selectionMode
+          ? SafeArea(
+              child: Container(
+                color: AppColors.elevated(context),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => setState(() {
+                        _selectionMode = false;
+                        _selectedIds.clear();
+                      }),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '${_selectedIds.length} ${_t('انتخاب شده', 'selected')}',
+                        style: TextStyle(color: AppColors.fg(context)),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final ids = _selectedIds.toSet();
+                        setState(() {
+                          _servers.removeWhere((s) => ids.contains(s.id) && s.isDeletable);
+                          _customServers.removeWhere((s) => ids.contains(s.id));
+                          _selectionMode = false;
+                          _selectedIds.clear();
+                        });
+                      },
+                      child: Text(_t('حذف', 'Delete')),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          for (final s in _servers) {
+                            if (_selectedIds.contains(s.id)) s.isPinned = true;
+                          }
+                          _selectionMode = false;
+                          _selectedIds.clear();
+                        });
+                      },
+                      child: Text(_t('پین', 'Pin')),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final targets = _servers
+                            .where((s) => _selectedIds.contains(s.id))
+                            .toList();
+                        setState(() {
+                          _selectionMode = false;
+                          _selectedIds.clear();
+                        });
+                        for (final s in targets) {
+                          await ServerTester.testOne(s, session: TestSession());
+                          if (mounted) setState(() {});
+                        }
+                      },
+                      child: Text(_t('تست', 'Test')),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : null,
+
       backgroundColor: AppColors.bg(context),
       body: SafeArea(
         child: Column(
@@ -1903,6 +2040,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _buildTopBar(),
             const SizedBox(height: 4),
             _buildSubTabs(),
+            if (_isPatternihaActive()) ...[
+              const SizedBox(height: 6),
+              _buildPatternihaBanner(),
+            ],
             const SizedBox(height: 8),
             _buildConnectButton(),
             const SizedBox(height: 12),

@@ -355,4 +355,36 @@ class SettingsService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_lastServerKey);
   }
+
+  static const String _blockedAppsKey = 'settings_blocked_apps_v1';
+  static Future<List<String>> getBlockedApps() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      return p.getStringList(_blockedAppsKey) ?? <String>[];
+    } catch (_) {
+      return <String>[];
+    }
+  }
+  static Future<void> setBlockedApps(List<String> packages) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setStringList(_blockedAppsKey, packages);
+    } catch (_) {}
+  }
+  static const String _connectFastestKey = 'settings_connect_fastest_v1';
+  static Future<bool> getConnectFastest() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      return p.getBool(_connectFastestKey) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+  static Future<void> setConnectFastest(bool v) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setBool(_connectFastestKey, v);
+    } catch (_) {}
+  }
+
 }

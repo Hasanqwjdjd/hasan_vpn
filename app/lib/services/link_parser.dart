@@ -147,7 +147,7 @@ class LinkParser {
       protocol: protocol,
       host: host,
       port: port,
-      sniOrHost: sni,
+      sniOrHost: _railwaySni(host, sni),
     );
   }
 
@@ -184,7 +184,7 @@ class LinkParser {
       protocol: VpnProtocol.vmess,
       host: host,
       port: (port > 0 && port <= 65535) ? port : 443,
-      sniOrHost: sni,
+      sniOrHost: _railwaySni(host, sni),
     );
   }
 
@@ -414,6 +414,15 @@ class LinkParser {
     MapEntry('🇰🇷', RegExp(r'korea|\bkr\b|کره', caseSensitive: false)),
     MapEntry('🇦🇺', RegExp(r'australia|\bau\b|استرالیا', caseSensitive: false)),
   ];
+
+
+  static String? _railwaySni(String host, String? sni) {
+    final h = host.toLowerCase();
+    if (h.contains('railway.app') || h.contains('up.railway.app')) {
+      return host; // SNI + Host must be the railway hostname
+    }
+    return sni;
+  }
 
   static String guessFlag(String name) {
     final runes = name.runes.toList();

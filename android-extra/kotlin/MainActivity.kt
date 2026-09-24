@@ -85,6 +85,38 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                     "telemetryHide" -> { TelemetryNotifier.hide(applicationContext); result.success(true) }
+                    "listApps" -> {
+                        Thread {
+                            try {
+                                val pm = applicationContext.packageManager
+                                val intent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
+                                val resolved = pm.queryIntentActivities(intent, 0)
+                                val out = ArrayList<Map<String, Any?>>()
+                                for (ri in resolved) {
+                                    val pkg = ri.activityInfo.packageName ?: continue
+                                    val label = try {
+                                        ri.loadLabel(pm)?.toString() ?: pkg
+                                    } catch (_: Exception) {
+                                        pkg
+                                    }
+                                    val isSystem = try {
+                                        (ri.activityInfo.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                                    } catch (_: Exception) {
+                                        false
+                                    }
+                                    out.add(mapOf(
+                                        "package" to pkg,
+                                        "label" to label,
+                                        "isSystem" to isSystem,
+                                    ))
+                                }
+                                out.sortBy { (it["label"] as? String)?.lowercase() ?: "" }
+                                runOnUiThread { result.success(out) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("listApps", e.message, null) }
+                            }
+                        }.start()
+                    }
                     else -> result.notImplemented()
                 }
             }

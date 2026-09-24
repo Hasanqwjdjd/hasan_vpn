@@ -187,6 +187,7 @@ jobs:
           cp -f android-extra/kotlin/LiveMonitorService.kt "$KT_DIR/LiveMonitorService.kt"
           cp -f android-extra/kotlin/QuickConnectWidget.kt "$KT_DIR/QuickConnectWidget.kt"
           cp -f android-extra/kotlin/QuickConnectWidget1x1.kt "$KT_DIR/QuickConnectWidget1x1.kt"
+          cp -f android-extra/kotlin/TorQuickWidget.kt "$KT_DIR/TorQuickWidget.kt" 2>/dev/null || true
           cp -f android-extra/kotlin/WidgetBgConnectActivity.kt "$KT_DIR/WidgetBgConnectActivity.kt"
           cp -f android-extra/kotlin/WidgetConnectService.kt "$KT_DIR/WidgetConnectService.kt"
           cp -f android-extra/kotlin/WidgetHeadlessActivity.kt "$KT_DIR/WidgetHeadlessActivity.kt"
@@ -393,6 +394,19 @@ jobs:
                       android:name="android.appwidget.provider"
                       android:resource="@xml/quick_connect_widget_1x1_info" />
               </receiver>
+              <receiver
+                  android:name="com.hasan.hasan_vpn.TorQuickWidget"
+                  android:enabled="true"
+                  android:exported="true"
+                  android:label="Hasan VPN Tor">
+                  <intent-filter>
+                      <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                  </intent-filter>
+                  <meta-data
+                      android:name="android.appwidget.provider"
+                      android:resource="@xml/tor_quick_widget_info" />
+              </receiver>
+
 
               <activity
                   android:name="com.hasan.hasan_vpn.WidgetBgConnectActivity"

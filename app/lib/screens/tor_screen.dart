@@ -39,7 +39,6 @@ class _TorScreenState extends State<TorScreen> {
     {'id': 'obfs4', 'fa': 'obfs4', 'en': 'obfs4'},
     {'id': 'vanilla', 'fa': 'Tor ساده (بدون پل)', 'en': 'Vanilla (no bridge)'},
     {'id': 'dnstt', 'fa': 'DNSTT', 'en': 'DNSTT'},
-    {'id': 'conjure', 'fa': 'Conjure (متوقف)', 'en': 'Conjure (retired)'},
   ];
 
   String _bridgeType = 'snowflake';

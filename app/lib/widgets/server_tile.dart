@@ -17,6 +17,7 @@ class ServerTile extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onTest;
   final VoidCallback? onHomeWidget;
+  final VoidCallback? onLongPress;
 
   const ServerTile({
     super.key,
@@ -30,6 +31,7 @@ class ServerTile extends StatelessWidget {
     this.onEdit,
     this.onTest,
     this.onHomeWidget,
+    this.onLongPress,
   });
 
   String get _caption {
@@ -168,6 +170,7 @@ class ServerTile extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: onTap,
+      onLongPress: onLongPress,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(4, 6, 8, 6),
             child: Row(

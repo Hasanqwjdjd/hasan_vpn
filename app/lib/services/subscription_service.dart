@@ -52,25 +52,7 @@ class SubscriptionService {
           if (!e[1].toLowerCase().contains('aetris') &&
               !e[1].toLowerCase().contains('gitverse'))
             Subscription(id: e[0], name: e[1], url: '', isDefault: true),
-        Subscription(
-          id: 'sync_base64',
-          name: 'Sync-Base64',
-          url:
-              'https://vy2i69-z707bh-2sjvq6.ekz8gsezum2s.workers.dev/sync?flag=base64',
-          isDefault: true,
-          autoUpdate: true,
-          intervalHours: 12,
-        ),
-        Subscription(
-          id: 'sync_hasan',
-          name: 'Sync-حسن',
-          url:
-              'https://vy2i69-z707bh-2sjvq6.ekz8gsezum2s.workers.dev/sync?sub=%D8%AD%D8%B3%D9%86',
-          isDefault: true,
-          autoUpdate: true,
-          intervalHours: 12,
-        ),
-      ];
+];
 
   /// آدرس واقعی برای دانلود. برای اشتراک پیش‌فرض از جدول محافظت‌شده می‌آید.
   static String urlFor(Subscription sub) {
@@ -192,6 +174,9 @@ class SubscriptionService {
             headers: const {
               'User-Agent': _browserUserAgent,
               'Accept': '*/*',
+              'Accept-Language': 'en-US,en;q=0.9,fa;q=0.8',
+              'Accept-Encoding': 'gzip, deflate',
+              'Connection': 'keep-alive',
             },
           )
           .timeout(const Duration(seconds: 40));

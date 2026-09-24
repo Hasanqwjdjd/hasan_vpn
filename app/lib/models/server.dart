@@ -23,6 +23,31 @@ enum ServerStatus { idle, testing, online, offline, unknown }
 enum PingKind { none, tcp, real }
 
 class VpnServer {
+  /// Strip Dart record/tuple leaks like this,'حسن' or (this, 'حسن').
+  static String sanitizeServerName(String raw) {
+    var v = raw.trim();
+    final m1 = RegExp(
+      r"""(?:^|\b)this\s*,\s*['"]([^'"]+)['"]""",
+      caseSensitive: false,
+    ).firstMatch(v);
+    if (m1 != null && (m1.group(1) ?? '').isNotEmpty) {
+      v = m1.group(1)!;
+    } else {
+      final m2 = RegExp(
+        r"""^\(\s*(?:this\s*,\s*)?['"]([^'"]*)['"]\s*\)$""",
+        caseSensitive: false,
+      ).firstMatch(v);
+      if (m2 != null && (m2.group(1) ?? '').isNotEmpty) {
+        v = m2.group(1)!;
+      } else {
+        v = v.replaceFirst(RegExp(r'^this\s*,\s*', caseSensitive: false), '');
+        v = v.replaceAll(RegExp(r"""^['"]|['"]$"""), '');
+      }
+    }
+    v = v.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return v.isEmpty ? raw.trim() : (v.length > 80 ? v.substring(0, 80) : v);
+  }
+
   final String id;
   final String name;
   final String flag;
@@ -45,7 +70,7 @@ class VpnServer {
 
   VpnServer({
     required this.id,
-    required this.name,
+    required String name,
     required this.flag,
     required this.shareLink,
     required this.protocol,
@@ -60,7 +85,7 @@ class VpnServer {
     this.pingKind = PingKind.none,
     this.speedKbps,
     this.status = ServerStatus.idle,
-  });
+  }) : name = sanitizeServerName(name);
 
   /// true اگر این سرور از نوع Aether (سیستم دور زدن فیلترینگ با اسکن خودکار) باشد.
   bool get isAether => protocol == VpnProtocol.aether;

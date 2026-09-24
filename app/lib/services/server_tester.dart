@@ -5,6 +5,7 @@ import 'dart:io';
 import '../models/server.dart';
 import 'aether_service.dart';
 import 'test_budget.dart';
+import 'socks_probe.dart';
 import 'v2ray_engine.dart';
 
 /// توکن لغو برای یک دور تست.
@@ -56,6 +57,8 @@ class _Semaphore {
 /// 3) realDelay با gstatic generate_204 و بودجه ~۱۲ث
 /// 4) TCP-only فقط تقریبی است (online نمی‌شود)
 /// 5) Aether: measureDelay جدا
+/// Ping: TCP precheck + HTTP generate_204 (SocksProbe / realDelay).
+/// concurrency from TestBudget; live updates via onChanged.
 class ServerTester {
   ServerTester._();
 
@@ -193,7 +196,22 @@ class ServerTester {
 
     for (var i = 0; i < samples; i++) {
       if (session.cancelled) break;
-      final result = await V2RayEngine.realDelay(server, timeout: timeout);
+      // C1: if VPN already up, measure real HTTP through local SOCKS (v2rayNG-style).
+      // Otherwise fall back to engine realDelay (spawns/uses core for that config).
+      int result;
+      if (V2RayEngine.isConnected &&
+          V2RayEngine.localSocksPort > 0 &&
+          V2RayEngine.current?.id == server.id) {
+        final probe = await SocksProbe.measure(
+          port: V2RayEngine.localSocksPort,
+          samples: budget.samples,
+          timeout: timeout,
+        );
+        result = probe.ok ? (probe.ms ?? -1) : -1;
+        if (probe.jitter != null) server.jitter = probe.jitter;
+      } else {
+        result = await V2RayEngine.realDelay(server, timeout: timeout);
+      }
       if (result == -2) return (-2, null);
       if (result > 0) {
         values.add(result);

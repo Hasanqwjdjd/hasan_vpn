@@ -13,6 +13,7 @@ import 'live_monitor_screen.dart';
 import 'test_settings_screen.dart';
 import 'hev_engine_screen.dart';
 import 'xray_settings_screen.dart';
+import 'per_app_proxy_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final String themeMode;
@@ -374,6 +375,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 16),
 
           // ------- تم -------
+          _card(
+            context,
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.apps, color: AppColors.accent, size: 20),
+              title: Text(
+                _t('پراکسی هر برنامه', 'Per-app proxy'),
+                style: TextStyle(color: AppColors.fg(context), fontSize: 14),
+              ),
+              subtitle: Text(
+                _t('انتخاب برنامه‌هایی که از VPN رد نشوند',
+                    'Choose apps that bypass or use the VPN'),
+                style: TextStyle(color: AppColors.muted2(context), fontSize: 11),
+              ),
+              trailing: Icon(Icons.chevron_left,
+                  color: AppColors.muted2(context), size: 20),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      PerAppProxyScreen(language: widget.language),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           _sectionTitle(_t('عیب‌یابی', 'Diagnostics')),
           _card(
             context,

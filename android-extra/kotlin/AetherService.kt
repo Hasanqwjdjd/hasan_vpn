@@ -436,6 +436,10 @@ class AetherService : Service() {
         environment.putAll(env)
 
         SafeLog.i(TAG, "launch cmd=${binary.absolutePath} cwd=${filesDir.absolutePath} envKeys=${env.keys.sorted()}")
+        // Full env for diagnosing gool outer/inner (compare with PattNG)
+        env.toSortedMap().forEach { (k, v) ->
+            SafeLog.i(TAG, "AETHER_ENV_DUMP $k=$v")
+        }
         val proc = try {
             builder.start()
         } catch (error: Exception) {

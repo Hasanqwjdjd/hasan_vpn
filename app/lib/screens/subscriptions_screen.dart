@@ -210,6 +210,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     await Future.wait(List<Subscription>.from(_subs).map(_refresh));
   }
 
+  Future<void> _showIntervalDialog(Subscription sub) => _setInterval(sub);
+
   Future<void> _setInterval(Subscription sub) async {
     final options = [1, 3, 6, 12, 24, 48, 168];
     final picked = await showDialog<int>(
@@ -334,6 +336,49 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 
   @override
+  bool _isPatternihaPresent() {
+    for (final s in _subs) {
+      if ('${s.id} ${s.name}'.toLowerCase().contains('patterniha')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Widget _patternihaBanner() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF3A2A00),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFF8A6A00)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.info_outline, color: Color(0xFFFFB300), size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _t(
+                  'اشتراک Patterniha فقط یوتیوب، ایکس و بیشتر وب‌سایت‌های معمولی را باز می‌کند. اینستاگرام، تیک‌تاک، تلگرام و واتساپ کار نمی‌کنند.',
+                  'Patterniha only works for YouTube, X and most websites. Instagram, TikTok, Telegram and WhatsApp will NOT work.',
+                ),
+                style: const TextStyle(
+                  color: Color(0xFFFFD54F),
+                  fontSize: 11.5,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg(context),
@@ -373,9 +418,11 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             )
           : ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: _subs.length,
+              itemCount: _subs.length + (_isPatternihaPresent() ? 1 : 0),
               itemBuilder: (_, i) {
-                final s = _subs[i];
+                final _hasPat = _isPatternihaPresent();
+                if (_hasPat && i == 0) return _patternihaBanner();
+                final s = _subs[_hasPat ? i - 1 : i];
                 final loading = _loading.contains(s.id);
                 return Container(
                   margin: const EdgeInsets.only(bottom: 10),
@@ -518,7 +565,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                           const Spacer(),
                           if (s.autoUpdate)
                             GestureDetector(
-                              onTap: () => _setInterval(s),
+                              onTap: () => _showIntervalDialog(s),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 4),

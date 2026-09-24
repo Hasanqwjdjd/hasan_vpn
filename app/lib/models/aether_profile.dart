@@ -533,6 +533,9 @@ class AetherProfile {
       if (inner.isNotEmpty) env['AETHER_WIW_INNER_PEER'] = inner;
       if (o.isNotEmpty && inner.isNotEmpty) {
         env['AETHER_WIW_PEERS'] = '$o,$inner';
+      } else {
+        // Find-server / scan: let binary pick both hops (--wiw-scan)
+        env['AETHER_WIW_PEERS'] = 'auto';
       }
     }
     if (attempt.protocol == 'mim') {
