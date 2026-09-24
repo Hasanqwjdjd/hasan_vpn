@@ -46,6 +46,12 @@ class MainActivity : FlutterActivity() {
                     "status" -> result.success(AetherService.status())
                     "stop" -> { AetherService.stop(applicationContext); result.success(true) }
                     "resetIdentity" -> result.success(AetherService.resetIdentity(applicationContext))
+                    "testBinary" -> {
+                        Thread {
+                            val map = AetherService.testBinary(applicationContext)
+                            runOnUiThread { result.success(map) }
+                        }.start()
+                    }
                     else -> result.notImplemented()
                 }
             }

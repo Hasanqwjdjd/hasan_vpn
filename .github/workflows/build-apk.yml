@@ -42,23 +42,51 @@ jobs:
       - name: Compute app version
         id: appver
         run: |
-          # BASE = the github.run_number of the FIRST build that should be tagged 2.11.0.
-          # Set this to (current latest Actions run number) + 1 before merging, so the very
-          # next workflow run lands on 2.11.0. Check the Actions tab for the latest run
-          # number, e.g. if the latest run shown is 418, set BASE=419.
-          BASE=369
-          N=$(( ${{ github.run_number }} - BASE ))
-          if [ "$N" -lt 0 ]; then N=0; fi
-          MINOR=$(( 11 + N / 5 ))
-          PATCH=$(( (N % 5) * 2 ))
-          MAJOR=2
-          while [ "$MINOR" -ge 20 ]; do
-            MAJOR=$(( MAJOR + 1 ))
-            MINOR=$(( MINOR - 20 ))
-          done
-          CLEAN="${MAJOR}.${MINOR}.${PATCH}"
+          # Version is derived from the previous release tag when available so
+          # we no longer depend on a hardcoded BASE that drifts as run_number grows.
+          # Fallback keeps historical arithmetic (BASE=369 → 2.11.0 at that run)
+          # so existing builds stay continuous if tags are missing.
+          set -e
+          FALLBACK_BASE=369
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -n "$TAG" ]; then
+            # Accept v2.11.0 or 2.11.0
+            CLEAN_TAG="${TAG#v}"
+            if echo "$CLEAN_TAG" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              MAJOR=$(echo "$CLEAN_TAG" | cut -d. -f1)
+              MINOR=$(echo "$CLEAN_TAG" | cut -d. -f2)
+              PATCH=$(echo "$CLEAN_TAG" | cut -d. -f3)
+              # Bump patch by 2 each run (same step as legacy formula), roll minor at 20.
+              PATCH=$(( PATCH + 2 ))
+              while [ "$PATCH" -ge 10 ]; do
+                PATCH=$(( PATCH - 10 ))
+                MINOR=$(( MINOR + 1 ))
+              done
+              while [ "$MINOR" -ge 20 ]; do
+                MAJOR=$(( MAJOR + 1 ))
+                MINOR=$(( MINOR - 20 ))
+              done
+              CLEAN="${MAJOR}.${MINOR}.${PATCH}"
+              echo "Computed version from tag $TAG → $CLEAN (run: ${{ github.run_number }})"
+            else
+              TAG=""
+            fi
+          fi
+          if [ -z "$TAG" ]; then
+            BASE=$FALLBACK_BASE
+            N=$(( ${{ github.run_number }} - BASE ))
+            if [ "$N" -lt 0 ]; then N=0; fi
+            MINOR=$(( 11 + N / 5 ))
+            PATCH=$(( (N % 5) * 2 ))
+            MAJOR=2
+            while [ "$MINOR" -ge 20 ]; do
+              MAJOR=$(( MAJOR + 1 ))
+              MINOR=$(( MINOR - 20 ))
+            done
+            CLEAN="${MAJOR}.${MINOR}.${PATCH}"
+            echo "Computed version from fallback BASE=$BASE → $CLEAN (run: ${{ github.run_number }})"
+          fi
           echo "version=$CLEAN" >> "$GITHUB_OUTPUT"
-          echo "Computed version: $CLEAN (run: ${{ github.run_number }})"
 
       - name: Prepare signing keystore
         env:

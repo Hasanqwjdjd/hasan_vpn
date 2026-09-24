@@ -7,12 +7,17 @@ import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * پل بومی Psiphon با AAR رسمی (ca.psiphon:psiphontunnel).
  *   start(configJson) -> Map { ok, socksPort, httpPort, error }
  *   stop()            -> Unit
  *   status()          -> Map { running, socksPort, httpPort, region, regions, error, libraryPresent }
+ *
+ * هر start() یک generation می‌گیرد. فقط generation برنده‌ی فعلی می‌تواند
+ * state را تغییر دهد؛ callbackهای دیرهنگام از attempt قبلی نادیده گرفته
+ * می‌شوند (رفع race روی WiFi که attempt 1 بعد از وصل شدن attempt 2، stop می‌زد).
  */
 object PsiphonService {
     private const val TAG = "PsiphonService"
@@ -27,6 +32,12 @@ object PsiphonService {
     private val socksPort = AtomicInteger(0)
     private val httpPort = AtomicInteger(0)
 
+    /** نسل فعلی اتصال؛ هر start نسل را افزایش می‌دهد. */
+    private val generation = AtomicLong(0)
+
+    /** آخرین نسلی که صراحتاً stop شده. */
+    private val stoppedGeneration = AtomicLong(-1)
+
     fun isLibraryPresent(): Boolean = true
 
     fun status(): Map<String, Any?> = mapOf(
@@ -37,30 +48,48 @@ object PsiphonService {
         "regions" to regions,
         "error" to lastError,
         "libraryPresent" to true,
+        "generation" to generation.get(),
     )
 
     private fun failed(): Map<String, Any?> =
         status().toMutableMap().apply { put("ok", false) }
 
     fun start(context: Context, configJson: String, timeoutSec: Long = 90): Map<String, Any?> {
-        val host = Host(context.applicationContext, configJson)
+        val myGen = generation.incrementAndGet()
+        SafeLog.d(TAG, "attempt START gen=$myGen timeout=${timeoutSec}s")
+
+        val host = Host(context.applicationContext, configJson, myGen)
 
         synchronized(lock) {
-            stopLocked()
+            // tunnel نسل قبلی را ببند (اگر وجود دارد).
+            try {
+                tunnel?.stop()
+            } catch (e: Throwable) {
+                SafeLog.w(TAG, "pre-start stop gen=$myGen: ${e.message}")
+            }
+            tunnel = null
+            running = false
             lastError = null
             region = null
             socksPort.set(0)
             httpPort.set(0)
             try {
                 val t = PsiphonTunnel.newPsiphonTunnel(host)
+                if (generation.get() != myGen) {
+                    SafeLog.w(TAG, "gen=$myGen superseded before startTunneling")
+                    try { t.stop() } catch (_: Throwable) {}
+                    return failed()
+                }
                 tunnel = t
                 val entries = loadEmbeddedServerEntries(context)
-                SafeLog.d(TAG, "startTunneling with embedded entries length=${entries.length}")
+                SafeLog.d(TAG, "gen=$myGen startTunneling entriesLen=${entries.length}")
                 t.startTunneling(entries)
             } catch (e: Throwable) {
-                SafeLog.e(TAG, "start failed", e)
+                SafeLog.e(TAG, "gen=$myGen start failed", e)
                 lastError = e.message ?: e.toString()
-                stopLocked()
+                try { tunnel?.stop() } catch (_: Throwable) {}
+                tunnel = null
+                running = false
                 return failed()
             }
         }
@@ -71,10 +100,23 @@ object PsiphonService {
             false
         }
 
+        if (generation.get() != myGen) {
+            SafeLog.w(TAG, "gen=$myGen lost race after await (current=${generation.get()})")
+            return failed()
+        }
+
         if (!ok) {
             lastError = host.failReason ?: host.lastDiag ?: "Psiphon connect timeout after ${timeoutSec}s"
-            SafeLog.w(TAG, "connect failed: $lastError")
-            synchronized(lock) { stopLocked() }
+            SafeLog.w(TAG, "gen=$myGen connect failed: $lastError")
+            synchronized(lock) {
+                if (generation.get() == myGen) {
+                    try { tunnel?.stop() } catch (_: Throwable) {}
+                    tunnel = null
+                    running = false
+                    socksPort.set(0)
+                    httpPort.set(0)
+                }
+            }
             return failed()
         }
 
@@ -84,19 +126,27 @@ object PsiphonService {
         }
         if (socksPort.get() == 0) {
             lastError = "Psiphon connected but SOCKS port is unknown"
-            synchronized(lock) { stopLocked() }
+            SafeLog.w(TAG, "gen=$myGen no socks port")
+            synchronized(lock) {
+                if (generation.get() == myGen) {
+                    try { tunnel?.stop() } catch (_: Throwable) {}
+                    tunnel = null
+                    running = false
+                }
+            }
+            return failed()
+        }
+
+        if (stoppedGeneration.get() >= myGen) {
+            SafeLog.w(TAG, "gen=$myGen was explicitly stopped before win")
             return failed()
         }
 
         running = true
-        SafeLog.d(TAG, "connected socks=${socksPort.get()} region=$region")
+        SafeLog.d(TAG, "gen=$myGen WIN socks=${socksPort.get()} region=$region")
         return status().toMutableMap().apply { put("ok", true) }
     }
 
-    /**
-     * لیست سرورهای توکار: اگر assets/server_entries.txt موجود باشد لود می‌شود.
-     * در غیر این صورت رشتهٔ خالی → SDK از RemoteServerListUrl دانلود می‌کند.
-     */
     private fun loadEmbeddedServerEntries(context: Context): String {
         return try {
             context.assets.open("server_entries.txt").bufferedReader().use { it.readText() }
@@ -107,25 +157,27 @@ object PsiphonService {
     }
 
     fun stop(context: Context? = null) {
-        synchronized(lock) { stopLocked() }
-    }
-
-    private fun stopLocked() {
-        try {
-            tunnel?.stop()
-        } catch (e: Throwable) {
-            SafeLog.w(TAG, "stop: ${e.message}")
+        val g = generation.get()
+        stoppedGeneration.set(g)
+        SafeLog.d(TAG, "explicit STOP gen=$g")
+        synchronized(lock) {
+            try {
+                tunnel?.stop()
+            } catch (e: Throwable) {
+                SafeLog.w(TAG, "stop: ${e.message}")
+            }
+            tunnel = null
+            running = false
+            socksPort.set(0)
+            httpPort.set(0)
         }
-        tunnel = null
-        running = false
-        socksPort.set(0)
-        httpPort.set(0)
     }
 
     /** callbackها روی thread کتابخانه می‌آیند؛ هیچ‌وقت stop() را از داخلشان صدا نزن. */
     private class Host(
         private val appContext: Context,
         private val configJson: String,
+        private val myGen: Long,
     ) : PsiphonTunnel.HostService {
 
         val latch = CountDownLatch(1)
@@ -133,6 +185,8 @@ object PsiphonService {
         @Volatile var connected = false
         @Volatile var failReason: String? = null
         @Volatile var lastDiag: String? = null
+
+        private fun stillCurrent(): Boolean = generation.get() == myGen
 
         override fun getContext(): Context = appContext
 
@@ -152,27 +206,28 @@ object PsiphonService {
         override fun onDiagnosticMessage(message: String?) {
             if (message != null) {
                 lastDiag = message
-                SafeLog.d(TAG, message)
+                if (stillCurrent()) SafeLog.d(TAG, "gen=$myGen $message")
             }
         }
 
         override fun onListeningSocksProxyPort(port: Int) {
-            PsiphonService.socksPort.set(port)
+            if (stillCurrent()) PsiphonService.socksPort.set(port)
         }
 
         override fun onListeningHttpProxyPort(port: Int) {
-            PsiphonService.httpPort.set(port)
+            if (stillCurrent()) PsiphonService.httpPort.set(port)
         }
 
         override fun onSocksProxyPortInUse(port: Int) {
-            failReason = "SOCKS port $port is in use"
+            if (stillCurrent()) failReason = "SOCKS port $port is in use"
         }
 
         override fun onUpstreamProxyError(message: String?) {
-            failReason = message
+            if (stillCurrent()) failReason = message
         }
 
         override fun onAvailableEgressRegions(regions: MutableList<String>?) {
+            if (!stillCurrent()) return
             val clean = regions.orEmpty()
                 .map { it.trim().uppercase() }
                 .filter { it.length == 2 && it.all { c -> c in 'A'..'Z' } }
@@ -182,15 +237,24 @@ object PsiphonService {
         }
 
         override fun onConnectedServerRegion(region: String?) {
-            PsiphonService.region = region
+            if (stillCurrent()) PsiphonService.region = region
         }
 
         override fun onConnected() {
+            if (!stillCurrent()) {
+                SafeLog.d(TAG, "gen=$myGen onConnected IGNORED (stale)")
+                return
+            }
             connected = true
             latch.countDown()
         }
 
         override fun onExiting() {
+            if (!stillCurrent()) {
+                SafeLog.d(TAG, "gen=$myGen onExiting IGNORED (stale)")
+                return
+            }
+            SafeLog.d(TAG, "gen=$myGen onExiting")
             latch.countDown()
         }
     }

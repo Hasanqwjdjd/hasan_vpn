@@ -515,6 +515,61 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               actions: [
                 TextButton(
+                  onPressed: () async {
+                    final r = await AetherService.testBinary();
+                    if (!ctx.mounted) return;
+                    final buf = StringBuffer();
+                    buf.writeln(r['ok'] == true ? 'OK' : 'FAIL');
+                    if (r['path'] != null) buf.writeln('path: ${r['path']}');
+                    if (r['cmd'] != null) buf.writeln('cmd: ${r['cmd']}');
+                    if (r['exitCode'] != null) {
+                      buf.writeln('exit: ${r['exitCode']}');
+                    }
+                    if (r['elf'] != null) buf.writeln('elf: ${r['elf']}');
+                    if (r['stdout'] != null &&
+                        r['stdout'].toString().isNotEmpty) {
+                      buf.writeln('--- stdout ---');
+                      buf.writeln(r['stdout']);
+                    }
+                    if (r['stderr'] != null &&
+                        r['stderr'].toString().isNotEmpty) {
+                      buf.writeln('--- stderr ---');
+                      buf.writeln(r['stderr']);
+                    }
+                    if (r['error'] != null) buf.writeln('error: ${r['error']}');
+                    await showDialog<void>(
+                      context: ctx,
+                      builder: (c2) => AlertDialog(
+                        backgroundColor: AppColors.elevated(c2),
+                        title: Text(
+                          _t('تست باینری Aether', 'Aether binary test'),
+                          style: TextStyle(color: AppColors.fg(c2)),
+                        ),
+                        content: SingleChildScrollView(
+                          child: SelectableText(
+                            buf.toString(),
+                            style: TextStyle(
+                              color: AppColors.fg(c2),
+                              fontFamily: 'monospace',
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(c2),
+                            child: Text('OK',
+                                style: const TextStyle(
+                                    color: AppColors.accent)),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  child: Text(_t('تست باینری', 'Test binary'),
+                      style: TextStyle(color: AppColors.muted(ctx))),
+                ),
+                TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
                   child: Text(_t('لغو', 'Cancel'),
                       style: TextStyle(color: AppColors.muted(ctx))),

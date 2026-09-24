@@ -11,6 +11,7 @@ import 'announcements_screen.dart';
 import 'game_dns_screen.dart';
 import 'live_monitor_screen.dart';
 import 'test_settings_screen.dart';
+import 'hev_engine_screen.dart';
 import 'xray_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -287,6 +288,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       MaterialPageRoute(
                         builder: (_) =>
                             XraySettingsScreen(language: _lang),
+                      ),
+                    );
+                  },
+                ),
+                Divider(height: 1, color: AppColors.border(context)),
+                _navRow(
+                  context,
+                  icon: Icons.tune,
+                  title: _t('موتور HEV', 'HEV Engine'),
+                  subtitle: _t(
+                    'تونل، SOCKS5، mapdns، misc',
+                    'Tunnel, SOCKS5, mapdns, misc',
+                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            HevEngineScreen(language: _lang),
                       ),
                     );
                   },

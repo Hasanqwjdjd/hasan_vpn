@@ -23,7 +23,7 @@ class PsiphonProfile {
 class PsiphonAttempt {
   final String label;
   final String profileId;
-  final String mode; // 'auto' | 'stealth' | 'narrow' | 'region'
+  final String mode; // 'auto' | 'stealth' | 'narrow' | 'region' | 'mobile'
   final String configJson;
   final int timeoutSec;
 
@@ -36,20 +36,17 @@ class PsiphonAttempt {
   });
 }
 
-/// حالت «خودکار» سایفون: برنامه خودش SponsorId، کانال، مجموعهٔ پروتکل و
-/// (اختیاری) کشور را انتخاب می‌کند و کانفیگ را می‌سازد.
+/// حالت «خودکار» سایفون — mobile-first.
 ///
-/// روش کار:
-///  ۱) چند پروفایل آماده (SponsorId/Channel) داریم.
-///  ۲) برای هر پروفایل چند حالت: همهٔ پروتکل‌ها، مخفی‌کار، فقط SSH/OSSH، فقط meek.
-///  ۳) تلاش‌ها به ترتیب امتحان می‌شوند؛ آخرین ترکیبِ موفق ذخیره می‌شود و
-///     دفعهٔ بعد اول همان امتحان می‌شود.
-///  ۴) چند منطقه و timeout مختلف برای افزایش شانس روی WiFi.
+/// شبکهٔ موبایل (Irancell/MCI) سخت‌تر از WiFi است ولی غیرممکن نیست.
+/// هر پروتکل و SponsorId معقول را امتحان می‌کنیم؛ SkipServerEntry
+/// (restricted provider) طبیعی است و فقط یعنی آن entry رد شده، نه کل شبکه.
 class PsiphonAuto {
   PsiphonAuto._();
 
   static const String clientPlatform = 'Android_4.0.4_com.hasan.hasan_vpn';
 
+  /// لیست رسمی Remote Server List (همیشه فعال — نه empty).
   static const String remoteServerListUrl =
       'https://s3.amazonaws.com//psiphon/web/mjr4-p23r-puwl/server_list_compressed';
 
@@ -66,21 +63,19 @@ class PsiphonAuto {
       'QFTEPICV7GCvgVlPRxnofqKSjgTWI4mxDhBpVcATvaoBl1L/6WLbFvBsoAUBItWwctO2'
       'xalKxF5szhGm8lccoc5MZr8kfE0uxMgsxz4er68iCID+rsCAQM=';
 
-  /// پروفایل‌ها به ترتیب اولویت پیش‌فرض.
+  /// پروفایل‌ها — SponsorIdهای رایج در کلاینت‌های متن‌باز + baseline رسمی.
+  /// SkipServerEntry برای بعضی از این‌ها روی موبایل طبیعی است؛ بقیه را امتحان کن.
   static const List<PsiphonProfile> profiles = <PsiphonProfile>[
-    // تست رسمی
     PsiphonProfile(
-      id: 'test',
+      id: 'baseline',
       sponsorId: '0000000000000000',
       channelId: '0000000000000000',
     ),
-    // oblivion / bepass style
     PsiphonProfile(
       id: 'oblivion',
       sponsorId: 'FFFFFFFFFFFFFFFF',
       channelId: 'FFFFFFFFFFFFFFFF',
     ),
-    // aether style
     PsiphonProfile(
       id: 'aether',
       sponsorId: '1111111111111111',
@@ -92,26 +87,55 @@ class PsiphonAuto {
             'DpXzloJk1Hw6aSzmKKky0xcahsEHubch81Mi6K0XMlU=',
       },
     ),
-    // alternate common values
     PsiphonProfile(
       id: 'alt1',
       sponsorId: '0000000000000001',
       channelId: '0000000000000001',
     ),
+    // مقادیر رایج در فورک‌ها / تست‌ماتریس جامعه
+    PsiphonProfile(
+      id: 'alt2',
+      sponsorId: 'AAAAAAAAAAAAAAAA',
+      channelId: 'AAAAAAAAAAAAAAAA',
+    ),
+    PsiphonProfile(
+      id: 'alt3',
+      sponsorId: 'BBBBBBBBBBBBBBBB',
+      channelId: 'BBBBBBBBBBBBBBBB',
+    ),
+    PsiphonProfile(
+      id: 'alt4',
+      sponsorId: 'CCCCCCCCCCCCCCCC',
+      channelId: '0000000000000000',
+    ),
+    PsiphonProfile(
+      id: 'psi_style',
+      sponsorId: '1D090C0A999E4775',
+      channelId: 'FFFFFFFFFFFFFFFF',
+    ),
   ];
 
-  /// پروتکل‌های مناسب فیلتر سخت (نام‌ها از خود کتابخانهٔ Psiphon).
+  /// پروتکل‌های مناسب فیلتر سخت / موبایل ایران (نام‌ها از پروتکل‌های SDK).
   static const List<String> stealthProtocols = <String>[
-    'FRONTED-MEEK-OSSH',
+    'FRONTED-MEEK-HTTPS-OSSH',
     'FRONTED-MEEK-HTTP-OSSH',
+    'FRONTED-MEEK-OSSH',
     'UNFRONTED-MEEK-HTTPS-OSSH',
     'UNFRONTED-MEEK-SESSION-TICKET-OSSH',
+    'UNFRONTED-MEEK-OSSH',
   ];
 
   static const List<String> sshOnly = <String>['SSH', 'OSSH'];
+  static const List<String> osshOnly = <String>['OSSH'];
   static const List<String> meekOnly = <String>[
-    'FRONTED-MEEK-OSSH',
+    'FRONTED-MEEK-HTTPS-OSSH',
     'FRONTED-MEEK-HTTP-OSSH',
+    'FRONTED-MEEK-OSSH',
+  ];
+  static const List<String> unfrontedMeek = <String>[
+    'UNFRONTED-MEEK-HTTPS-OSSH',
+    'UNFRONTED-MEEK-SESSION-TICKET-OSSH',
+    'UNFRONTED-MEEK-OSSH',
   ];
   static const List<String> quicOnly = <String>['QUICv1'];
 
@@ -120,13 +144,13 @@ class PsiphonAuto {
 
   // --------------------------------------------------------- ساخت کانفیگ
 
-  /// مپ کانفیگ برای یک پروفایل. [region] خالی = خودکار (سریع‌ترین).
+  /// مپ کانفیگ. همیشه RemoteServerListUrl رسمی ست می‌شود مگر emptyRemoteList.
   static Map<String, dynamic> buildConfig(
     PsiphonProfile profile, {
     String region = '',
     List<String>? limitProtocols,
-    int establishTimeoutSec = 60,
-    int workerPool = 8,
+    int establishTimeoutSec = 90,
+    int workerPool = 12,
     bool disableHttpProxy = true,
     int localSocksPort = 0,
     String? networkId,
@@ -142,6 +166,7 @@ class PsiphonAuto {
       'LocalHttpProxyPort': 0,
       'DisableLocalHTTPProxy': disableHttpProxy,
       'EgressRegion': normalizeRegion(region),
+      // موبایل: worker بیشتر برای جبران RTT بالا روی 4G
       'ConnectionWorkerPoolSize': workerPool,
       'EstablishTunnelTimeoutSeconds': establishTimeoutSec,
       'AllowDefaultDNSResolverWithBindToDevice': true,
@@ -151,6 +176,7 @@ class PsiphonAuto {
     } else {
       map['NetworkID'] = 'hasan_vpn';
     }
+    // همیشه لیست رسمی — embedded 427 entry ممکن است کهنه باشد.
     if (!emptyRemoteList) {
       map['RemoteServerListUrl'] = remoteServerListUrl;
       map['RemoteServerListSignaturePublicKey'] = remoteServerListSigKey;
@@ -163,8 +189,8 @@ class PsiphonAuto {
     return map;
   }
 
-  /// فهرست تلاش‌ها برای حالت خودکار (به ترتیب امتحان).
-  /// Expanded: more protocols, regions, timeouts, worker sizes for WiFi reliability.
+  /// فهرست تلاش‌ها — mobile-first: meek/fronted اول، timeout تا ۱۲۰ثانیه،
+  /// worker بالاتر، RemoteServerList همیشه روشن در مسیر اصلی.
   static Future<List<PsiphonAttempt>> attempts({String region = ''}) async {
     final reg = normalizeRegion(region);
     final out = <PsiphonAttempt>[];
@@ -174,9 +200,9 @@ class PsiphonAuto {
       String mode,
       String label, {
       List<String>? protocols,
-      int timeout = 50,
+      int timeout = 90,
       String r = '',
-      int workers = 8,
+      int workers = 12,
       bool emptyRemote = false,
       int socksPort = 0,
       bool disableHttp = true,
@@ -198,11 +224,11 @@ class PsiphonAuto {
         profileId: p.id,
         mode: mode,
         configJson: jsonEncode(cfg),
-        timeoutSec: timeout + 15,
+        // Dart-side wait = establish + margin (شبکهٔ موبایل کند است)
+        timeoutSec: timeout + 30,
       ));
     }
 
-    // Prefer last successful first.
     final last = await _loadLastOk();
     final preferredProfile = last != null
         ? profiles.cast<PsiphonProfile?>().firstWhere(
@@ -216,57 +242,71 @@ class PsiphonAuto {
       ...profiles.where((p) => p.id != preferredProfile?.id),
     ];
 
-    // 1) Preferred / first profile, auto + stealth with user region
-    for (final p in ordered.take(2)) {
-      add(p, 'auto', '${p.id}·auto', timeout: 45);
-      add(p, 'stealth', '${p.id}·stealth', protocols: stealthProtocols, timeout: 55);
+    // ─── 1) Meek/fronted اول — شبیه HTTPS، بهترین شانس روی 4G ایران ───
+    for (final p in ordered.take(3)) {
+      add(p, 'mobile', '${p.id}·meek-https',
+          protocols: const ['FRONTED-MEEK-HTTPS-OSSH'],
+          timeout: 100,
+          workers: 16);
+      add(p, 'mobile', '${p.id}·meek-http',
+          protocols: const ['FRONTED-MEEK-HTTP-OSSH'],
+          timeout: 100,
+          workers: 16);
+      add(p, 'stealth', '${p.id}·stealth-all',
+          protocols: stealthProtocols, timeout: 110, workers: 14);
     }
 
-    // 2) Specific regions on first two profiles (WiFi often works with DE/NL/US)
-    const tryRegions = ['DE', 'NL', 'US', 'GB', 'JP', 'CA'];
+    // ─── 2) auto کامل با timeout بلند (Irancell کند است) ───
+    for (final p in ordered.take(3)) {
+      add(p, 'auto', '${p.id}·auto-long', timeout: 120, workers: 16);
+      add(p, 'auto', '${p.id}·auto-mid', timeout: 90, workers: 12);
+    }
+
+    // ─── 3) مناطق پرتکرار روی موبایل ایران ───
+    const tryRegions = ['DE', 'NL', 'US', 'GB', 'TR', 'AE', 'JP', 'CA'];
     for (final p in ordered.take(2)) {
       for (final rr in tryRegions) {
         if (reg == rr) continue;
-        add(p, 'region', '${p.id}·$rr', r: rr, timeout: 50);
+        add(p, 'region', '${p.id}·$rr',
+            r: rr, timeout: 100, workers: 12);
       }
     }
 
-    // 3) Narrow protocol sets
+    // ─── 4) پروتکل‌های باریک ───
     for (final p in ordered.take(2)) {
-      add(p, 'narrow', '${p.id}·ssh', protocols: sshOnly, timeout: 40, workers: 4);
-      add(p, 'narrow', '${p.id}·meek', protocols: meekOnly, timeout: 60, workers: 4);
-      add(p, 'narrow', '${p.id}·quic', protocols: quicOnly, timeout: 40, workers: 4);
+      add(p, 'narrow', '${p.id}·unfronted-meek',
+          protocols: unfrontedMeek, timeout: 100, workers: 10);
+      add(p, 'narrow', '${p.id}·ossh',
+          protocols: osshOnly, timeout: 90, workers: 10);
+      add(p, 'narrow', '${p.id}·ssh',
+          protocols: sshOnly, timeout: 80, workers: 8);
+      add(p, 'narrow', '${p.id}·quic',
+          protocols: quicOnly, timeout: 70, workers: 8);
     }
 
-    // 4) Longer timeout + different workers
+    // ─── 5) worker / platform alternate ───
+    for (final p in ordered.take(2)) {
+      add(p, 'auto', '${p.id}·pool24', timeout: 100, workers: 24);
+      add(p, 'auto', '${p.id}·pool4', timeout: 120, workers: 4);
+      add(p, 'auto', '${p.id}·http-on',
+          timeout: 100, disableHttp: false, workers: 12);
+      add(p, 'auto', '${p.id}·plat-psi',
+          timeout: 100, platform: 'Android_11_com.psiphon3', workers: 12);
+      add(p, 'auto', '${p.id}·plat-obv',
+          timeout: 100,
+          platform: 'Android_10_com.android.psiphon',
+          workers: 12);
+    }
+
+    // ─── 6) فقط به‌عنوان آخرین راه: بدون remote list (embedded) ───
     for (final p in ordered.take(1)) {
-      add(p, 'auto', '${p.id}·long', timeout: 120, workers: 4);
-      add(p, 'auto', '${p.id}·pool1', timeout: 60, workers: 1);
-      add(p, 'auto', '${p.id}·pool16', timeout: 45, workers: 16);
+      add(p, 'auto', '${p.id}·embedded-only',
+          timeout: 120, emptyRemote: true, workers: 8);
     }
 
-    // 5) Empty remote list (force SDK download / use any embedded)
-    for (final p in ordered.take(1)) {
-      add(p, 'auto', '${p.id}·no-remote', timeout: 90, emptyRemote: true);
-    }
-
-    // 6) Fixed SOCKS port + enable HTTP proxy (some networks prefer this)
-    for (final p in ordered.take(1)) {
-      add(p, 'auto', '${p.id}·port1080', timeout: 60, socksPort: 1080, workers: 4);
-      add(p, 'auto', '${p.id}·http-on', timeout: 55, disableHttp: false, workers: 4);
-    }
-
-    // 7) Alternate ClientPlatform strings (some server lists key off platform)
-    for (final p in ordered.take(1)) {
-      add(p, 'auto', '${p.id}·plat-psi', timeout: 50,
-          platform: 'Android_11_com.psiphon3');
-      add(p, 'auto', '${p.id}·plat-obv', timeout: 50,
-          platform: 'Android_10_com.android.psiphon');
-    }
-
-    // Re-order so last success is first if present.
     if (last != null) {
-      final idx = out.indexWhere((a) => a.profileId == last[0] && a.mode == last[1]);
+      final idx =
+          out.indexWhere((a) => a.profileId == last[0] && a.mode == last[1]);
       if (idx > 0) {
         final a = out.removeAt(idx);
         out.insert(0, a);
@@ -300,10 +340,9 @@ class PsiphonAuto {
 
   // --------------------------------------------------------- کشورها
 
-  /// فهرست پیش‌فرض تا وقتی هسته فهرست واقعی را نداده.
   static const List<String> fallbackRegions = <String>[
     'AT', 'BE', 'CA', 'CH', 'CZ', 'DE', 'DK', 'ES', 'FI', 'FR', 'GB', 'IE',
-    'IN', 'IT', 'JP', 'NL', 'NO', 'PL', 'RO', 'SE', 'SG', 'US',
+    'IN', 'IT', 'JP', 'NL', 'NO', 'PL', 'RO', 'SE', 'SG', 'TR', 'AE', 'US',
   ];
 
   static String normalizeRegion(String v) {
@@ -311,7 +350,6 @@ class PsiphonAuto {
     return RegExp(r'^[A-Z]{2}$').hasMatch(s) ? s : '';
   }
 
-  /// کشورهایی که هستهٔ Psiphon خودش گزارش داده (اگر موجود باشد).
   static Future<List<String>> loadRegions() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -358,6 +396,8 @@ class PsiphonAuto {
     'RO': 'رومانی',
     'SE': 'سوئد',
     'SG': 'سنگاپور',
+    'TR': 'ترکیه',
+    'AE': 'امارات',
     'US': 'آمریکا',
   };
 

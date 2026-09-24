@@ -33,15 +33,16 @@ class TorScreen extends StatefulWidget {
 
 class _TorScreenState extends State<TorScreen> {
   static const List<Map<String, String>> _bridgeTypes = [
+    {'id': 'webtunnel', 'fa': 'WebTunnel (شبیه HTTPS — موبایل)', 'en': 'WebTunnel (HTTPS-like — mobile)'},
+    {'id': 'snowflake', 'fa': 'Snowflake (P2P)', 'en': 'Snowflake (P2P)'},
+    {'id': 'meek_lite', 'fa': 'Meek / Azure front', 'en': 'Meek / Azure front'},
+    {'id': 'obfs4', 'fa': 'obfs4', 'en': 'obfs4'},
     {'id': 'vanilla', 'fa': 'Tor ساده (بدون پل)', 'en': 'Vanilla (no bridge)'},
-    {'id': 'obfs4', 'fa': 'Obfs4 (پیشنهادی)', 'en': 'Obfs4 (recommended)'},
-    {'id': 'snowflake', 'fa': 'Snowflake', 'en': 'Snowflake'},
-    {'id': 'meek_lite', 'fa': 'Meek Lite', 'en': 'Meek Lite'},
-    {'id': 'conjure', 'fa': 'Conjure', 'en': 'Conjure'},
     {'id': 'dnstt', 'fa': 'DNSTT', 'en': 'DNSTT'},
+    {'id': 'conjure', 'fa': 'Conjure (متوقف)', 'en': 'Conjure (retired)'},
   ];
 
-  String _bridgeType = 'obfs4';
+  String _bridgeType = 'snowflake';
   String _selectedSni = TorSniPresets.defaultSni;
   bool _sniEnabled = false;
   bool _sniAutoPicking = false;
@@ -108,7 +109,7 @@ class _TorScreenState extends State<TorScreen> {
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    final bt = prefs.getString('tor_bridge_type') ?? 'obfs4';
+    final bt = prefs.getString('tor_bridge_type') ?? 'snowflake';
     final cb = prefs.getStringList('tor_custom_bridges') ?? <String>[];
     final sni = prefs.getString('tor_sni') ?? TorSniPresets.defaultSni;
     final sniOn = prefs.getBool('tor_sni_enabled') ?? false;
@@ -655,14 +656,19 @@ class _TorScreenState extends State<TorScreen> {
       // ─── Auto-fallback: اگر بریج فعلی fail شد، خودکار بقیه را تست کن ───
       final failed = _bridgeType;
       List<String> fallback = <String>[];
-      if (failed == 'conjure') {
-        fallback = <String>['obfs4', 'snowflake'];
+      // mobile-first fallback: webtunnel → snowflake → meek → obfs4
+      if (failed == 'webtunnel') {
+        fallback = <String>['snowflake', 'meek_lite', 'obfs4'];
       } else if (failed == 'snowflake') {
-        fallback = <String>['obfs4'];
-      } else if (failed == 'dnstt') {
-        fallback = <String>['obfs4', 'snowflake'];
+        fallback = <String>['meek_lite', 'webtunnel', 'obfs4'];
       } else if (failed == 'meek_lite') {
-        fallback = <String>['obfs4', 'snowflake'];
+        fallback = <String>['snowflake', 'webtunnel', 'obfs4'];
+      } else if (failed == 'obfs4') {
+        // obfs4 روی بعضی شبکه‌های 4G سخت‌تر است؛ هنوز امتحان می‌شود ولی
+        // fallback به PTهای HTTPS-مانند می‌رود.
+        fallback = <String>['webtunnel', 'snowflake', 'meek_lite'];
+      } else if (failed == 'dnstt' || failed == 'conjure') {
+        fallback = <String>['snowflake', 'meek_lite', 'obfs4'];
       }
 
       if (fallback.isNotEmpty) {
@@ -676,11 +682,15 @@ class _TorScreenState extends State<TorScreen> {
         if (ok) return;
       }
 
+      final errText =
+          _localizeError(r['error']?.toString() ?? 'unknown error');
       setState(() {
         _connecting = false;
         _running = false;
-        _error = _localizeError(r['error']?.toString() ?? 'unknown error');
+        _error = errText;
+        _bootstrapMsg = '';
       });
+      _snack(errText);
     } else {
       setState(() {
         _running = true;
@@ -711,6 +721,16 @@ class _TorScreenState extends State<TorScreen> {
       return _t(
         'روتینگ VPN ناموفق بود — دوباره وصل شوید',
         'VPN routing failed — try connecting again',
+      );
+    }
+    if (lower.contains('general socks') ||
+        lower.contains('socks server failure') ||
+        (lower.contains('socks5') && lower.contains('failure'))) {
+      return _t(
+        'این پل روی شبکهٔ فعلی جواب نداد (SOCKS). WebTunnel یا Snowflake را '
+        'امتحان کنید و از bridges.torproject.org / @GetBridgesBot پل تازه بگیرید.',
+        'This bridge failed on the current network (SOCKS). Try WebTunnel or Snowflake '
+        'and fetch fresh bridges from bridges.torproject.org / @GetBridgesBot.',
       );
     }
     if (lower.contains('bridge')) {

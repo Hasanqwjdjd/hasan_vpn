@@ -96,12 +96,10 @@ class AetherProfile {
   final String perf;
 
   // ---------------------------------------------------------- Zero Trust
-  // Cloudflare Zero Trust enrollment (--team, --access-*, --gateway).
-  // نام متغیرهای محیطی این بخش از خود flag ها استنتاج شده (الگوی یکسانِ
-  // AETHER_<FLAG>) و برخلاف بقیه‌ی فایل، مستقیماً از جدول رسمی
-  // Docs/DOCS.en.md پروژه تأیید نشده — قبل از تکیه‌کردن روی این بخش در
-  // پروداکشن، یک بار aether را دستی/تعاملی اجرا کن و اسم دقیق متغیرها را
-  // از منوی Zero Trust یا خروجی `aether help` با این‌ها مقایسه کن.
+  // Cloudflare Zero Trust enrollment. Verified against CluvexStudio/Aether
+  // Docs/DOCS.en.md + aether/src/cli.rs + release notes v1.5.0:
+  //   AETHER_TEAM, AETHER_ACCESS_EMAIL, AETHER_ACCESS_ID,
+  //   AETHER_ACCESS_SECRET, AETHER_ACCESS_TOKEN, AETHER_GATEWAY
   final String teamName;
   final String accessEmail;
   final String accessId;
@@ -352,12 +350,23 @@ class AetherProfile {
     final attempts = <AetherAttempt>[];
 
     if (protocol == 'auto') {
+      // mobile-first: TCP/443 (MASQUE H2) و تودرتو (GOOL/MIM) قبل از H3/QUIC.
+      // روی Irancell/MCI اغلب UDP/QUIC سخت‌تر است ولی HTTPS-مانند شانس دارد.
       final fixedScan = scan == 'smart' ? null : scan;
-      attempts.add(_attempt('masque', false, fixedScan ?? 'turbo'));
-      attempts.add(_attempt('masque', true, fixedScan ?? 'balanced'));
+      attempts.add(_attempt('masque', true, fixedScan ?? 'balanced',
+          forceNoize: 'gfw')); // H2 / TCP 443
+      attempts.add(_attempt('masque', true, fixedScan ?? 'thorough',
+          forceNoize: 'aggressive'));
+      attempts.add(_attempt('gool', false, fixedScan ?? 'balanced',
+          forceNoize: 'gfw')); // WG-in-WG for hostile nets
+      attempts.add(_attempt('mim', true, fixedScan ?? 'balanced',
+          forceNoize: 'gfw')); // MASQUE-in-MASQUE over H2
+      attempts.add(_attempt('masque', false, fixedScan ?? 'turbo')); // H3
       attempts.add(_attempt('wg', false, fixedScan ?? 'balanced',
           forceNoize: 'gfw'));
       attempts.add(_attempt('gool', false, fixedScan ?? 'ironclad',
+          forceNoize: 'aggressive'));
+      attempts.add(_attempt('mim', false, fixedScan ?? 'thorough',
           forceNoize: 'gfw'));
     } else {
       final String proto;
@@ -385,11 +394,18 @@ class AetherProfile {
       }
 
       if (scan == 'smart') {
-        // failover چندمرحله‌ای مثل Auto mode در ZedSecure
-        if (proto == 'gool') {
+        // failover چندمرحله‌ای — موبایل هم داخل همین زنجیره است
+        if (proto == 'gool' || proto == 'mim') {
           attempts.add(_attempt(proto, h2, 'balanced', forceNoize: 'gfw'));
           attempts.add(_attempt(proto, h2, 'thorough', forceNoize: 'gfw'));
           attempts.add(_attempt(proto, h2, 'ironclad', forceNoize: 'aggressive'));
+          attempts.add(_attempt(proto, h2, 'stealth', forceNoize: 'aggressive'));
+        } else if (h2) {
+          // MASQUE/H2: TCP 443 — اولویت برای 4G
+          attempts.add(_attempt(proto, true, 'balanced', forceNoize: 'gfw'));
+          attempts.add(_attempt(proto, true, 'thorough', forceNoize: 'aggressive'));
+          attempts.add(_attempt(proto, true, 'stealth', forceNoize: 'gfw'));
+          attempts.add(_attempt(proto, false, 'turbo')); // H3 fallback
         } else {
           attempts.add(_attempt(proto, h2, 'turbo'));
           attempts.add(_attempt(proto, h2, 'balanced'));
@@ -427,11 +443,15 @@ class AetherProfile {
   /// متغیرهای محیطی Aether. همه‌ی سؤال‌های تعاملی Aether (پروتکل، اسکن، IP،
   /// نوع MASQUE) با متغیر پاسخ داده می‌شوند تا پردازه هرگز منتظر ورودی نماند.
   Map<String, String> buildEnv(AetherAttempt attempt, int socksPort) {
+    // Verified against CluvexStudio/Aether Docs/DOCS.en.md + cli.rs help:
+    // AETHER_SOCKS, AETHER_PROTOCOL, AETHER_SCAN, AETHER_IP (v4|v6|both),
+    // AETHER_QUICK_RECONNECT, AETHER_LOG_LEVEL, AETHER_MASQUE_RECONNECT_SECS,
+    // AETHER_WG_RECONNECT_SECS. AETHER_TCP_* appear in proxy-limits docs.
     final env = <String, String>{
       'AETHER_SOCKS': '127.0.0.1:$socksPort',
       'AETHER_PROTOCOL': attempt.protocol,
       'AETHER_SCAN': attempt.scan,
-      'AETHER_IP': ip,
+      'AETHER_IP': ip, // v4 | v6 | both  (cli --ip)
       'AETHER_QUICK_RECONNECT': quickReconnect ? '1' : '0',
       'AETHER_LOG_LEVEL': 'info',
       'AETHER_MASQUE_RECONNECT_SECS': '1',
@@ -456,10 +476,11 @@ class AetherProfile {
 
     if (upstream.isNotEmpty) env['AETHER_UPSTREAM'] = upstream;
 
+    // AETHER_PERF_PROFILE: not in official public help table; kept for
+    // AetherST compatibility. If the binary ignores it, no harm.
     if (perf != 'auto') env['AETHER_PERF_PROFILE'] = perf;
 
-    // ---- Zero Trust (Cloudflare Teams) ----
-    // نام‌های این بخش استنتاج‌شده‌اند؛ راهنمای بالای کلاس را ببین.
+    // ---- Zero Trust (Cloudflare Teams) — verified names ----
     if (teamName.isNotEmpty) {
       env['AETHER_TEAM'] = teamName;
       if (accessToken.isNotEmpty) {
@@ -503,6 +524,9 @@ class AetherProfile {
           env['AETHER_TOR_ONLY'] = '1';
           break;
       }
+      // AETHER_TOR_BRIDGE / AETHER_TOR_RELAYS: used by AetherST; official
+      // help lists Tor modes as --tor / --tor-reverse / --tor-only. Bridge
+      // override may be accepted as AETHER_TOR_BRIDGE when present.
       if (torBridge.isNotEmpty) env['AETHER_TOR_BRIDGE'] = torBridge;
       if (torRelays) env['AETHER_TOR_RELAYS'] = '1';
     }
@@ -510,6 +534,16 @@ class AetherProfile {
     // ---- Routing ----
     if (routeDirect.isNotEmpty) env['AETHER_ROUTE_DIRECT'] = routeDirect;
     if (routeBlock.isNotEmpty) env['AETHER_ROUTE_BLOCK'] = routeBlock;
+
+    // ---- Lower-level knobs (GAP #6; names from Docs/DOCS.en.md) ----
+    // AETHER_ROUTE_SNIFF / AETHER_ROUTE_SNIFF_MS: name-based routing behind tun
+    env['AETHER_ROUTE_SNIFF'] = '1';
+    env['AETHER_ROUTE_SNIFF_MS'] = '400';
+    // Proxy session limits (proxy-limits section in upstream docs / help)
+    env['AETHER_MAX_CLIENTS'] = '2048';
+    env['AETHER_HALF_CLOSE_SECS'] = '30';
+    // TCP timeouts already set above (CONNECT/KEEPALIVE). AETHER_MARK needs
+    // root on Android; intentionally not set here.
 
     return env;
   }

@@ -589,12 +589,31 @@ class AetherService {
   }
 
   /// اندازه‌گیری تأخیر واقعی Aether برای تست پینگ.
+  /// [server] برای سازگاری با ServerTester نگه داشته شده؛ فعلاً استفاده نمی‌شود
+  /// چون پروب روی هسته‌ی محلی (SOCKS) انجام می‌شود نه روی خود سرور.
   static Future<int> measureDelay(
-    dynamic server, {
+    VpnServer server, {
     Duration? budget,
   }) async {
     final p = await probeCore();
     if (!p.ok) return 0;
     return p.ms ?? 0;
+  }
+
+  /// اجرای `libaether.so --version` روی دستگاه برای تشخیص مشکل dlopen/ELF.
+  /// خروجی stdout+stderr و کد خروج را برمی‌گرداند.
+  static Future<Map<String, dynamic>> testBinary() async {
+    try {
+      final result =
+          await _channel.invokeMapMethod<String, dynamic>('testBinary');
+      return result ?? <String, dynamic>{'error': 'empty result'};
+    } on PlatformException catch (error) {
+      return <String, dynamic>{
+        'error': error.message ?? error.code,
+        'ok': false,
+      };
+    } catch (error) {
+      return <String, dynamic>{'error': error.toString(), 'ok': false};
+    }
   }
 }

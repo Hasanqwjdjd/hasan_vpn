@@ -33,6 +33,11 @@ class PsiphonService {
   static String? lastError;
   static String? lastRegion;
 
+  /// نسل اتصال Dart-side. هر فراخوانی connect() این را افزایش می‌دهد تا
+  /// callback/timeout دیرهنگام از attempt قبلی نتواند stop بزند وقتی
+  /// attempt بعدی قبلاً برنده‌شده است.
+  static int _connectGen = 0;
+
   static bool get isConnected => _connected;
   static VpnServer? get current => _current;
 
@@ -74,7 +79,11 @@ class PsiphonService {
     return s['libraryPresent'] == true;
   }
 
-  static Future<void> stop() async {
+  /// توقف صریح کاربر/لایهٔ بالاتر. نسل را باطل می‌کند تا هیچ attempt
+  /// در حال اجرا بعداً state را به connected برنگرداند.
+  static Future<void> stop({String reason = 'explicit'}) async {
+    final gen = _connectGen;
+    debugPrint('PSIPHON: stop reason=$reason gen=$gen connected=$_connected');
     try {
       await _channel.invokeMethod('stop');
     } catch (_) {}
@@ -83,15 +92,33 @@ class PsiphonService {
     _socksPort = 0;
   }
 
+  /// stop فقط وقتی مجاز است که هنوز نسل فعلی باشیم و به connected
+  /// نرسیده باشیم — مگر reason صریح کاربر باشد.
+  static Future<void> _stopIfStillCurrent(int gen, String reason) async {
+    if (gen != _connectGen) {
+      debugPrint('PSIPHON: skip stop ($reason) stale gen=$gen current=$_connectGen');
+      return;
+    }
+    if (_connected) {
+      debugPrint('PSIPHON: skip stop ($reason) already connected gen=$gen');
+      return;
+    }
+    await stop(reason: reason);
+  }
+
   static Future<bool> connect(
     VpnServer server, {
     PsiphonProgress? onProgress,
     bool Function()? isCancelled,
   }) async {
+    // نسل جدید: هر attempt/timeout قدیمی دیگر نمی‌تواند stop بزند.
+    final gen = ++_connectGen;
     lastError = null;
     lastRegion = null;
     _connected = false;
     _current = null;
+
+    debugPrint('PSIPHON: connect BEGIN gen=$gen server=${server.name}');
 
     if (!server.isPsiphon) {
       lastError = 'Not a Psiphon server';
@@ -109,8 +136,9 @@ class PsiphonService {
         return false;
       }
 
-      if (cancelled()) {
+      if (cancelled() || gen != _connectGen) {
         lastError = 'cancelled';
+        await _stopIfStillCurrent(gen, 'cancelled-before-permission');
         return false;
       }
 
@@ -143,8 +171,8 @@ class PsiphonService {
       int port = 0;
       String? failure;
       for (var i = 0; i < attempts.length; i++) {
-        if (cancelled()) {
-          await stop();
+        if (cancelled() || gen != _connectGen) {
+          await _stopIfStillCurrent(gen, 'cancelled-in-loop');
           lastError = 'cancelled';
           return false;
         }
@@ -153,47 +181,68 @@ class PsiphonService {
         final counter =
             attempts.length > 1 ? ' ${i + 1}/${attempts.length}' : '';
         onProgress?.call('Psiphon · connecting (${a.label})$counter');
+        debugPrint(
+            'PSIPHON: attempt START gen=$gen i=${i + 1}/${attempts.length} '
+            'label=${a.label} timeout=${a.timeoutSec}');
 
         final result = await _channel.invokeMapMethod<String, dynamic>('start', {
           'config': a.configJson,
           'timeoutSec': a.timeoutSec,
         });
 
+        // اگر نسل عوض شده (کاربر قطع کرده یا connect جدید شروع شده) برنده نیستیم.
+        if (gen != _connectGen) {
+          debugPrint('PSIPHON: attempt LOSE gen=$gen (superseded by $_connectGen)');
+          lastError = 'cancelled';
+          return false;
+        }
+
         if (cancelled()) {
-          await stop();
+          await _stopIfStillCurrent(gen, 'cancelled-after-start');
           lastError = 'cancelled';
           return false;
         }
 
         final p = (result?['socksPort'] as num?)?.toInt() ?? 0;
-        if (result != null && result['ok'] == true && p > 0) {
+        final ok = result != null && result['ok'] == true && p > 0;
+        debugPrint(
+            'PSIPHON: attempt RESULT gen=$gen label=${a.label} ok=$ok '
+            'port=$p err=${result?['error']}');
+
+        if (ok) {
           port = p;
-          lastRegion = result['region']?.toString();
+          lastRegion = result!['region']?.toString();
           if (a.mode != 'manual') {
             // ignore: unawaited_futures
             PsiphonAuto.rememberSuccess(a);
           }
-          // فهرست کشورهایی که هسته گزارش می‌دهد کمی دیرتر می‌رسد.
           // ignore: unawaited_futures
           _cacheRegionsLater();
+          debugPrint('PSIPHON: attempt WIN gen=$gen label=${a.label} port=$port region=$lastRegion');
+          // مهم: بعد از برد، stop() صدا نزن و از حلقه خارج شو.
           break;
         }
 
         failure = result?['error']?.toString() ??
             'Psiphon failed — SponsorId نامعتبر یا شبکه در دسترس نیست';
-        await stop();
+        // فقط اگر هنوز نسل فعلی هستیم و هنوز connected نیستیم stop کن.
+        await _stopIfStillCurrent(gen, 'attempt-fail-${a.label}');
+      }
+
+      if (gen != _connectGen) {
+        lastError = 'cancelled';
+        return false;
       }
 
       if (port <= 0) {
         lastError = failure ?? 'Psiphon SOCKS port is 0';
+        debugPrint('PSIPHON: all attempts LOSE gen=$gen err=$lastError');
         return false;
       }
       _socksPort = port;
 
       onProgress?.call('Psiphon · VPN ($port)');
       final xrayConfig = AetherService.buildXrayConfig(socksPort: port, blockQuic: true);
-      // Diagnostic: dump first 400 chars of config so we can verify
-      // routing rules actually point to the SOCKS outbound.
       debugPrint('PSIPHON_DIAG: socksPort=$port region=$lastRegion');
       debugPrint('PSIPHON_DIAG: config_head=${xrayConfig.substring(0, xrayConfig.length.clamp(0, 400))}');
       final started = await V2RayEngine.startConfig(
@@ -204,19 +253,27 @@ class PsiphonService {
         requireBlockedApps: true,
       );
 
+      if (gen != _connectGen) {
+        debugPrint('PSIPHON: VPN started but gen superseded — stopping');
+        await stop(reason: 'superseded-after-vpn');
+        lastError = 'cancelled';
+        return false;
+      }
+
       if (!started) {
         lastError = V2RayEngine.lastError ?? 'VPN start failed';
-        await stop();
+        await _stopIfStillCurrent(gen, 'vpn-start-failed');
         return false;
       }
 
       _connected = true;
       _current = server;
+      debugPrint('PSIPHON: CONNECTED gen=$gen port=$port region=$lastRegion');
       return true;
     } catch (e) {
       lastError = e.toString();
       debugPrint('Psiphon connect: $e');
-      await stop();
+      await _stopIfStillCurrent(gen, 'exception');
       return false;
     }
   }

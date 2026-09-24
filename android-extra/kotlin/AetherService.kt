@@ -63,25 +63,153 @@ class AetherService : Service() {
         fun info(context: Context): Map<String, Any?> {
             val binary = binaryFile(context)
             val abi = Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"
-            val present = binary.isFile && binary.canExecute()
+            val present = binary.isFile
+            val executable = present && binary.canExecute()
+            val elf = if (present) readElfSummary(binary) else emptyMap()
 
             val identity = context.filesDir.listFiles()?.any {
                 it.isFile && it.name.startsWith("aether") && it.name.endsWith(".toml")
             } == true
 
+            val err = when {
+                !present ->
+                    "Aether core ($BINARY_NAME) is not bundled for this device " +
+                        "(CPU: $abi). Use the arm64 build."
+                !executable ->
+                    "$BINARY_NAME found but not executable (path=${binary.absolutePath})"
+                else -> null
+            }
+
+            SafeLog.i(TAG, "info present=$present exec=$executable path=${binary.absolutePath} elf=$elf")
+
             return mapOf(
-                "binary" to present,
+                "binary" to (present && executable),
                 "abi" to abi,
+                "path" to binary.absolutePath,
+                "size" to if (present) binary.length() else 0L,
+                "elf" to elf,
                 "hasIdentity" to identity,
-                "error" to (
-                    if (present) {
-                        null
-                    } else {
-                        "Aether core ($BINARY_NAME) is not bundled for this device " +
-                            "(CPU: $abi). Use the arm64 build."
-                    }
-                    ),
+                "error" to err,
             )
+        }
+
+        /** 64 بایت اول ELF را می‌خواند و کلاس/اندیان/ماشین را برمی‌گرداند. */
+        private fun readElfSummary(file: File): Map<String, Any?> {
+            return try {
+                val buf = ByteArray(64)
+                file.inputStream().use { n ->
+                    val read = n.read(buf)
+                    if (read < 20) return mapOf("error" to "short read $read")
+                }
+                val magic = buf.copyOfRange(0, 4).joinToString("") { "%02x".format(it) }
+                val eiClass = buf[4].toInt() and 0xff // 1=32, 2=64
+                val eiData = buf[5].toInt() and 0xff  // 1=LE, 2=BE
+                val eType = ((buf[17].toInt() and 0xff) shl 8) or (buf[16].toInt() and 0xff)
+                val eMachine = ((buf[19].toInt() and 0xff) shl 8) or (buf[18].toInt() and 0xff)
+                mapOf(
+                    "magic" to magic,
+                    "class" to when (eiClass) { 1 -> "ELF32"; 2 -> "ELF64"; else -> "unknown($eiClass)" },
+                    "data" to when (eiData) { 1 -> "LE"; 2 -> "BE"; else -> "unknown($eiData)" },
+                    "type" to eType,
+                    "machine" to when (eMachine) {
+                        0xB7 -> "AArch64"
+                        0x28 -> "ARM"
+                        0x3E -> "x86_64"
+                        0x03 -> "x86"
+                        else -> "0x${"%x".format(eMachine)}"
+                    },
+                )
+            } catch (e: Exception) {
+                mapOf("error" to (e.message ?: e.javaClass.simpleName))
+            }
+        }
+
+        /**
+         * اجرای `libaether.so --version` (یا بدون آرگومان با timeout کوتاه)
+         * برای تشخیص مشکل dlopen/اجرا روی دستگاه.
+         */
+        fun testBinary(context: Context): Map<String, Any?> {
+            val binary = binaryFile(context)
+            if (!binary.isFile) {
+                return mapOf(
+                    "ok" to false,
+                    "error" to "$BINARY_NAME not found in ${binary.parent}",
+                    "path" to binary.absolutePath,
+                )
+            }
+            return try {
+                // بعضی بیلدهای Aether فقط `help`/`--help`/`-v` را می‌شناسند.
+                val argsList = listOf(
+                    listOf(binary.absolutePath, "--version"),
+                    listOf(binary.absolutePath, "-v"),
+                    listOf(binary.absolutePath, "help"),
+                )
+                var lastOut = ""
+                var lastErr = ""
+                var lastCode = -1
+                for (args in argsList) {
+                    SafeLog.i(TAG, "testBinary cmd=${args.joinToString(" ")}")
+                    val pb = ProcessBuilder(args)
+                        .directory(context.filesDir)
+                        .redirectErrorStream(true)
+                    val env = pb.environment()
+                    env["HOME"] = context.filesDir.absolutePath
+                    env["TMPDIR"] = context.cacheDir.absolutePath
+                    env["NO_COLOR"] = "1"
+                    env["AETHER_LOG_LEVEL"] = "error"
+                    val proc = pb.start()
+                    val stdout = StringBuilder()
+                    val reader = Thread {
+                        try {
+                            proc.inputStream.bufferedReader().forEachLine { line ->
+                                stdout.appendLine(line)
+                            }
+                        } catch (_: Exception) {}
+                    }
+                    reader.isDaemon = true
+                    reader.start()
+                    val finished = proc.waitFor(8, java.util.concurrent.TimeUnit.SECONDS)
+                    if (!finished) {
+                        proc.destroyForcibly()
+                        lastOut = stdout.toString()
+                        lastErr = "timeout after 8s"
+                        lastCode = -1
+                        continue
+                    }
+                    reader.join(1000)
+                    lastOut = stdout.toString().trim()
+                    lastCode = proc.exitValue()
+                    SafeLog.i(TAG, "testBinary exit=$lastCode out=${lastOut.take(200)}")
+                    if (lastOut.isNotEmpty() || lastCode == 0) {
+                        return mapOf(
+                            "ok" to true,
+                            "exitCode" to lastCode,
+                            "stdout" to lastOut,
+                            "stderr" to lastErr,
+                            "cmd" to args.joinToString(" "),
+                            "path" to binary.absolutePath,
+                            "elf" to readElfSummary(binary),
+                        )
+                    }
+                    lastErr = "empty output exit=$lastCode"
+                }
+                mapOf(
+                    "ok" to false,
+                    "exitCode" to lastCode,
+                    "stdout" to lastOut,
+                    "stderr" to lastErr,
+                    "path" to binary.absolutePath,
+                    "elf" to readElfSummary(binary),
+                )
+            } catch (e: Exception) {
+                SafeLog.e(TAG, "testBinary failed", e)
+                mapOf(
+                    "ok" to false,
+                    "error" to (e.message ?: e.javaClass.simpleName),
+                    "path" to binary.absolutePath,
+                    "elf" to readElfSummary(binary),
+                )
+            }
         }
 
         fun start(context: Context, envJson: String, remark: String): Boolean {
@@ -307,9 +435,11 @@ class AetherService : Service() {
         environment["NO_COLOR"] = "1"
         environment.putAll(env)
 
+        SafeLog.i(TAG, "launch cmd=${binary.absolutePath} cwd=${filesDir.absolutePath} envKeys=${env.keys.sorted()}")
         val proc = try {
             builder.start()
         } catch (error: Exception) {
+            SafeLog.e(TAG, "ProcessBuilder.start failed", error)
             fail("Cannot start Aether: ${error.message}")
             return
         }
