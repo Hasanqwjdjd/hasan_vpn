@@ -459,6 +459,49 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _showMsg(_t('سرور Aether اضافه شد', 'Aether server added'));
   }
 
+  void _addSiphonServer() {
+    final sponsor = _psiphonSponsorController.text.trim();
+    final channel = _psiphonChannelController.text.trim();
+    final config = _psiphonConfigController.text.trim();
+    final region = _psiphonRegion.trim();
+
+    final params = <String, String>{};
+    if (_psiphonAuto) {
+      params['auto'] = '1';
+    } else {
+      if (sponsor.isNotEmpty) params['sponsor'] = sponsor;
+      if (channel.isNotEmpty) params['channel'] = channel;
+      if (config.isNotEmpty) params['config'] = config;
+    }
+    if (region.isNotEmpty) params['region'] = region;
+
+    final q = params.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+    final link = q.isEmpty ? 'psiphon://auto' : 'psiphon://?$q';
+
+    final name = _nameController.text.trim().isNotEmpty
+        ? _nameController.text.trim()
+        : (_psiphonAuto
+            ? 'Psiphon · Auto'
+            : 'Psiphon · ${sponsor.isNotEmpty ? sponsor : "custom"}');
+
+    final server = VpnServer(
+      id: 'psiphon_${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      flag: '💧',
+      shareLink: link,
+      protocol: VpnProtocol.psiphon,
+      host: 'auto-discover',
+      port: 0,
+      isDeletable: true,
+    );
+
+    widget.onServerAdded(server);
+    Navigator.pop(context);
+    _showMsg(_t('سرور Psiphon اضافه شد', 'Psiphon server added'));
+  }
+
   AetherProfile _currentAetherProfile() {
     final peer = _aetherPeerController.text.trim();
     final upstream = _aetherUpstreamController.text.trim();
@@ -769,6 +812,28 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
           fontSize: 13,
           fontWeight: FontWeight.w600,
         ),
+      ),
+    );
+  }
+
+  InputDecoration _siphonDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(color: AppColors.muted2(context), fontSize: 12),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      filled: true,
+      fillColor: AppColors.surface(context),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: AppColors.border(context)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: AppColors.border(context)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFF26A69A)),
       ),
     );
   }

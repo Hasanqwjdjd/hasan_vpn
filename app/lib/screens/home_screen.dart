@@ -1925,7 +1925,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isPatternihaActive() {
     if (_selectedSubId == null) return false;
     try {
-      final sub = _subs.firstWhere((s) => s.id == _selectedSubId);
+      final sub = widget.subscriptions.firstWhere((s) => s.id == _selectedSubId);
       final key = '${sub.id} ${sub.name}'.toLowerCase();
       return key.contains('patterniha');
     } catch (_) {
