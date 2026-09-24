@@ -145,4 +145,32 @@ class TorBridges {
     if (host.startsWith('192.0.2.')) return null;
     return (host: host, port: port);
   }
+
+  /// استخر اضافی برای دکمه «پل‌های رایگان جدید».
+  static List<String> extraPool(String bridgeType) {
+    switch (bridgeType) {
+      case 'obfs4':
+        return const [
+          'obfs4 38.229.33.83:80 0CAD576E561AEE617D2137E67723A123A23A123B cert=iCsa3l3BbZv+2u9bvcpTNUVG4Esge/XabRocHl86p23Z/aMsM0Vuom9g4bbz2PlY9/oNzQ iat-mode=0',
+          'obfs4 37.218.245.14:38224 D9A82D2F9C2F65A18407B1D2B764F130847F8B5D cert=bjRaMvr/wWjJwG+SN5pRaqFHycJksMui9n7hMKqNpX0ZQfRyb9a5EwQ5N2N4YdX6bY0+1Q iat-mode=0',
+        ];
+      case 'meek_lite':
+        return meekFronts
+            .skip(3)
+            .map((h) =>
+                'meek_lite 192.0.2.2:443 url=https://$h/ front=$h')
+            .toList();
+      case 'snowflake':
+        return const [
+          'snowflake 192.0.2.6:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ fronts=ajax.aspnetcdn.com ice=stun:stun.l.google.com:19302',
+          'snowflake 192.0.2.7:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ fronts=www.google.com ice=stun:stun.voipgate.com:3478',
+        ];
+      case 'conjure':
+        return const [
+          'conjure 192.0.2.5:80 url=https://registration.refraction.network/api',
+        ];
+      default:
+        return const [];
+    }
+  }
 }
