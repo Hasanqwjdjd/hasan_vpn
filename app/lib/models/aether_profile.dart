@@ -95,6 +95,55 @@ class AetherProfile {
   /// auto | low | medium | high  (AETHER_PERF_PROFILE؛ auto = تشخیص خودکار)
   final String perf;
 
+  // ---------------------------------------------------------- Zero Trust
+  // Cloudflare Zero Trust enrollment (--team, --access-*, --gateway).
+  // نام متغیرهای محیطی این بخش از خود flag ها استنتاج شده (الگوی یکسانِ
+  // AETHER_<FLAG>) و برخلاف بقیه‌ی فایل، مستقیماً از جدول رسمی
+  // Docs/DOCS.en.md پروژه تأیید نشده — قبل از تکیه‌کردن روی این بخش در
+  // پروداکشن، یک بار aether را دستی/تعاملی اجرا کن و اسم دقیق متغیرها را
+  // از منوی Zero Trust یا خروجی `aether help` با این‌ها مقایسه کن.
+  final String teamName;
+  final String accessEmail;
+  final String accessId;
+  final String accessSecret;
+  final String accessToken;
+  final bool gatewayEnabled;
+
+  // ---------------------------------------------------------- Psiphon chain
+  // Aether v2.1.0 به‌صورت بومی Psiphon رو به‌عنوان یک لایه داخل/قبل/به‌جای
+  // تونل خودش سوار می‌کنه (--psiphon / --psiphon-reverse / --psiphon-only).
+  // این کاملاً جدا از PsiphonService.kt / psiphon_service.dart موجوده که
+  // Psiphon مستقل (بدون Aether) رو اجرا می‌کنه.
+  /// off | inside | reverse | only
+  final String psiphonMode;
+
+  /// خالی = خودکار. کد دو حرفی کشور مثل DE, NL, US.
+  final String psiphonRegion;
+
+  /// cdn | direct | '' (پیش‌فرض Aether)
+  final String psiphonFront;
+
+  // ---------------------------------------------------------- Tor chain
+  // مشابه Psiphon chain، اما با Tor بومیِ خود Aether (پل‌ها به‌صورت خودکار
+  // از bridgedb گرفته می‌شن، نیازی به تنظیم دستی نیست مگر بخوای override
+  // کنی). این هم جدا از TorService.kt / TorScreen موجود در برنامه‌ست که
+  // Tor مستقل (بدون Aether) رو اجرا می‌کنه.
+  /// off | inside | reverse | only
+  final String torMode;
+
+  /// پل دستی (اختیاری) — خالی یعنی Aether خودش از bridgedb می‌گیره.
+  final String torBridge;
+
+  /// استفاده از رله‌های عمومی Tor به‌عنوان پل، وقتی bridgedb هم بسته است.
+  final bool torRelays;
+
+  // ---------------------------------------------------------- routing
+  /// دامنه/کلیدواژه/IP که باید مستقیم (بدون تونل) بره — با کاما جدا.
+  final String routeDirect;
+
+  /// دامنه/کلیدواژه/IP که باید مسدود بشه — با کاما جدا.
+  final String routeBlock;
+
   const AetherProfile({
     this.protocol = 'auto',
     this.scan = 'smart',
@@ -106,7 +155,23 @@ class AetherProfile {
     this.quickReconnect = true,
     this.blockQuic = true,
     this.perf = 'auto',
+    this.teamName = '',
+    this.accessEmail = '',
+    this.accessId = '',
+    this.accessSecret = '',
+    this.accessToken = '',
+    this.gatewayEnabled = false,
+    this.psiphonMode = 'off',
+    this.psiphonRegion = '',
+    this.psiphonFront = '',
+    this.torMode = 'off',
+    this.torBridge = '',
+    this.torRelays = false,
+    this.routeDirect = '',
+    this.routeBlock = '',
   });
+
+  static const List<String> chainModes = <String>['off', 'inside', 'reverse', 'only'];
 
   static const List<String> protocols = <String>[
     'auto',
@@ -183,6 +248,20 @@ class AetherProfile {
       quickReconnect: query['qr'] != '0',
       blockQuic: query['quic'] != 'allow',
       perf: _pick(query['perf'], perfs, 'auto'),
+      teamName: (query['team'] ?? '').trim(),
+      accessEmail: (query['access_email'] ?? '').trim(),
+      accessId: (query['access_id'] ?? '').trim(),
+      accessSecret: (query['access_secret'] ?? '').trim(),
+      accessToken: (query['access_token'] ?? '').trim(),
+      gatewayEnabled: query['gateway'] == '1',
+      psiphonMode: _pick(query['psiphon'], chainModes, 'off'),
+      psiphonRegion: (query['psiphon_region'] ?? '').trim(),
+      psiphonFront: (query['psiphon_front'] ?? '').trim(),
+      torMode: _pick(query['tor'], chainModes, 'off'),
+      torBridge: (query['tor_bridge'] ?? '').trim(),
+      torRelays: query['tor_relays'] == '1',
+      routeDirect: (query['route_direct'] ?? '').trim(),
+      routeBlock: (query['route_block'] ?? '').trim(),
     );
   }
 
@@ -222,6 +301,20 @@ class AetherProfile {
       if (!quickReconnect) 'qr': '0',
       if (!blockQuic) 'quic': 'allow',
       if (perf != 'auto') 'perf': perf,
+      if (teamName.isNotEmpty) 'team': teamName,
+      if (accessEmail.isNotEmpty) 'access_email': accessEmail,
+      if (accessId.isNotEmpty) 'access_id': accessId,
+      if (accessSecret.isNotEmpty) 'access_secret': accessSecret,
+      if (accessToken.isNotEmpty) 'access_token': accessToken,
+      if (gatewayEnabled) 'gateway': '1',
+      if (psiphonMode != 'off') 'psiphon': psiphonMode,
+      if (psiphonRegion.isNotEmpty) 'psiphon_region': psiphonRegion,
+      if (psiphonFront.isNotEmpty) 'psiphon_front': psiphonFront,
+      if (torMode != 'off') 'tor': torMode,
+      if (torBridge.isNotEmpty) 'tor_bridge': torBridge,
+      if (torRelays) 'tor_relays': '1',
+      if (routeDirect.isNotEmpty) 'route_direct': routeDirect,
+      if (routeBlock.isNotEmpty) 'route_block': routeBlock,
     };
     return Uri(scheme: 'aether', host: 'config', queryParameters: query)
         .toString();
@@ -364,6 +457,59 @@ class AetherProfile {
     if (upstream.isNotEmpty) env['AETHER_UPSTREAM'] = upstream;
 
     if (perf != 'auto') env['AETHER_PERF_PROFILE'] = perf;
+
+    // ---- Zero Trust (Cloudflare Teams) ----
+    // نام‌های این بخش استنتاج‌شده‌اند؛ راهنمای بالای کلاس را ببین.
+    if (teamName.isNotEmpty) {
+      env['AETHER_TEAM'] = teamName;
+      if (accessToken.isNotEmpty) {
+        env['AETHER_ACCESS_TOKEN'] = accessToken;
+      } else if (accessId.isNotEmpty && accessSecret.isNotEmpty) {
+        env['AETHER_ACCESS_ID'] = accessId;
+        env['AETHER_ACCESS_SECRET'] = accessSecret;
+      } else if (accessEmail.isNotEmpty) {
+        env['AETHER_ACCESS_EMAIL'] = accessEmail;
+      }
+      if (gatewayEnabled) env['AETHER_GATEWAY'] = '1';
+    }
+
+    // ---- Psiphon chain (بومیِ خود Aether، نه PsiphonService.kt) ----
+    if (psiphonMode != 'off') {
+      switch (psiphonMode) {
+        case 'inside':
+          env['AETHER_PSIPHON'] = '1';
+          break;
+        case 'reverse':
+          env['AETHER_PSIPHON_REVERSE'] = '1';
+          break;
+        case 'only':
+          env['AETHER_PSIPHON_ONLY'] = '1';
+          break;
+      }
+      if (psiphonRegion.isNotEmpty) env['AETHER_PSIPHON_REGION'] = psiphonRegion;
+      if (psiphonFront.isNotEmpty) env['AETHER_PSIPHON_MODE'] = psiphonFront;
+    }
+
+    // ---- Tor chain (بومیِ خود Aether، نه TorService.kt) ----
+    if (torMode != 'off') {
+      switch (torMode) {
+        case 'inside':
+          env['AETHER_TOR'] = '1';
+          break;
+        case 'reverse':
+          env['AETHER_TOR_REVERSE'] = '1';
+          break;
+        case 'only':
+          env['AETHER_TOR_ONLY'] = '1';
+          break;
+      }
+      if (torBridge.isNotEmpty) env['AETHER_TOR_BRIDGE'] = torBridge;
+      if (torRelays) env['AETHER_TOR_RELAYS'] = '1';
+    }
+
+    // ---- Routing ----
+    if (routeDirect.isNotEmpty) env['AETHER_ROUTE_DIRECT'] = routeDirect;
+    if (routeBlock.isNotEmpty) env['AETHER_ROUTE_BLOCK'] = routeBlock;
 
     return env;
   }

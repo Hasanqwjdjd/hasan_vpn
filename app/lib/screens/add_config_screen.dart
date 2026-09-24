@@ -48,6 +48,38 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   bool _aetherWorking = false;
   String? _aetherLiveLog;
 
+  // Zero Trust (Cloudflare Teams) — فقط وقتی تیم اسم دارد فعال می‌شود
+  final TextEditingController _aetherTeamController = TextEditingController();
+  final TextEditingController _aetherAccessEmailController =
+      TextEditingController();
+  final TextEditingController _aetherAccessIdController =
+      TextEditingController();
+  final TextEditingController _aetherAccessSecretController =
+      TextEditingController();
+  final TextEditingController _aetherAccessTokenController =
+      TextEditingController();
+  bool _aetherGateway = false;
+  String _aetherZtAuthMode = 'email'; // email | service | token
+
+  // Aether-native Psiphon chain (جدا از PsiphonService.kt)
+  String _aetherPsiphonMode = 'off'; // off | inside | reverse | only
+  final TextEditingController _aetherPsiphonRegionController =
+      TextEditingController();
+  String _aetherPsiphonFront = ''; // '' | cdn | direct
+
+  // Aether-native Tor chain (جدا از TorService.kt)
+  String _aetherTorMode = 'off'; // off | inside | reverse | only
+  final TextEditingController _aetherTorBridgeController =
+      TextEditingController();
+  bool _aetherTorRelays = false;
+
+  // Routing
+  final TextEditingController _aetherRouteDirectController =
+      TextEditingController();
+  final TextEditingController _aetherRouteBlockController =
+      TextEditingController();
+  bool _aetherAdvancedChain = false;
+
   final TextEditingController _aetherDnsController = TextEditingController();
   final TextEditingController _aetherPeerController = TextEditingController();
   final TextEditingController _psiphonSponsorController = TextEditingController();
@@ -384,6 +416,28 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       quickReconnect: _aetherQuickReconnect,
       blockQuic: _aetherBlockQuic,
       perf: _aetherPerf,
+      teamName: _aetherTeamController.text.trim(),
+      accessEmail: _aetherZtAuthMode == 'email'
+          ? _aetherAccessEmailController.text.trim()
+          : '',
+      accessId: _aetherZtAuthMode == 'service'
+          ? _aetherAccessIdController.text.trim()
+          : '',
+      accessSecret: _aetherZtAuthMode == 'service'
+          ? _aetherAccessSecretController.text.trim()
+          : '',
+      accessToken: _aetherZtAuthMode == 'token'
+          ? _aetherAccessTokenController.text.trim()
+          : '',
+      gatewayEnabled: _aetherGateway,
+      psiphonMode: _aetherPsiphonMode,
+      psiphonRegion: _aetherPsiphonRegionController.text.trim(),
+      psiphonFront: _aetherPsiphonFront,
+      torMode: _aetherTorMode,
+      torBridge: _aetherTorBridgeController.text.trim(),
+      torRelays: _aetherTorRelays,
+      routeDirect: _aetherRouteDirectController.text.trim(),
+      routeBlock: _aetherRouteBlockController.text.trim(),
     );
 
     final name = _nameController.text.trim().isNotEmpty
@@ -424,6 +478,28 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       quickReconnect: _aetherQuickReconnect,
       blockQuic: _aetherBlockQuic,
       perf: _aetherPerf,
+      teamName: _aetherTeamController.text.trim(),
+      accessEmail: _aetherZtAuthMode == 'email'
+          ? _aetherAccessEmailController.text.trim()
+          : '',
+      accessId: _aetherZtAuthMode == 'service'
+          ? _aetherAccessIdController.text.trim()
+          : '',
+      accessSecret: _aetherZtAuthMode == 'service'
+          ? _aetherAccessSecretController.text.trim()
+          : '',
+      accessToken: _aetherZtAuthMode == 'token'
+          ? _aetherAccessTokenController.text.trim()
+          : '',
+      gatewayEnabled: _aetherGateway,
+      psiphonMode: _aetherPsiphonMode,
+      psiphonRegion: _aetherPsiphonRegionController.text.trim(),
+      psiphonFront: _aetherPsiphonFront,
+      torMode: _aetherTorMode,
+      torBridge: _aetherTorBridgeController.text.trim(),
+      torRelays: _aetherTorRelays,
+      routeDirect: _aetherRouteDirectController.text.trim(),
+      routeBlock: _aetherRouteBlockController.text.trim(),
     );
   }
 
@@ -1590,6 +1666,234 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             color: color,
           ),
         ],
+        const SizedBox(height: 4),
+        InkWell(
+          onTap: () => setState(() => _aetherAdvancedChain = !_aetherAdvancedChain),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Icon(
+                  _aetherAdvancedChain ? Icons.expand_less : Icons.expand_more,
+                  color: color,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _t('زنجیره و Zero Trust (بومی Aether)',
+                      'Chain & Zero Trust (native Aether)'),
+                  style: const TextStyle(
+                    color: color,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_aetherAdvancedChain) ...[
+          const SizedBox(height: 4),
+          Text(
+            _t(
+              'این بخش از پشتیبانی بومی Aether برای Psiphon/Tor/Zero Trust استفاده '
+              'می‌کند (از طریق متغیرهای محیطی خود Aether) — کاملاً جدا از صفحه‌ی '
+              'Tor یا سرورهای سایفون موجود در برنامه.',
+              'Uses Aether\'s own native Psiphon/Tor/Zero Trust support (via Aether '
+              'env vars) — fully separate from the app\'s Tor screen or Psiphon '
+              'servers.',
+            ),
+            style: TextStyle(color: AppColors.muted2(context), fontSize: 11),
+          ),
+          gap,
+          Text(_t('زنجیره‌ی Psiphon', 'Psiphon chain'),
+              style: TextStyle(
+                  color: AppColors.muted(context),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          _buildChoiceRow(
+            label: '',
+            values: AetherProfile.chainModes,
+            valueLabelsFa: const {
+              'off': 'خاموش',
+              'inside': 'داخل تونل',
+              'reverse': 'قبل از تونل',
+              'only': 'فقط Psiphon',
+            },
+            valueLabelsEn: const {
+              'off': 'Off',
+              'inside': 'Inside tunnel',
+              'reverse': 'Tunnel-through-Psiphon',
+              'only': 'Psiphon only',
+            },
+            selected: _aetherPsiphonMode,
+            onSelected: (v) => setState(() => _aetherPsiphonMode = v),
+            color: color,
+          ),
+          if (_aetherPsiphonMode != 'off') ...[
+            gap,
+            _buildTextField(
+              controller: _aetherPsiphonRegionController,
+              label: _t('منطقه خروجی سایفون (اختیاری)', 'Psiphon egress region (optional)'),
+              hint: 'DE, NL, US, GB, JP…',
+              color: color,
+            ),
+            gap,
+            _buildChoiceRow(
+              label: _t('حالت fronting', 'Fronting mode'),
+              values: const ['', 'cdn', 'direct'],
+              valueLabelsFa: const {'': 'پیش‌فرض', 'cdn': 'CDN (meek)', 'direct': 'مستقیم'},
+              valueLabelsEn: const {'': 'Default', 'cdn': 'CDN (meek)', 'direct': 'Direct'},
+              selected: _aetherPsiphonFront,
+              onSelected: (v) => setState(() => _aetherPsiphonFront = v),
+              color: color,
+            ),
+          ],
+          gap,
+          Text(_t('زنجیره‌ی Tor', 'Tor chain'),
+              style: TextStyle(
+                  color: AppColors.muted(context),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          _buildChoiceRow(
+            label: '',
+            values: AetherProfile.chainModes,
+            valueLabelsFa: const {
+              'off': 'خاموش',
+              'inside': 'داخل تونل',
+              'reverse': 'قبل از تونل',
+              'only': 'فقط Tor',
+            },
+            valueLabelsEn: const {
+              'off': 'Off',
+              'inside': 'Inside tunnel',
+              'reverse': 'Tunnel-through-Tor',
+              'only': 'Tor only',
+            },
+            selected: _aetherTorMode,
+            onSelected: (v) => setState(() => _aetherTorMode = v),
+            color: color,
+          ),
+          if (_aetherTorMode != 'off') ...[
+            gap,
+            _buildTextField(
+              controller: _aetherTorBridgeController,
+              label: _t('پل دستی (خالی = خودکار از bridgedb)',
+                  'Manual bridge (empty = auto from bridgedb)'),
+              hint: 'obfs4 1.2.3.4:443 ...',
+              color: color,
+            ),
+            gap,
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              activeColor: color,
+              title: Text(_t('استفاده از رله‌های عمومی به‌عنوان پل', 'Use public relays as bridges'),
+                  style: TextStyle(color: AppColors.fg(context), fontSize: 13)),
+              subtitle: Text(
+                  _t('وقتی bridgedb هم بسته باشد', 'When bridgedb itself is blocked'),
+                  style: TextStyle(color: AppColors.muted2(context), fontSize: 11)),
+              value: _aetherTorRelays,
+              onChanged: (v) => setState(() => _aetherTorRelays = v),
+            ),
+          ],
+          gap,
+          Text(_t('Cloudflare Zero Trust', 'Cloudflare Zero Trust'),
+              style: TextStyle(
+                  color: AppColors.muted(context),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          _buildTextField(
+            controller: _aetherTeamController,
+            label: _t('نام تیم (اختیاری)', 'Team name (optional)'),
+            hint: 'mycompany',
+            color: color,
+          ),
+          if (_aetherTeamController.text.trim().isNotEmpty ||
+              _aetherAdvancedChain) ...[
+            gap,
+            _buildChoiceRow(
+              label: _t('روش احراز هویت', 'Auth method'),
+              values: const ['email', 'service', 'token'],
+              valueLabelsFa: const {
+                'email': 'ایمیل (کد یک‌بارمصرف)',
+                'service': 'Service Token',
+                'token': 'JWT آماده',
+              },
+              valueLabelsEn: const {
+                'email': 'Email (one-time code)',
+                'service': 'Service token',
+                'token': 'Existing JWT',
+              },
+              selected: _aetherZtAuthMode,
+              onSelected: (v) => setState(() => _aetherZtAuthMode = v),
+              color: color,
+            ),
+            gap,
+            if (_aetherZtAuthMode == 'email')
+              _buildTextField(
+                controller: _aetherAccessEmailController,
+                label: _t('ایمیل سازمانی', 'Organization email'),
+                hint: 'you@company.com',
+                color: color,
+              )
+            else if (_aetherZtAuthMode == 'service') ...[
+              _buildTextField(
+                controller: _aetherAccessIdController,
+                label: 'Access Client ID',
+                hint: '',
+                color: color,
+              ),
+              gap,
+              _buildTextField(
+                controller: _aetherAccessSecretController,
+                label: 'Access Client Secret',
+                hint: '',
+                color: color,
+              ),
+            ] else
+              _buildTextField(
+                controller: _aetherAccessTokenController,
+                label: 'Access JWT',
+                hint: 'eyJhbGciOi...',
+                color: color,
+              ),
+            gap,
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              activeColor: color,
+              title: Text(_t('عبور از Gateway سازمان', 'Route via org Gateway'),
+                  style: TextStyle(color: AppColors.fg(context), fontSize: 13)),
+              subtitle: Text(
+                  _t('ترافیک HTTP/HTTPS از پراکسی Gateway سازمان رد می‌شود',
+                      'HTTP/HTTPS traffic goes through the org Gateway proxy'),
+                  style: TextStyle(color: AppColors.muted2(context), fontSize: 11)),
+              value: _aetherGateway,
+              onChanged: (v) => setState(() => _aetherGateway = v),
+            ),
+          ],
+          gap,
+          Text(_t('مسیریابی', 'Routing'),
+              style: TextStyle(
+                  color: AppColors.muted(context),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          _buildTextField(
+            controller: _aetherRouteDirectController,
+            label: _t('مستقیم (بدون تونل) — با کاما', 'Direct (bypass tunnel) — comma-separated'),
+            hint: 'bank.ir, 192.168.0.0/16',
+            color: color,
+          ),
+          gap,
+          _buildTextField(
+            controller: _aetherRouteBlockController,
+            label: _t('مسدود — با کاما', 'Block — comma-separated'),
+            hint: 'ads.example.com',
+            color: color,
+          ),
+        ],
         gap,
         Text(
           _t('نام (اختیاری)', 'Name (optional)'),
@@ -1972,6 +2276,15 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _aetherDnsController.dispose();
     _aetherPeerController.dispose();
     _aetherUpstreamController.dispose();
+    _aetherTeamController.dispose();
+    _aetherAccessEmailController.dispose();
+    _aetherAccessIdController.dispose();
+    _aetherAccessSecretController.dispose();
+    _aetherAccessTokenController.dispose();
+    _aetherPsiphonRegionController.dispose();
+    _aetherTorBridgeController.dispose();
+    _aetherRouteDirectController.dispose();
+    _aetherRouteBlockController.dispose();
     super.dispose();
   }
 }
