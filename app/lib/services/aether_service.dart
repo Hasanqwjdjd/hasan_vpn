@@ -587,4 +587,14 @@ class AetherService {
 
     return jsonEncode(config);
   }
+
+  /// اندازه‌گیری تأخیر واقعی Aether برای تست پینگ.
+  static Future<int> measureDelay(
+    Server server, {
+    Duration? budget,
+  }) async {
+    final p = await probeCore();
+    if (!p.ok) return 0;
+    return p.ms ?? 0;
+  }
 }
