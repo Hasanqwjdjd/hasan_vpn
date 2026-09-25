@@ -255,9 +255,7 @@ object TorService {
         sb.appendLine("StrictNodes 0")
         // دانلود سریع‌تر consensus
         sb.appendLine("ClientBootstrapConsensusAuthorityDownloadInitialDelay 0")
-        sb.appendLine("ClientBootstrapConsensusAuthorityDownloadSchedule 0, 1, 2, 4")
         sb.appendLine("ClientBootstrapConsensusFallbackDownloadInitialDelay 0")
-        sb.appendLine("ClientBootstrapConsensusFallbackDownloadSchedule 0, 1, 2, 4")
 
         // Register every available PT so mixed bridge lists never hit
         // "there is no configured transport called …".
