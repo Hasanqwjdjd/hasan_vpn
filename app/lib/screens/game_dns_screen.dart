@@ -29,7 +29,7 @@ import '../services/settings_service.dart';
 
 enum _SortMode { ping, name, country, provider, jitter }
 
-enum _Category { all, pinned, recommended, adBlocking, family, dnssec, ipv6, myCountry }
+enum _Category { all, pinned, recommended, adBlocking, family, dnssec, ipv6, myCountry, hidden }
 
 class GameDnsScreen extends StatefulWidget {
   final String language;
@@ -141,10 +141,15 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   }
 
   List<DnsEntry> get _visibleEntries {
-    var list = _allEntries.where((e) => !_statFor(e.id).hidden).toList();
+    final showHidden = _category == _Category.hidden;
+    var list = _allEntries.where((e) {
+      final isHidden = _statFor(e.id).hidden;
+      return showHidden ? isHidden : !isHidden;
+    }).toList();
 
     switch (_category) {
       case _Category.all:
+      case _Category.hidden:
         break;
       case _Category.pinned:
         list = list.where((e) => _statFor(e.id).pinned).toList();
@@ -259,6 +264,11 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
 
   Future<void> _hide(DnsEntry e) async {
     await _registry.setHidden(e.id, true);
+    await _load();
+  }
+
+  Future<void> _unhide(DnsEntry e) async {
+    await _registry.setHidden(e.id, false);
     await _load();
   }
 
@@ -592,6 +602,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       (_Category.dnssec, 'DNSSEC'),
       (_Category.ipv6, 'IPv6'),
       (_Category.myCountry, _t('کشور من', 'My country')),
+      (_Category.hidden, _t('مخفی‌شده', 'Hidden')),
     ];
     return SizedBox(
       height: 40,
@@ -798,14 +809,26 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                 _copyIp(e);
               },
             ),
-            ListTile(
-              leading: Icon(Icons.delete_outline, color: AppColors.danger),
-              title: Text(_t('حذف از لیست', 'Remove from list'), style: const TextStyle(color: AppColors.danger)),
-              onTap: () {
-                Navigator.pop(context);
-                _hide(e);
-              },
-            ),
+            if (_statFor(e.id).hidden)
+              ListTile(
+                leading: const Icon(Icons.restore, color: AppColors.accent),
+                title: Text(_t('بازگرداندن', 'Restore'),
+                    style: const TextStyle(color: AppColors.accent)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _unhide(e);
+                },
+              )
+            else
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: AppColors.danger),
+                title: Text(_t('حذف از لیست', 'Remove from list'),
+                    style: const TextStyle(color: AppColors.danger)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _hide(e);
+                },
+              ),
             if (e.provider == 'Custom')
               ListTile(
                 leading: Icon(Icons.delete_outline, color: AppColors.danger),
