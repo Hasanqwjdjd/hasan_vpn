@@ -1,6 +1,6 @@
 class Subscription {
   final String id;
-  final String name;
+  String name;
   final String url;
   final bool isDefault;
   bool autoUpdate;

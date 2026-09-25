@@ -703,15 +703,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 fontWeight: FontWeight.w600)),
       );
 
-  Widget _card(BuildContext context, {required Widget child}) => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.surface(context),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border(context)),
-        ),
-        child: child,
-      );
+  Widget _card(BuildContext context, [Widget? positionalChild],
+      {Widget? child}) {
+    final c = child ?? positionalChild;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border(context)),
+      ),
+      child: c,
+    );
+  }
 
   Widget _navRow(
     BuildContext context, {
