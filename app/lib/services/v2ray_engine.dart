@@ -7,6 +7,8 @@ import 'package:flutter_vless/flutter_vless.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
+import 'dns_advanced_settings.dart';
+import 'dns_auto_retest_service.dart';
 import 'game_booster_settings.dart';
 import 'settings_service.dart';
 import 'socks_probe.dart';
@@ -184,32 +186,85 @@ class V2RayEngine {
       if (dns == null || dns.length < 2) return config;
 
       final pref = await SettingsService.getDnsIpPreference();
+      final adv = await DnsAdvancedSettings.load();
 
       final dynamic json = jsonDecode(config);
       if (json is! Map) return config;
 
       final map = Map<String, dynamic>.from(json);
 
-      // فقط همان DNS انتخاب‌شده کاربر (نه DoH جایگزین که مسیر را عوض کند)
-      final servers = <dynamic>[
-        dns[0],
-        if (dns[1].isNotEmpty && dns[1] != dns[0]) dns[1],
-      ];
+      // --- Goal 4.2: fallback order (primary/secondary/system/direct).
+      // Xray's `servers` array is queried in order, so we lay it out to
+      // match. 'system' maps to Xray's special "localhost" server
+      // (asks the OS resolver). 'direct' has no DNS-server equivalent —
+      // it's approximated below via routing.domainStrategy.
+      final fallbackRaw = (adv['fallbackOrder'] as List?) ??
+          DnsAdvancedSettings.defaults['fallbackOrder'] as List;
+      final servers = <dynamic>[];
+      for (final step in fallbackRaw) {
+        switch (step) {
+          case 'primary':
+            if (dns[0].isNotEmpty) servers.add(dns[0]);
+            break;
+          case 'secondary':
+            if (dns.length > 1 && dns[1].isNotEmpty && dns[1] != dns[0]) {
+              servers.add(dns[1]);
+            }
+            break;
+          case 'system':
+            servers.add('localhost');
+            break;
+          case 'direct':
+            break;
+        }
+      }
+      if (servers.isEmpty) {
+        // Fallback order config was somehow empty/invalid — never ship
+        // a DNS block with zero servers.
+        servers.add(dns[0]);
+        if (dns.length > 1 && dns[1].isNotEmpty && dns[1] != dns[0]) {
+          servers.add(dns[1]);
+        }
+      }
 
-      // برای بازی (COD و مشابه) IPv4 معمولاً پینگ پایدارتری دارد
-      final queryStrategy = pref == 'ipv6'
-          ? 'UseIPv6'
-          : (pref == 'both' ? 'UseIP' : 'UseIPv4');
+      // --- Goal 4.3: DoH override for the primary, only if the user
+      // explicitly turned it on and picked/entered a URL. Prepended so
+      // it's tried first, same as before — the plain-IP entries above
+      // remain as the fallback chain if DoH itself is blocked/slow.
+      final dohEnabled = adv['dohEnabled'] == true;
+      final dohUrl = adv['dohUrl'] as String?;
+      if (dohEnabled && dohUrl != null && dohUrl.isNotEmpty) {
+        servers.insert(0, dohUrl);
+      }
+
+      // --- Goal 4.1: query strategy. The new advanced setting takes
+      // priority when the user has actually changed it from the
+      // default; otherwise fall back to the older ipPreference toggle
+      // so behavior is unchanged for anyone who hasn't opened the new
+      // settings screen yet.
+      final queryStrategy = _resolveQueryStrategy(pref, adv['queryStrategy'] as String?);
+
+      // --- Goal 4.4: DNS cache size (disabled/small/medium/large).
+      final cacheSizeName = adv['cacheSize'] as String? ?? 'medium';
+      final disableCache = cacheSizeName == 'disabled';
+      final cacheEntries = DnsAdvancedSettings.xrayCacheEntries(
+        DnsCacheSize.values.firstWhere(
+          (c) => c.name == cacheSizeName,
+          orElse: () => DnsCacheSize.medium,
+        ),
+      );
 
       map['dns'] = <String, dynamic>{
         'servers': servers,
         'queryStrategy': queryStrategy,
-        // کش کوچک‌تر = رزولوشن تازه‌تر برای سرورهای بازی
-        'cacheSize': 64,
-        'disableCache': false,
+        'cacheSize': disableCache ? 0 : cacheEntries,
+        'disableCache': disableCache,
       };
 
-      // اگر routing وجود دارد، domainStrategy را برای سرعت بهتر تنظیم کن
+      // اگر routing وجود دارد، domainStrategy را برای سرعت بهتر تنظیم کن.
+      // اگر 'direct' جزو ترتیب fallback باشد، AsIs انتخاب می‌شود تا
+      // دامنه‌هایی که نیازی به DNS ندارند مستقیم بروند (نزدیک‌ترین معادل
+      // Xray به "direct" در سطح resolver).
       final routing = map['routing'];
       if (routing is Map) {
         final r = Map<String, dynamic>.from(routing);
@@ -222,6 +277,20 @@ class V2RayEngine {
       debugPrint('applyGameDns error: $e');
       return config;
     }
+  }
+
+  static String _resolveQueryStrategy(String pref, String? advStrategyName) {
+    if (advStrategyName != null && advStrategyName != 'useIPv4') {
+      switch (advStrategyName) {
+        case 'useIPv6':
+          return 'UseIPv6';
+        case 'useIP':
+          return 'UseIP';
+        case 'asIs':
+          return 'AsIs';
+      }
+    }
+    return pref == 'ipv6' ? 'UseIPv6' : (pref == 'both' ? 'UseIP' : 'UseIPv4');
   }
 
   /// حالت بازی: فایروال سبک + DNS روی کانفیگ Xray
@@ -379,6 +448,8 @@ class V2RayEngine {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('vpn_active', true);
         } catch (_) {}
+        // Goal 2.6: no-op unless the user opted into a retest interval.
+        unawaited(DnsAutoRetestService.instance.start());
       }
       return ok;
     } catch (e) {
@@ -623,6 +694,7 @@ class V2RayEngine {
     try {
       await _engine.stopVless();
     } catch (_) {}
+    unawaited(DnsAutoRetestService.instance.stop());
     _connected = false;
     _current = null;
     // FIX_VPN_FLAG: ذخیره flag برای WidgetConnectService (که در isolate جدا اجرا می‌شه
