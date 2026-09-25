@@ -454,8 +454,7 @@ jobs:
                   android:theme="@style/Theme.HasanVPN.NoDisplay"
                   android:excludeFromRecents="true"
                   android:taskAffinity=""
-                  android:exported="false"
-                  android:noHistory="true" />
+                  android:exported="false" />
 
               <service
                   android:name="com.hasan.hasan_vpn.WidgetConnectService"
