@@ -198,7 +198,7 @@ class AetherService {
           remark: server.name,
           config: xrayConfig,
           server: server,
-          blockedApps: const <String>[_appPackage],
+          blockedApps: await V2RayEngine.resolveBlockedApps(),
           requireBlockedApps: true,
         );
 

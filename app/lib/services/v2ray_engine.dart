@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_vless/flutter_vless.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -18,6 +19,60 @@ class V2RayEngine {
 
   static const String _defaultDelayUrl = 'http://www.gstatic.com/generate_204';
   static String delayUrl = _defaultDelayUrl;
+
+  static const MethodChannel _deviceChannel =
+      MethodChannel('com.hasan.hasan_vpn/device');
+
+  /// لیست پکیج‌هایی که باید از تونل VPN مستثنی شوند، بر اساس حالت
+  /// «پراکسی هر برنامه» که کاربر انتخاب کرده:
+  ///   - all       → فقط خود اپ (جلوگیری از loop)
+  ///   - blacklist → خود اپ + اپ‌های انتخاب‌شده
+  ///   - whitelist → خود اپ + (همه‌ی اپ‌های نصب‌شده منهای اپ‌های انتخاب‌شده)
+  static Future<List<String>> resolveBlockedApps() async {
+    const appPackage = 'com.hasan.hasan_vpn';
+    final base = <String>{appPackage};
+    String mode;
+    Set<String> selected;
+    try {
+      mode = await SettingsService.getProxyMode();
+      final sel = await SettingsService.getBlockedApps();
+      selected = sel.toSet();
+    } catch (_) {
+      return base.toList();
+    }
+
+    if (mode == 'all') {
+      return base.toList();
+    }
+
+    if (mode == 'blacklist') {
+      base.addAll(selected);
+      return base.toList();
+    }
+
+    if (mode == 'whitelist') {
+      try {
+        final raw =
+            await _deviceChannel.invokeMethod<List<dynamic>>('listApps');
+        final all = <String>{};
+        if (raw != null) {
+          for (final e in raw) {
+            if (e is Map) {
+              final pkg = e['package']?.toString() ?? '';
+              if (pkg.isNotEmpty) all.add(pkg);
+            }
+          }
+        }
+        final blocked = all.difference(selected);
+        base.addAll(blocked);
+        return base.toList();
+      } catch (_) {
+        return base.toList();
+      }
+    }
+
+    return base.toList();
+  }
 
   static bool _initialized = false;
   static bool _connected = false;
