@@ -27,6 +27,7 @@ import '../services/dns_ping_service.dart';
 import '../services/dns_registry_service.dart';
 import '../services/game_booster_settings.dart';
 import '../services/settings_service.dart';
+import 'qr_scan_screen.dart';
 
 enum _SortMode { ping, name, country, provider, jitter }
 
@@ -298,6 +299,49 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     await _load();
   }
 
+  Future<void> _importFromQr() async {
+    final result = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => QrScanScreen(language: widget.language),
+      ),
+    );
+    if (result == null || result.isEmpty || !mounted) return;
+    final trimmed = result.trim();
+    try {
+      // JSON blob (single or full registry)
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        await _registry.importJson(trimmed, merge: true);
+        await _load();
+        _toast(_t('از QR وارد شد', 'Imported from QR'));
+        return;
+      }
+      // plain: name,primary,secondary یا فقط IP
+      final parts = trimmed.split(',').map((e) => e.trim()).toList();
+      if (parts.length == 1 && parts[0].isNotEmpty) {
+        await _registry.addCustom(CustomDnsEntry(
+          id: 'qr_${DateTime.now().millisecondsSinceEpoch}',
+          name: parts[0],
+          primary: parts[0],
+          secondary: parts[0],
+        ));
+      } else if (parts.length >= 2) {
+        await _registry.addCustom(CustomDnsEntry(
+          id: 'qr_${DateTime.now().millisecondsSinceEpoch}',
+          name: parts[0].isNotEmpty ? parts[0] : parts[1],
+          primary: parts[1],
+          secondary: parts.length > 2 ? parts[2] : parts[1],
+        ));
+      } else {
+        _toast(_t('محتوای QR قابل خواندن نبود', 'QR content not understood'));
+        return;
+      }
+      await _load();
+      _toast(_t('از QR وارد شد', 'Imported from QR'));
+    } catch (e) {
+      _toast(_t('خطا در ورود QR: $e', 'QR import error: $e'));
+    }
+  }
+
   Future<void> _delete(DnsEntry e) async {
     if (e.provider == 'Custom') {
       await _registry.removeCustom(e.id);
@@ -429,10 +473,12 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
             onSelected: (v) {
               if (v == 'export') _exportRegistry();
               if (v == 'import') _importRegistry();
+              if (v == 'qr') _importFromQr();
             },
             itemBuilder: (_) => [
               PopupMenuItem(value: 'export', child: Text(_t('برون‌بری (کپی)', 'Export (copy)'))),
               PopupMenuItem(value: 'import', child: Text(_t('درون‌ریزی (چسباندن)', 'Import (paste)'))),
+              PopupMenuItem(value: 'qr', child: Text(_t('ورود با QR', 'Import via QR'))),
             ],
           ),
         ],
