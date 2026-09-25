@@ -10,6 +10,7 @@
 
 import 'dart:async';
 
+import '../models/dns_entry.dart';
 import 'dns_advanced_settings.dart';
 import 'dns_directory.dart';
 import 'dns_ping_service.dart';

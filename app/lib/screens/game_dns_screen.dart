@@ -136,7 +136,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       case 'red':
         return AppColors.danger;
       default:
-        return AppColors.muted2;
+        return AppColors.muted2(context);
     }
   }
 
@@ -356,22 +356,22 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     final visible = _visibleEntries;
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.bg(context),
       appBar: AppBar(
-        backgroundColor: AppColors.surface,
+        backgroundColor: AppColors.surface(context),
         title: Text(_t('DNS گیم', 'Game DNS')),
         actions: [
           IconButton(
-            icon: Icon(_showSearch ? Icons.close : Icons.search, color: AppColors.fg),
+            icon: Icon(_showSearch ? Icons.close : Icons.search, color: AppColors.fg(context)),
             onPressed: () => setState(() => _showSearch = !_showSearch),
           ),
           IconButton(
-            icon: Icon(Icons.speed, color: AppColors.fg),
+            icon: Icon(Icons.speed, color: AppColors.fg(context)),
             tooltip: _t('پینگ همه', 'Ping all'),
             onPressed: _testingAll ? null : _pingAllVisible,
           ),
           PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert, color: AppColors.fg),
+            icon: Icon(Icons.more_vert, color: AppColors.fg(context)),
             onSelected: (v) {
               if (v == 'export') _exportRegistry();
               if (v == 'import') _importRegistry();
@@ -393,7 +393,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
           _buildSortRow(visible.length),
           Expanded(
             child: visible.isEmpty
-                ? Center(child: Text(_t('چیزی پیدا نشد', 'Nothing found'), style: TextStyle(color: AppColors.muted)))
+                ? Center(child: Text(_t('چیزی پیدا نشد', 'Nothing found'), style: TextStyle(color: AppColors.muted(context))))
                 : ListView.builder(
                     itemCount: visible.length,
                     itemBuilder: (context, i) => _buildTile(visible[i]),
@@ -409,14 +409,14 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       child: TextField(
         controller: _searchController,
-        style: TextStyle(color: AppColors.fg),
+        style: TextStyle(color: AppColors.fg(context)),
         decoration: InputDecoration(
           hintText: _t('جستجو (نام، IP، کشور، ارائه‌دهنده)', 'Search (name, IP, country, provider)'),
-          hintStyle: TextStyle(color: AppColors.muted2),
+          hintStyle: TextStyle(color: AppColors.muted2(context)),
           filled: true,
-          fillColor: AppColors.elevated,
+          fillColor: AppColors.elevated(context),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-          prefixIcon: Icon(Icons.search, color: AppColors.muted2),
+          prefixIcon: Icon(Icons.search, color: AppColors.muted2(context)),
         ),
         onChanged: (v) => setState(() => _searchQuery = v),
       ),
@@ -429,9 +429,9 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       margin: const EdgeInsets.fromLTRB(12, 10, 12, 4),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.elevated,
+        color: AppColors.elevated(context),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppColors.border(context)),
       ),
       child: Row(
         children: [
@@ -439,7 +439,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
             width: 10,
             height: 10,
             decoration: BoxDecoration(
-              color: active != null ? _stabilityColor(_stabilityOf(active.id)) : AppColors.muted2,
+              color: active != null ? _stabilityColor(_stabilityOf(active.id)) : AppColors.muted2(context),
               shape: BoxShape.circle,
             ),
           ),
@@ -450,14 +450,14 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               children: [
                 Text(
                   active?.name ?? _t('هیچ DNS فعالی انتخاب نشده', 'No active DNS selected'),
-                  style: TextStyle(color: AppColors.fg, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: AppColors.fg(context), fontWeight: FontWeight.bold),
                 ),
                 if (active != null)
                   Text(
                     '${active.xrayPrimary}'
                     '${_liveOrStoredPing(active.id) != null ? '  ·  ${_liveOrStoredPing(active.id)}ms' : ''}'
                     '${_liveOrStoredJitter(active.id) != null ? '  ·  jitter ${_liveOrStoredJitter(active.id)}ms' : ''}',
-                    style: TextStyle(color: AppColors.muted, fontSize: 12),
+                    style: TextStyle(color: AppColors.muted(context), fontSize: 12),
                   ),
               ],
             ),
@@ -474,12 +474,12 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   Widget _buildBoosterPanel() {
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(color: AppColors.surface(context), borderRadius: BorderRadius.circular(12)),
       child: Column(
         children: [
           ListTile(
             dense: true,
-            title: Text(_t('حالت بازی', 'Game Mode'), style: TextStyle(color: AppColors.fg)),
+            title: Text(_t('حالت بازی', 'Game Mode'), style: TextStyle(color: AppColors.fg(context))),
             leading: Switch(
               value: _booster['enabled'] == true,
               onChanged: (v) async {
@@ -488,7 +488,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               },
             ),
             trailing: IconButton(
-              icon: Icon(_boosterExpanded ? Icons.expand_less : Icons.expand_more, color: AppColors.muted2),
+              icon: Icon(_boosterExpanded ? Icons.expand_less : Icons.expand_more, color: AppColors.muted2(context)),
               onPressed: () => setState(() => _boosterExpanded = !_boosterExpanded),
             ),
           ),
@@ -496,7 +496,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
             ..._boosterToggleKeys.map((k) => CheckboxListTile(
                   dense: true,
                   value: _booster[k] == true,
-                  title: Text(_boosterLabel(k), style: TextStyle(color: AppColors.muted, fontSize: 13)),
+                  title: Text(_boosterLabel(k), style: TextStyle(color: AppColors.muted(context), fontSize: 13)),
                   onChanged: (v) async {
                     await GameBoosterSettings.set(k, v ?? false);
                     await _load();
@@ -541,9 +541,9 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Column(
         children: [
-          LinearProgressIndicator(value: v, backgroundColor: AppColors.elevated, color: AppColors.accent),
+          LinearProgressIndicator(value: v, backgroundColor: AppColors.elevated(context), color: AppColors.accent),
           const SizedBox(height: 4),
-          Text('$_tested / $_total', style: TextStyle(color: AppColors.muted2, fontSize: 11)),
+          Text('$_tested / $_total', style: TextStyle(color: AppColors.muted2(context), fontSize: 11)),
         ],
       ),
     );
@@ -570,10 +570,10 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
           return Padding(
             padding: const EdgeInsets.only(right: 6),
             child: ChoiceChip(
-              label: Text(c.$2, style: TextStyle(fontSize: 12, color: selected ? AppColors.bg : AppColors.fg)),
+              label: Text(c.$2, style: TextStyle(fontSize: 12, color: selected ? AppColors.bg(context) : AppColors.fg(context))),
               selected: selected,
               selectedColor: AppColors.accent,
-              backgroundColor: AppColors.elevated,
+              backgroundColor: AppColors.elevated(context),
               onSelected: (_) => setState(() => _category = c.$1),
             ),
           );
@@ -587,14 +587,14 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
       child: Row(
         children: [
-          Text('$count ${_t('نتیجه', 'results')}', style: TextStyle(color: AppColors.muted2, fontSize: 12)),
+          Text('$count ${_t('نتیجه', 'results')}', style: TextStyle(color: AppColors.muted2(context), fontSize: 12)),
           const Spacer(),
-          Text(_t('مرتب‌سازی: ', 'Sort: '), style: TextStyle(color: AppColors.muted2, fontSize: 12)),
+          Text(_t('مرتب‌سازی: ', 'Sort: '), style: TextStyle(color: AppColors.muted2(context), fontSize: 12)),
           DropdownButton<_SortMode>(
             value: _sortMode,
-            dropdownColor: AppColors.surface,
+            dropdownColor: AppColors.surface(context),
             underline: const SizedBox(),
-            style: TextStyle(color: AppColors.fg, fontSize: 12),
+            style: TextStyle(color: AppColors.fg(context), fontSize: 12),
             items: [
               DropdownMenuItem(value: _SortMode.ping, child: Text(_t('پینگ', 'Ping'))),
               DropdownMenuItem(value: _SortMode.name, child: Text(_t('نام', 'Name'))),
@@ -629,7 +629,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       title: Text(
         e.name,
         style: TextStyle(
-          color: isActive ? AppColors.accent : AppColors.fg,
+          color: isActive ? AppColors.accent : AppColors.fg(context),
           fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
         ),
         maxLines: 1,
@@ -640,7 +640,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
         '${e.xrayPrimary.isNotEmpty ? ' · ${e.xrayPrimary}' : ''}'
         '${ping != null ? ' · ${ping}ms' : ''}'
         '${jitter != null ? ' · j${jitter}ms' : ''}',
-        style: TextStyle(color: AppColors.muted2, fontSize: 11),
+        style: TextStyle(color: AppColors.muted2(context), fontSize: 11),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
@@ -649,7 +649,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
         children: [
           if (pinned) Icon(Icons.push_pin, size: 16, color: AppColors.accent),
           IconButton(
-            icon: Icon(Icons.more_vert, size: 18, color: AppColors.muted2),
+            icon: Icon(Icons.more_vert, size: 18, color: AppColors.muted2(context)),
             onPressed: () => _openActionSheet(e),
           ),
         ],
@@ -660,13 +660,13 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   void _openActionSheet(DnsEntry e) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.surface(context),
       builder: (_) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: Icon(Icons.check_circle_outline, color: AppColors.fg),
+              leading: Icon(Icons.check_circle_outline, color: AppColors.fg(context)),
               title: Text(_t('تنظیم به‌عنوان اصلی', 'Set as primary')),
               onTap: () {
                 Navigator.pop(context);
@@ -674,7 +674,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               },
             ),
             ListTile(
-              leading: Icon(_statFor(e.id).pinned ? Icons.push_pin : Icons.push_pin_outlined, color: AppColors.fg),
+              leading: Icon(_statFor(e.id).pinned ? Icons.push_pin : Icons.push_pin_outlined, color: AppColors.fg(context)),
               title: Text(_statFor(e.id).pinned ? _t('برداشتن پین', 'Unpin') : _t('پین کردن', 'Pin')),
               onTap: () {
                 Navigator.pop(context);
@@ -682,7 +682,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               },
             ),
             ListTile(
-              leading: Icon(Icons.speed, color: AppColors.fg),
+              leading: Icon(Icons.speed, color: AppColors.fg(context)),
               title: Text(_t('پینگ', 'Ping')),
               onTap: () {
                 Navigator.pop(context);
@@ -690,7 +690,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               },
             ),
             ListTile(
-              leading: Icon(Icons.copy, color: AppColors.fg),
+              leading: Icon(Icons.copy, color: AppColors.fg(context)),
               title: Text(_t('کپی IP', 'Copy IP')),
               onTap: () {
                 Navigator.pop(context);
@@ -698,7 +698,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               },
             ),
             ListTile(
-              leading: Icon(Icons.visibility_off_outlined, color: AppColors.fg),
+              leading: Icon(Icons.visibility_off_outlined, color: AppColors.fg(context)),
               title: Text(_t('مخفی کردن', 'Hide')),
               onTap: () {
                 Navigator.pop(context);
