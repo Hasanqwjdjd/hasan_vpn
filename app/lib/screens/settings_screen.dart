@@ -13,6 +13,8 @@ import 'live_monitor_screen.dart';
 import 'test_settings_screen.dart';
 import 'hev_engine_screen.dart';
 import 'xray_settings_screen.dart';
+import 'routing_screen.dart';
+import 'geo_assets_screen.dart';
 import 'per_app_proxy_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -38,6 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late String _lang;
   String _vpnMode = 'vpn';
   bool _connectFastest = false;
+  bool _autoConnectBoot = false;
   bool _checkingUpdate = false;
 
   @override
@@ -248,6 +251,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 await SettingsService.setConnectFastest(v);
               },
             ),
+            SwitchListTile(
+              title: Text(_t('اتصال خودکار هنگام روشن شدن', 'Auto-connect on boot')),
+              subtitle: Text(
+                _t(
+                  'بدون نیاز به تعامل کاربر پس از BOOT_COMPLETED',
+                  'No user interaction required after BOOT_COMPLETED',
+                ),
+                style: TextStyle(color: AppColors.muted(context), fontSize: 11),
+              ),
+              value: _autoConnectBoot,
+              activeColor: AppColors.accent,
+              onChanged: (v) async {
+                setState(() => _autoConnectBoot = v);
+                await SettingsService.setAutoConnectBoot(v);
+              },
+            ),
           ),
           const SizedBox(height: 16),
 
@@ -312,8 +331,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.memory,
                   title: _t('تنظیمات هسته Xray', 'Xray core settings'),
                   subtitle: _t(
-                    'Sniffing، لاگ، LAN، HTTP inbound',
-                    'Sniffing, log, LAN, HTTP inbound',
+                    'VPN، DNS، Mux، Fragment، Observatory',
+                    'VPN, DNS, Mux, Fragment, Observatory',
                   ),
                   onTap: () {
                     Navigator.push(
@@ -321,6 +340,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       MaterialPageRoute(
                         builder: (_) =>
                             XraySettingsScreen(language: _lang),
+                      ),
+                    );
+                  },
+                ),
+                Divider(height: 1, color: AppColors.border(context)),
+                _navRow(
+                  context,
+                  icon: Icons.alt_route,
+                  title: _t('مسیریابی', 'Routing'),
+                  subtitle: _t(
+                    'قوانین دامنه/IP، استراتژی، LAN bypass',
+                    'Domain/IP rules, strategy, LAN bypass',
+                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            RoutingScreen(language: _lang),
+                      ),
+                    );
+                  },
+                ),
+                Divider(height: 1, color: AppColors.border(context)),
+                _navRow(
+                  context,
+                  icon: Icons.map_outlined,
+                  title: _t('فایل‌های Geo', 'Geo assets'),
+                  subtitle: _t(
+                    'geoip.dat، geosite.dat، دانلود/حذف',
+                    'geoip.dat, geosite.dat, download/delete',
+                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            GeoAssetsScreen(language: _lang),
                       ),
                     );
                   },

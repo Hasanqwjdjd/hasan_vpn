@@ -15,6 +15,8 @@ import 'socks_probe.dart';
 import 'telemetry_service.dart';
 import 'xray_json.dart';
 import 'xray_settings.dart';
+import 'routing_service.dart';
+import 'geo_assets_service.dart';
 
 class V2RayEngine {
   V2RayEngine._();
@@ -423,12 +425,17 @@ class V2RayEngine {
         return false;
       }
 
-      if (server.protocol != VpnProtocol.xrayJson) {
-        config = await XraySettings.applyToConfig(config);
-      }
+      // BLOCKER 1: every setting must land in the runtime config for ALL
+      // protocols, including full Xray JSON profiles.
+      config = await XraySettings.applyToConfig(config);
+      config = await _applyRoutingRules(config);
+      config = await _applyGeoAssetPaths(config);
 
       config = await _applyGameDns(config);
       config = await _applyGameBooster(config);
+
+      // BLOCKER 2: push MTU / IPv6 / DNS to native VpnTuner before start.
+      await _pushVpnTunParams();
 
       // Per-app proxy: resolve blocked apps based on user's mode
       // (all / blacklist / whitelist) and pass to startConfig.
@@ -745,9 +752,9 @@ class V2RayEngine {
     if (config == null || config.trim().isEmpty) return -2;
 
     try {
-      if (server.protocol != VpnProtocol.xrayJson) {
-        config = await XraySettings.applyToConfig(config);
-      }
+      config = await XraySettings.applyToConfig(config);
+      config = await _applyRoutingRules(config);
+      config = await _applyGeoAssetPaths(config);
       config = await _applyGameDns(config);
     } catch (_) {}
 
@@ -839,5 +846,108 @@ class V2RayEngine {
       }
     } catch (_) {}
     return 10808;
+  }
+
+  // ------------------------------------------------------------------ settings injection (BLOCKER 1/4)
+
+  /// Merge RoutingService rules into config.routing.rules (prepend).
+  static Future<String> _applyRoutingRules(String config) async {
+    try {
+      final rules = await RoutingService.buildConfigRules();
+      if (rules.isEmpty) return config;
+      final dynamic decoded = jsonDecode(config);
+      if (decoded is! Map) return config;
+      final map = Map<String, dynamic>.from(decoded);
+      final routing = Map<String, dynamic>.from(
+        (map['routing'] is Map)
+            ? Map<String, dynamic>.from(map['routing'] as Map)
+            : <String, dynamic>{'domainStrategy': 'AsIs'},
+      );
+      final existing = <dynamic>[];
+      if (routing['rules'] is List) {
+        existing.addAll(List<dynamic>.from(routing['rules'] as List));
+      }
+      // Prepend user/default rules so they take priority over core defaults.
+      routing['rules'] = <dynamic>[...rules, ...existing];
+      final strategy = await RoutingService.getDomainStrategy();
+      routing['domainStrategy'] = strategy;
+      map['routing'] = routing;
+      return jsonEncode(map);
+    } catch (e) {
+      debugPrint('applyRoutingRules error: $e');
+      return config;
+    }
+  }
+
+  /// Geo assets: do NOT inject unknown top-level keys into the Xray JSON
+  /// (core rejects them). Instead, tell native to copy downloaded .dat
+  /// files into context.filesDir, which is XRAY_LOCATION_ASSET
+  /// (see forked XrayCoreManager + Utilities.getUserAssetsPath).
+  static Future<String> _applyGeoAssetPaths(String config) async {
+    try {
+      final geoip = await GeoAssetsService.pathFor('geoip.dat');
+      final dir = geoip.contains('/')
+          ? geoip.substring(0, geoip.lastIndexOf('/'))
+          : '';
+      if (dir.isNotEmpty) {
+        await _deviceChannel.invokeMethod('setAssetDir', dir);
+      }
+    } catch (e) {
+      debugPrint('applyGeoAssetPaths error: $e');
+    }
+    // Config JSON is returned unchanged — no _hasan* keys.
+    return config;
+  }
+
+  /// Push MTU / IPv6 / VPN DNS to Kotlin VpnTuner via device MethodChannel.
+  static Future<void> _pushVpnTunParams() async {
+    try {
+      final s = await XraySettings.load();
+      final mtu = (s['mtu'] as num?)?.toInt() ?? 1500;
+      final enableIpv6 = s['enableIpv6'] == true;
+      final dns = (s['vpnDns']?.toString() ?? '1.1.1.1,8.8.8.8')
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      final dns6 = (s['vpnDns6']?.toString() ?? '')
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      await _deviceChannel.invokeMethod('setVpnTunParams', <String, dynamic>{
+        'mtu': mtu,
+        'enableIpv6': enableIpv6,
+        'dns': dns,
+        'dns6': dns6,
+      });
+      // Also pass Hev CLI params when Hev TUN is selected.
+      if (s['useHevTun'] == true) {
+        await _deviceChannel.invokeMethod('setHevParams', <String, dynamic>{
+          'logLevel': s['hevLogLevel']?.toString() ?? 'warn',
+          'tcpTimeout': (s['hevTcpRwTimeout'] as num?)?.toInt() ?? 60,
+          'udpTimeout': (s['hevUdpRwTimeout'] as num?)?.toInt() ?? 60,
+          'mtu': mtu,
+        });
+        // Call site for HevLauncher.start (DEFECT 2): only succeeds if the
+        // hev-socks5-tunnel binary is present on device.
+        try {
+          final ok = await _deviceChannel.invokeMethod<bool>('startHev', '');
+          debugPrint('startHev result=$ok');
+        } catch (e) {
+          debugPrint('startHev failed: $e');
+        }
+      }
+      // Geo asset dir for core
+      final assetDir = await GeoAssetsService.pathFor('geoip.dat');
+      final dir = assetDir.contains('/')
+          ? assetDir.substring(0, assetDir.lastIndexOf('/'))
+          : '';
+      if (dir.isNotEmpty) {
+        await _deviceChannel.invokeMethod('setAssetDir', dir);
+      }
+    } catch (e) {
+      debugPrint('pushVpnTunParams error: $e');
+    }
   }
 }

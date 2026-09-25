@@ -409,4 +409,22 @@ class SettingsService {
     } catch (_) {}
   }
 
+
+  // --------------------------------------------------------- Auto-connect on boot (A8)
+  static const String _autoConnectBootKey = 'settings_auto_connect_boot_v1';
+  static Future<bool> getAutoConnectBoot() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      return p.getBool(_autoConnectBootKey) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+  static Future<void> setAutoConnectBoot(bool v) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setBool(_autoConnectBootKey, v);
+    } catch (_) {}
+  }
+
 }

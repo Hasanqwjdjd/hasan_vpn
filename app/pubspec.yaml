@@ -18,9 +18,16 @@ dependencies:
   package_info_plus: ^8.0.0
   mobile_scanner: ^5.2.3
   qr_flutter: ^4.1.0
+  path_provider: ^2.1.0
 
 dependency_overrides:
-  flutter_vless_android: 1.1.5
+  # DEFECT 6 FIXED: path is relative to the directory that contains THIS
+  # pubspec at `flutter pub get` time. CI copies the fork to
+  # build_src/plugins/flutter_vless_android before pub get, and this
+  # pubspec is copied to build_src/pubspec.yaml — so the resolved path is
+  # build_src/plugins/flutter_vless_android.
+  flutter_vless_android:
+    path: plugins/flutter_vless_android
 
 dev_dependencies:
   flutter_lints: ^3.0.0

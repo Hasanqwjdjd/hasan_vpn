@@ -239,6 +239,9 @@ jobs:
           mkdir -p "$KT_DIR"
           rm -f build_src/android/app/src/main/java/com/hasan/hasan_vpn/MainActivity.java 2>/dev/null || true
           cp -f android-extra/kotlin/MainActivity.kt "$KT_DIR/MainActivity.kt"
+          cp -f android-extra/kotlin/VpnTuner.kt "$KT_DIR/VpnTuner.kt"
+          cp -f android-extra/kotlin/HevLauncher.kt "$KT_DIR/HevLauncher.kt"
+          cp -f android-extra/kotlin/BootReceiver.kt "$KT_DIR/BootReceiver.kt"
           cp -f android-extra/kotlin/AetherService.kt "$KT_DIR/AetherService.kt"
           cp -f android-extra/kotlin/TelemetryNotifier.kt "$KT_DIR/TelemetryNotifier.kt"
           cp -f android-extra/kotlin/SafeLog.kt "$KT_DIR/SafeLog.kt"
@@ -402,6 +405,7 @@ jobs:
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
               <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
           """
           if 'android.permission.INTERNET' not in text:
               text = text.replace("<application", perms + "    <application", 1)
@@ -427,7 +431,22 @@ jobs:
           """
               text = text.replace("</application>", svc + "</application>", 1)
 
+          
+          if 'BootReceiver' not in text:
+              boot = """              <receiver
+                  android:name="com.hasan.hasan_vpn.BootReceiver"
+                  android:enabled="true"
+                  android:exported="true">
+                  <intent-filter>
+                      <action android:name="android.intent.action.BOOT_COMPLETED" />
+                      <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                  </intent-filter>
+              </receiver>
+          """
+              text = text.replace("</application>", boot + "</application>", 1)
+
           if 'QuickConnectWidget' not in text:
+
               widget = """              <receiver
                   android:name="com.hasan.hasan_vpn.QuickConnectWidget1x1"
                   android:enabled="true"
@@ -467,6 +486,19 @@ jobs:
           with open(path, "w", encoding="utf-8") as f:
               f.write(text)
           PYEOF
+
+      - name: Copy forked flutter_vless_android into build tree
+        run: |
+          set -e
+          rm -rf build_src/plugins
+          mkdir -p build_src/plugins
+          cp -a android-extra/plugins/flutter_vless_android \
+            build_src/plugins/flutter_vless_android
+          # Safety: verify the fork really contains VpnTuner hook
+          grep -q "VpnTuner" \
+            build_src/plugins/flutter_vless_android/android/src/main/kotlin/com/github/tfox/flutter_vless/xray/service/XrayVPNService.kt \
+            || (echo "FATAL: VpnTuner hook missing from fork" && exit 1)
+          echo "Forked plugin copied and verified"
 
       - name: Flutter pub get
         working-directory: build_src

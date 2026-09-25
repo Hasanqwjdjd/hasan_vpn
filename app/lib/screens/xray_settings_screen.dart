@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/app_colors.dart';
 import '../services/xray_settings.dart';
 
+/// Full PattNG/v2rayNG-style Xray / VPN settings surface (Tasks A1–A5).
 class XraySettingsScreen extends StatefulWidget {
   final String language;
 
@@ -16,7 +18,7 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
   Map<String, dynamic> _s = Map<String, dynamic>.from(XraySettings.defaults);
   bool _loading = true;
 
-  bool get _isFa => widget.language == 'fa';
+  bool get _isFa => widget.language.startsWith('fa');
   String _t(String fa, String en) => _isFa ? fa : en;
 
   @override
@@ -39,6 +41,104 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
     await XraySettings.set(key, value);
   }
 
+  Widget _section(String title) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 18, 4, 6),
+        child: Text(title,
+            style: TextStyle(
+                color: AppColors.accent,
+                fontSize: 13,
+                fontWeight: FontWeight.w700)),
+      );
+
+  Widget _sw(String key, String fa, String en, {String? subFa, String? subEn}) {
+    return SwitchListTile(
+      title: Text(_t(fa, en), style: const TextStyle(fontSize: 14)),
+      subtitle: (subFa != null)
+          ? Text(_t(subFa, subEn ?? subFa),
+              style: TextStyle(color: AppColors.muted(context), fontSize: 11))
+          : null,
+      value: _s[key] == true,
+      activeColor: AppColors.accent,
+      onChanged: (v) => _set(key, v),
+    );
+  }
+
+  Widget _numField(String key, String fa, String en,
+      {int min = 0, int max = 99999}) {
+    final ctrl = TextEditingController(text: '${_s[key] ?? ''}');
+    return ListTile(
+      title: Text(_t(fa, en), style: const TextStyle(fontSize: 14)),
+      trailing: SizedBox(
+        width: 90,
+        child: TextField(
+          controller: ctrl,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            border: OutlineInputBorder(
+                borderSide: BorderSide(color: AppColors.border(context))),
+          ),
+          onSubmitted: (v) {
+            final n = int.tryParse(v);
+            if (n != null && n >= min && n <= max) _set(key, n);
+          },
+          onEditingComplete: () {
+            final n = int.tryParse(ctrl.text);
+            if (n != null && n >= min && n <= max) _set(key, n);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _textField(String key, String fa, String en, {String? hint}) {
+    final ctrl = TextEditingController(text: '${_s[key] ?? ''}');
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(_t(fa, en), style: const TextStyle(fontSize: 13)),
+          const SizedBox(height: 4),
+          TextField(
+            controller: ctrl,
+            style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+            decoration: InputDecoration(
+              hintText: hint,
+              isDense: true,
+              border: OutlineInputBorder(
+                  borderSide: BorderSide(color: AppColors.border(context))),
+            ),
+            onSubmitted: (v) => _set(key, v.trim()),
+            onEditingComplete: () => _set(key, ctrl.text.trim()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dropdown(String key, String fa, String en, List<String> options) {
+    final cur = _s[key]?.toString() ?? options.first;
+    return ListTile(
+      title: Text(_t(fa, en), style: const TextStyle(fontSize: 14)),
+      trailing: DropdownButton<String>(
+        value: options.contains(cur) ? cur : options.first,
+        dropdownColor: AppColors.surface(context),
+        items: options
+            .map((o) => DropdownMenuItem(value: o, child: Text(o)))
+            .toList(),
+        onChanged: (v) {
+          if (v != null) _set(key, v);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -46,167 +146,122 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.bg(context),
         elevation: 0,
-        title: Text(_t('تنظیمات هسته Xray', 'Xray Core Settings')),
+        title: Text(_t('تنظیمات هسته / VPN', 'Core / VPN Settings')),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.only(bottom: 32),
               children: [
-                _section(_t('بازرسی ترافیک', 'Traffic sniffing')),
-                SwitchListTile(
-                  title: Text(_t('Sniffing', 'Sniffing')),
-                  subtitle: Text(
-                    _t(
-                      'تشخیص دامنه از ترافیک TLS/HTTP',
-                      'Detect domain from TLS/HTTP traffic',
-                    ),
-                    style: TextStyle(
-                        color: AppColors.muted(context), fontSize: 12),
-                  ),
-                  value: _s['sniffing'] != false,
-                  activeColor: AppColors.accent,
-                  onChanged: (v) => _set('sniffing', v),
-                ),
-                SwitchListTile(
-                  title: Text(_t('فقط مسیر (routeOnly)', 'Route only')),
-                  subtitle: Text(
-                    _t(
-                      'فقط برای routing استفاده شود، مقصد عوض نشود',
-                      'Use for routing only, do not override destination',
-                    ),
-                    style: TextStyle(
-                        color: AppColors.muted(context), fontSize: 12),
-                  ),
-                  value: _s['sniffRouteOnly'] == true,
-                  activeColor: AppColors.accent,
-                  onChanged: _s['sniffing'] == false
-                      ? null
-                      : (v) => _set('sniffRouteOnly', v),
-                ),
-                const SizedBox(height: 12),
-                _section(_t('لاگ', 'Logging')),
-                ListTile(
-                  title: Text(_t('سطح لاگ', 'Log level')),
-                  subtitle: Text(
-                    (_s['logLevel'] ?? 'warning').toString(),
-                    style: TextStyle(color: AppColors.muted(context)),
-                  ),
-                  trailing: DropdownButton<String>(
-                    value: (_s['logLevel'] ?? 'warning').toString(),
-                    dropdownColor: AppColors.elevated(context),
-                    items: const [
-                      DropdownMenuItem(value: 'debug', child: Text('debug')),
-                      DropdownMenuItem(value: 'info', child: Text('info')),
-                      DropdownMenuItem(
-                          value: 'warning', child: Text('warning')),
-                      DropdownMenuItem(value: 'error', child: Text('error')),
-                      DropdownMenuItem(value: 'none', child: Text('none')),
-                    ],
-                    onChanged: (v) {
-                      if (v != null) _set('logLevel', v);
-                    },
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _section(_t('ورودی‌های محلی', 'Local inbounds')),
-                SwitchListTile(
-                  title: Text(_t('اجازه LAN', 'Allow LAN')),
-                  subtitle: Text(
-                    _t(
-                      'دستگاه‌های دیگر در شبکه بتوانند از پروکسی استفاده کنند',
-                      'Other devices on LAN can use this proxy',
-                    ),
-                    style: TextStyle(
-                        color: AppColors.muted(context), fontSize: 12),
-                  ),
-                  value: _s['allowLan'] == true,
-                  activeColor: AppColors.accent,
-                  onChanged: (v) => _set('allowLan', v),
-                ),
-                SwitchListTile(
-                  title: Text(_t('ورودی HTTP', 'HTTP inbound')),
-                  subtitle: Text(
-                    _t(
-                      'پورت HTTP جدا برای برنامه‌هایی که SOCKS نمی‌فهمند',
-                      'Extra HTTP port for apps without SOCKS support',
-                    ),
-                    style: TextStyle(
-                        color: AppColors.muted(context), fontSize: 12),
-                  ),
-                  value: _s['httpInbound'] == true,
-                  activeColor: AppColors.accent,
-                  onChanged: (v) => _set('httpInbound', v),
-                ),
-                ListTile(
-                  title: Text(_t('پورت SOCKS', 'SOCKS port')),
-                  trailing: SizedBox(
-                    width: 90,
-                    child: TextFormField(
-                      initialValue: '${_s['socksPort'] ?? 10808}',
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      onFieldSubmitted: (v) {
-                        final n = int.tryParse(v);
-                        if (n != null && n > 1024 && n < 65535) {
-                          _set('socksPort', n);
-                        }
-                      },
-                    ),
-                  ),
-                ),
-                if (_s['httpInbound'] == true)
-                  ListTile(
-                    title: Text(_t('پورت HTTP', 'HTTP port')),
-                    trailing: SizedBox(
-                      width: 90,
-                      child: TextFormField(
-                        initialValue: '${_s['httpPort'] ?? 10809}',
-                        keyboardType: TextInputType.number,
-                        textAlign: TextAlign.center,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          border: OutlineInputBorder(),
-                        ),
-                        onFieldSubmitted: (v) {
-                          final n = int.tryParse(v);
-                          if (n != null && n > 1024 && n < 65535) {
-                            _set('httpPort', n);
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 24),
-                Text(
-                  _t(
-                    'تغییرات از اتصال بعدی اعمال می‌شوند.',
-                    'Changes apply on the next connection.',
-                  ),
-                  style: TextStyle(
-                    color: AppColors.muted2(context),
-                    fontSize: 12,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
+                // ---- A1 VPN ----
+                _section(_t('تنظیمات VPN', 'VPN Settings')),
+                _sw('enableIpv6', 'فعال‌سازی IPv6', 'Enable IPv6',
+                    subFa: 'افزودن مسیر IPv6 به تونل',
+                    subEn: 'Add IPv6 route to VPN'),
+                _sw('preferIpv6', 'ترجیح IPv6', 'Prefer IPv6',
+                    subFa: 'اولویت حل دامنه به IPv6',
+                    subEn: 'Prefer IPv6 for domain resolution'),
+                _sw('localDns', 'DNS محلی', 'Local DNS'),
+                _sw('fakeDns', 'FakeDNS', 'FakeDNS',
+                    subFa:
+                        'هشدار: FakeDNS ممکن است با برخی اپ‌ها ناسازگار باشد',
+                    subEn:
+                        'Warning: FakeDNS may break some apps (same as PattNG)'),
+                _textField('vpnDns', 'DNS VPN (IPv4)', 'VPN DNS (IPv4)',
+                    hint: '1.1.1.1,8.8.8.8'),
+                _textField('vpnDns6', 'DNS VPN (IPv6)', 'VPN DNS (IPv6)',
+                    hint: '2606:4700:4700::1111'),
+
+                // ---- A2 Advanced ----
+                _section(_t('پیشرفته', 'Advanced')),
+                _numField('mtu', 'MTU', 'VPN MTU', min: 1280, max: 9000),
+                _sw('useHevTun', 'استفاده از Hev TUN', 'Use Hev TUN',
+                    subFa: 'hev-socks5-tunnel به‌جای xray TUN',
+                    subEn: 'hev-socks5-tunnel instead of xray TUN'),
+                _dropdown('hevLogLevel', 'سطح لاگ Hev', 'Hev log level',
+                    ['debug', 'info', 'warn', 'error', 'none']),
+                _numField('hevTcpRwTimeout', 'تایم‌اوت TCP Hev (ثانیه)',
+                    'Hev TCP R/W timeout (s)',
+                    min: 1, max: 600),
+                _numField('hevUdpRwTimeout', 'تایم‌اوت UDP Hev (ثانیه)',
+                    'Hev UDP R/W timeout (s)',
+                    min: 1, max: 600),
+                _sw('sniffing', 'Sniffing', 'Sniffing'),
+                _sw('sniffRouteOnly', 'routeOnly', 'routeOnly',
+                    subFa: 'دامنه فقط برای routing، IP اصلی ارسال شود',
+                    subEn:
+                        'Keep sniffed domain for routing only; still send resolved IP'),
+                _sw('localProxyEnable', 'پروکسی محلی', 'Local proxy'),
+                _numField('localProxyPort', 'پورت پروکسی محلی',
+                    'Local proxy port',
+                    min: 1024, max: 65535),
+                _textField('localProxyUser', 'کاربر پروکسی', 'Proxy user'),
+                _textField('localProxyPass', 'رمز پروکسی', 'Proxy password'),
+                _sw('shareProxyLan', 'اشتراک روی LAN', 'Share proxy on LAN'),
+                _sw('randomPort', 'پورت تصادفی هر بار', 'Random port each toggle'),
+                _dropdown('dnsProtocol', 'پروتکل DNS', 'DNS protocol',
+                    ['udp', 'tcp', 'https', 'quic']),
+                _textField('dohUrl', 'آدرس DoH', 'DoH URL',
+                    hint: 'https://cloudflare-dns.com/dns-query'),
+                _textField('directDns', 'DNS مستقیم', 'Direct DNS'),
+                _textField('dnsHosts', 'نگاشت دامنه (domain:ip,...)',
+                    'DNS hosts (domain:ip,...)'),
+
+                // ---- A3 Mux ----
+                _section(_t('Mux', 'Mux')),
+                _sw('muxEnable', 'فعال‌سازی Mux', 'Enable Mux'),
+                _numField('muxConcurrency', 'هم‌زمانی TCP', 'TCP concurrency',
+                    min: 1, max: 1024),
+                _numField('muxXudpConcurrency', 'هم‌زمانی XUDP',
+                    'XUDP concurrency',
+                    min: 1, max: 1024),
+                _dropdown('muxXudpQuic', 'QUIC در Mux', 'QUIC in Mux',
+                    ['reject', 'allow', 'skip']),
+
+                // ---- A4 Fragment ----
+                _section(_t('Fragment', 'Fragment')),
+                _sw('fragmentEnable', 'فعال‌سازی Fragment', 'Enable Fragment'),
+                _textField('fragmentPackets', 'محدوده پکت', 'Packet ranges',
+                    hint: 'tlshello یا 1-3'),
+                _textField('fragmentLength', 'طول پکت (min-max)',
+                    'Packet length (min-max)',
+                    hint: '100-200'),
+                _textField('fragmentInterval', 'فاصله پکت (min-max)',
+                    'Packet interval (min-max)',
+                    hint: '10-20'),
+                _numField('fragmentMaxSplit', 'حداکثر split', 'Max split count',
+                    min: 0, max: 256),
+
+                // ---- A5 Observatory ----
+                _section(_t('Observatory / پیش‌بررسی اتصال',
+                    'Observatory / Connection pre-check')),
+                _sw('observatoryEnable', 'فعال‌سازی Observatory',
+                    'Enable Observatory'),
+                _numField('leastPingInterval', 'بازه leastPing (ثانیه)',
+                    'leastPing interval (s)',
+                    min: 30, max: 3600),
+                _numField('leastLoadInterval', 'بازه leastLoad (ثانیه)',
+                    'leastLoad interval (s)',
+                    min: 30, max: 3600),
+                _dropdown('leastLoadMethod', 'متد HTTP leastLoad',
+                    'leastLoad HTTP method', ['HEAD', 'GET']),
+                _numField('leastLoadSample', 'تعداد نمونه leastLoad',
+                    'leastLoad sample count',
+                    min: 1, max: 20),
+                _numField('leastLoadTimeout', 'تایم‌اوت leastLoad (ثانیه)',
+                    'leastLoad timeout (s)',
+                    min: 1, max: 60),
+                _numField('maxFailedAttempts', 'حداکثر تلاش ناموفق',
+                    'Max failed attempts',
+                    min: 1, max: 20),
+
+                _section(_t('سایر', 'Other')),
+                _dropdown('domainStrategy', 'استراتژی دامنه', 'Domain strategy',
+                    ['AsIs', 'IPIfNonMatch', 'IPOnDemand']),
+                _dropdown('logLevel', 'سطح لاگ', 'Log level',
+                    ['debug', 'info', 'warning', 'error', 'none']),
               ],
             ),
     );
   }
-
-  Widget _section(String title) => Padding(
-        padding: const EdgeInsets.only(bottom: 4, top: 4),
-        child: Text(
-          title,
-          style: TextStyle(
-            color: AppColors.accent,
-            fontWeight: FontWeight.w700,
-            fontSize: 13,
-          ),
-        ),
-      );
 }

@@ -124,6 +124,48 @@ class MainActivity : FlutterActivity() {
                             }
                         }.start()
                     }
+                    // BLOCKER 2 — MTU / IPv6 / DNS for VpnService.Builder
+                    "setVpnTunParams" -> {
+                        val mtu = call.argument<Int>("mtu")
+                        val enableIpv6 = call.argument<Boolean>("enableIpv6")
+                        @Suppress("UNCHECKED_CAST")
+                        val dns = call.argument<List<String>>("dns")
+                        @Suppress("UNCHECKED_CAST")
+                        val dns6 = call.argument<List<String>>("dns6")
+                        VpnTuner.update(mtu, enableIpv6, dns, dns6)
+                        VpnTuner.persist(applicationContext)
+                        result.success(true)
+                    }
+                    // BLOCKER 4 — geo asset directory the core reads
+                    "setAssetDir" -> {
+                        val dir = (call.arguments as? String)
+                            ?: call.argument<String>("dir")
+                            ?: ""
+                        VpnTuner.setAssetDir(dir)
+                        VpnTuner.persist(applicationContext)
+                        VpnTuner.ensureAssetSymlinks(applicationContext)
+                        result.success(true)
+                    }
+                    // BLOCKER 3 — Hev TUN CLI params
+                    "setHevParams" -> {
+                        val logLevel = call.argument<String>("logLevel")
+                        val tcp = call.argument<Int>("tcpTimeout")
+                        val udp = call.argument<Int>("udpTimeout")
+                        val mtu = call.argument<Int>("mtu")
+                        HevLauncher.update(logLevel, tcp, udp, mtu)
+                        result.success(true)
+                    }
+                    "startHev" -> {
+                        val cfg = call.argument<String>("configPath") ?: ""
+                        Thread {
+                            val ok = HevLauncher.start(applicationContext, cfg)
+                            runOnUiThread { result.success(ok) }
+                        }.start()
+                    }
+                    "stopHev" -> {
+                        HevLauncher.stop()
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }

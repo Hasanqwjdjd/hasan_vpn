@@ -366,7 +366,167 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     }
   }
 
+
+  /// Edit group: rename + list/add/remove configs (Task D).
+  Future<void> _editGroup(Subscription sub) async {
+    final nameCtrl = TextEditingController(text: sub.name);
+    final links = List<String>.from(sub.cachedLinks);
+    final addedCtrl = TextEditingController();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            return AlertDialog(
+              backgroundColor: AppColors.surface(ctx),
+              title: Text(
+                _t('ویرایش گروه', 'Edit group'),
+                style: TextStyle(color: AppColors.fg(ctx), fontSize: 16),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_t('نام گروه', 'Group name'),
+                          style: TextStyle(
+                              color: AppColors.muted(ctx), fontSize: 12)),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: nameCtrl,
+                        style: TextStyle(
+                            color: AppColors.fg(ctx), fontSize: 13),
+                        decoration: InputDecoration(
+                          enabledBorder: OutlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: AppColors.border(ctx))),
+                          border: OutlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: AppColors.border(ctx))),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        _t('کانفیگ‌های داخل گروه (${links.length})',
+                            'Configs in group (${links.length})'),
+                        style: TextStyle(
+                            color: AppColors.muted(ctx), fontSize: 12),
+                      ),
+                      const SizedBox(height: 6),
+                      if (links.isEmpty)
+                        Text(_t('خالی', 'Empty'),
+                            style: TextStyle(
+                                color: AppColors.muted2(ctx), fontSize: 12))
+                      else
+                        ...List.generate(links.length, (i) {
+                          final link = links[i];
+                          final short = link.length > 48
+                              ? '${link.substring(0, 48)}…'
+                              : link;
+                          return ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(short,
+                                style: TextStyle(
+                                    color: AppColors.fg(ctx),
+                                    fontSize: 11),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.close,
+                                  color: AppColors.danger, size: 16),
+                              onPressed: () {
+                                setLocal(() => links.removeAt(i));
+                              },
+                            ),
+                          );
+                        }),
+                      const SizedBox(height: 10),
+                      Text(
+                        _t(
+                          'افزودن کانفیگ (هر خط یکی: vless/vmess/trojan/ss/hysteria2 یا JSON)',
+                          'Add configs (one per line: vless/vmess/trojan/ss/hysteria2 or JSON)',
+                        ),
+                        style: TextStyle(
+                            color: AppColors.muted(ctx), fontSize: 11),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: addedCtrl,
+                        maxLines: 4,
+                        style: TextStyle(
+                            color: AppColors.fg(ctx), fontSize: 12),
+                        decoration: InputDecoration(
+                          hintText: 'vless://...\nvmess://...',
+                          hintStyle: TextStyle(
+                              color: AppColors.muted2(ctx), fontSize: 11),
+                          enabledBorder: OutlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: AppColors.border(ctx))),
+                          border: OutlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: AppColors.border(ctx))),
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () {
+                            final raw = addedCtrl.text.trim();
+                            if (raw.isEmpty) return;
+                            final servers =
+                                SubscriptionService.parseContent(raw, sub.id);
+                            setLocal(() {
+                              for (final srv in servers) {
+                                final sl = srv.shareLink;
+                                if (sl.isNotEmpty && !links.contains(sl)) {
+                                  links.add(sl);
+                                }
+                              }
+                              addedCtrl.clear();
+                            });
+                          },
+                          icon: const Icon(Icons.add, size: 16),
+                          label: Text(_t('افزودن', 'Add')),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(_t('لغو', 'Cancel'),
+                      style: TextStyle(color: AppColors.muted(ctx))),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: Text(_t('ذخیره', 'Save'),
+                      style: const TextStyle(color: AppColors.accent)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (ok != true) return;
+    final newName = nameCtrl.text.trim();
+    if (newName.isNotEmpty) sub.name = newName;
+    sub.cachedLinks = links;
+    sub.serverCount = links.length;
+    sub.lastUpdated = DateTime.now();
+    await SubscriptionService.save(_subs);
+    widget.onChanged(_subs);
+    if (mounted) setState(() {});
+  }
+
   Future<void> _delete(Subscription sub) async {
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -662,6 +822,14 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                                   color: AppColors.muted(context), size: 18),
                               onPressed: () => _shareSub(s),
                             ),
+                          const SizedBox(width: 6),
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            icon: Icon(Icons.edit_outlined,
+                                color: AppColors.muted(context), size: 18),
+                            onPressed: () => _editGroup(s),
+                          ),
                           const SizedBox(width: 6),
                           IconButton(
                             padding: EdgeInsets.zero,

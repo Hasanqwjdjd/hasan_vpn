@@ -2,16 +2,70 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// تنظیمات هسته Xray که روی کانفیگ اعمال می‌شوند.
+/// Core Xray / VPN settings applied at config-generation time.
+/// Keys and defaults mirror v2rayNG / PattNG preference semantics
+/// (see 2dust/v2rayNG SettingsManager + preference XML).
 class XraySettings {
   XraySettings._();
 
-  static const String _key = 'xray_core_settings_v1';
+  static const String _key = 'xray_core_settings_v2';
 
+  /// Defaults aligned with v2rayNG / PattNG common defaults.
   static const Map<String, dynamic> defaults = {
+    // ---- VPN / DNS (A1) ----
+    'enableIpv6': false,
+    'preferIpv6': false,
+    'localDns': false,
+    'fakeDns': false,
+    'vpnDns': '1.1.1.1,8.8.8.8',
+    'vpnDns6': '2606:4700:4700::1111,2001:4860:4860::8888',
+
+    // ---- Advanced (A2) ----
+    'mtu': 1500,
+    'useHevTun': false,
+    'hevLogLevel': 'warn',
+    'hevTcpRwTimeout': 60,
+    'hevUdpRwTimeout': 60,
     'sniffing': true,
     'sniffRouteOnly': false,
-    'logLevel': 'warning', // debug | info | warning | error | none
+    'localProxyEnable': false,
+    'localProxyPort': 10809,
+    'localProxyUser': '',
+    'localProxyPass': '',
+    'shareProxyLan': false,
+    'randomPort': false,
+    'dnsProtocol': 'udp',
+    'dohUrl': 'https://cloudflare-dns.com/dns-query',
+    'directDns': '1.1.1.1',
+    'dnsHosts': '',
+
+    // ---- Mux (A3) ----
+    'muxEnable': false,
+    'muxConcurrency': 8,
+    'muxXudpConcurrency': 8,
+    'muxXudpQuic': 'reject',
+
+    // ---- Fragment (A4) ----
+    'fragmentEnable': false,
+    'fragmentPackets': 'tlshello',
+    'fragmentLength': '100-200',
+    'fragmentInterval': '10-20',
+    'fragmentMaxSplit': 0,
+
+    // ---- Observatory (A5) ----
+    'observatoryEnable': false,
+    'leastPingInterval': 300,
+    'leastLoadInterval': 300,
+    'leastLoadMethod': 'HEAD',
+    'leastLoadSample': 3,
+    'leastLoadTimeout': 5,
+    'maxFailedAttempts': 3,
+
+    // ---- Routing domainStrategy ----
+    'domainStrategy': 'AsIs',
+
+    // ---- Legacy / existing ----
+    'logLevel': 'warning',
     'allowLan': false,
     'httpInbound': false,
     'httpPort': 10809,
@@ -21,7 +75,21 @@ class XraySettings {
   static Future<Map<String, dynamic>> load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_key);
-    if (raw == null) return Map<String, dynamic>.from(defaults);
+    if (raw == null) {
+      final old = prefs.getString('xray_core_settings_v1');
+      if (old != null) {
+        try {
+          final decoded = jsonDecode(old);
+          if (decoded is Map) {
+            final map = Map<String, dynamic>.from(defaults);
+            map.addAll(Map<String, dynamic>.from(decoded));
+            await prefs.setString(_key, jsonEncode(map));
+            return map;
+          }
+        } catch (_) {}
+      }
+      return Map<String, dynamic>.from(defaults);
+    }
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return Map<String, dynamic>.from(defaults);
@@ -44,7 +112,14 @@ class XraySettings {
     await save(s);
   }
 
-  /// اعمال تنظیمات روی یک کانفیگ JSON هسته
+  static Future<T?> get<T>(String key) async {
+    final s = await load();
+    final v = s[key];
+    if (v is T) return v;
+    return null;
+  }
+
+  /// Apply settings onto a core JSON config string.
   static Future<String> applyToConfig(String configJson) async {
     try {
       final settings = await load();
@@ -52,17 +127,12 @@ class XraySettings {
       if (decoded is! Map) return configJson;
       final map = Map<String, dynamic>.from(decoded);
 
-      // ---- log ----
       final level = settings['logLevel']?.toString() ?? 'warning';
-      if (level == 'none') {
-        map['log'] = {'loglevel': 'none'};
-      } else {
-        map['log'] = {'loglevel': level};
-      }
+      map['log'] = {'loglevel': level == 'none' ? 'none' : level};
 
-      // ---- inbounds ----
       final socksPort = (settings['socksPort'] as num?)?.toInt() ?? 10808;
-      final allowLan = settings['allowLan'] == true;
+      final allowLan = settings['shareProxyLan'] == true ||
+          settings['allowLan'] == true;
       final listen = allowLan ? '0.0.0.0' : '127.0.0.1';
       final sniffingOn = settings['sniffing'] != false;
       final routeOnly = settings['sniffRouteOnly'] == true;
@@ -86,20 +156,31 @@ class XraySettings {
         },
       ];
 
-      if (settings['httpInbound'] == true) {
-        final httpPort = (settings['httpPort'] as num?)?.toInt() ?? 10809;
+      final httpOn = settings['localProxyEnable'] == true ||
+          settings['httpInbound'] == true;
+      if (httpOn) {
+        final httpPort =
+            (settings['localProxyPort'] as num?)?.toInt() ??
+                (settings['httpPort'] as num?)?.toInt() ??
+                10809;
+        final user = settings['localProxyUser']?.toString() ?? '';
+        final pass = settings['localProxyPass']?.toString() ?? '';
+        final httpSettings = <String, dynamic>{};
+        if (user.isNotEmpty) {
+          httpSettings['accounts'] = [
+            {'user': user, 'pass': pass},
+          ];
+        }
         inbounds.add({
           'tag': 'http-in',
           'port': httpPort,
           'listen': listen,
           'protocol': 'http',
-          'settings': <String, dynamic>{},
+          'settings': httpSettings,
           'sniffing': sniffingBlock,
         });
       }
 
-      // اگر inbound از قبل بود، فقط sniffing/listen را روی socks به‌روز کن
-      // و در غیر این صورت جایگزین کن.
       final existing = map['inbounds'];
       if (existing is List && existing.isNotEmpty) {
         var touched = false;
@@ -119,14 +200,11 @@ class XraySettings {
         if (!touched) {
           map['inbounds'] = inbounds;
         } else {
-          // اگر httpInbound روشن است و نبود، اضافه کن
-          if (settings['httpInbound'] == true) {
+          if (httpOn) {
             final hasHttp = existing.any(
               (e) => e is Map && e['protocol']?.toString() == 'http',
             );
-            if (!hasHttp) {
-              existing.add(inbounds.last);
-            }
+            if (!hasHttp) existing.add(inbounds.last);
           }
           map['inbounds'] = existing;
         }
@@ -134,9 +212,157 @@ class XraySettings {
         map['inbounds'] = inbounds;
       }
 
+      // DNS
+      final dns = <String, dynamic>{};
+      final vpnDns = (settings['vpnDns']?.toString() ?? '1.1.1.1,8.8.8.8')
+          .split(',')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      final servers = <dynamic>[];
+      final proto = settings['dnsProtocol']?.toString() ?? 'udp';
+      final doh = settings['dohUrl']?.toString() ?? '';
+      if (proto == 'https' && doh.isNotEmpty) {
+        servers.add({'address': doh});
+      } else {
+        servers.addAll(vpnDns);
+      }
+      if (settings['localDns'] == true) {
+        servers.insert(0, 'localhost');
+      }
+      if (settings['fakeDns'] == true) {
+        servers.insert(0, {'address': 'fakedns'});
+        map['fakedns'] = {
+          'ipPool': '198.18.0.0/15',
+          'poolSize': 65535,
+        };
+      }
+      dns['servers'] = servers;
+      if (settings['preferIpv6'] == true) {
+        dns['queryStrategy'] = 'UseIPv6';
+      } else if (settings['enableIpv6'] != true) {
+        dns['queryStrategy'] = 'UseIPv4';
+      } else {
+        dns['queryStrategy'] = 'UseIP';
+      }
+      final hostsRaw = settings['dnsHosts']?.toString() ?? '';
+      if (hostsRaw.isNotEmpty) {
+        final hosts = <String, String>{};
+        for (final part in hostsRaw.split(',')) {
+          final kv = part.trim().split(':');
+          if (kv.length >= 2) {
+            hosts[kv[0].trim()] = kv.sublist(1).join(':').trim();
+          }
+        }
+        if (hosts.isNotEmpty) dns['hosts'] = hosts;
+      }
+      map['dns'] = dns;
+
+      final strategy = settings['domainStrategy']?.toString() ?? 'AsIs';
+      if (map['routing'] is Map) {
+        final routing = Map<String, dynamic>.from(map['routing'] as Map);
+        routing['domainStrategy'] = strategy;
+        map['routing'] = routing;
+      } else {
+        map['routing'] = {
+          'domainStrategy': strategy,
+          'rules': <dynamic>[],
+        };
+      }
+
+      if (settings['muxEnable'] == true) {
+        final mux = <String, dynamic>{
+          'enabled': true,
+          'concurrency':
+              (settings['muxConcurrency'] as num?)?.toInt() ?? 8,
+          'xudpConcurrency':
+              (settings['muxXudpConcurrency'] as num?)?.toInt() ?? 8,
+          'xudpProxyUDP443':
+              settings['muxXudpQuic']?.toString() ?? 'reject',
+        };
+        _applyToOutbounds(map, (ob) {
+          ob['mux'] = mux;
+        });
+      } else {
+        _applyToOutbounds(map, (ob) {
+          if (ob.containsKey('mux')) {
+            final m = Map<String, dynamic>.from(ob['mux'] as Map? ?? {});
+            m['enabled'] = false;
+            ob['mux'] = m;
+          }
+        });
+      }
+
+      if (settings['fragmentEnable'] == true) {
+        final frag = <String, dynamic>{
+          'packets': settings['fragmentPackets']?.toString() ?? 'tlshello',
+          'length': settings['fragmentLength']?.toString() ?? '100-200',
+          'interval': settings['fragmentInterval']?.toString() ?? '10-20',
+        };
+        final maxSplit =
+            (settings['fragmentMaxSplit'] as num?)?.toInt() ?? 0;
+        if (maxSplit > 0) frag['maxSplit'] = maxSplit;
+        _applyToOutbounds(map, (ob) {
+          final stream = Map<String, dynamic>.from(
+              ob['streamSettings'] as Map? ?? {});
+          final sockopt =
+              Map<String, dynamic>.from(stream['sockopt'] as Map? ?? {});
+          sockopt['fragment'] = frag;
+          stream['sockopt'] = sockopt;
+          ob['streamSettings'] = stream;
+        });
+      }
+
+      if (settings['observatoryEnable'] == true) {
+        map['observatory'] = {
+          'subjectSelector': <String>['proxy'],
+          'probeInterval':
+              '${(settings['leastPingInterval'] as num?)?.toInt() ?? 300}s',
+          'probeUrl': 'https://www.google.com/generate_204',
+        };
+        map['burstObservatory'] = {
+          'subjectSelector': <String>['proxy'],
+          'pingConfig': {
+            'destination': 'https://www.google.com/generate_204',
+            'interval':
+                '${(settings['leastLoadInterval'] as num?)?.toInt() ?? 300}s',
+            'sampling':
+                (settings['leastLoadSample'] as num?)?.toInt() ?? 3,
+            'timeout':
+                '${(settings['leastLoadTimeout'] as num?)?.toInt() ?? 5}s',
+            'httpMethod':
+                settings['leastLoadMethod']?.toString() ?? 'HEAD',
+          },
+        };
+      }
+
       return jsonEncode(map);
     } catch (_) {
       return configJson;
+    }
+  }
+
+  static void _applyToOutbounds(
+    Map<String, dynamic> map,
+    void Function(Map<String, dynamic> ob) fn,
+  ) {
+    final outs = map['outbounds'];
+    if (outs is! List) return;
+    for (var i = 0; i < outs.length; i++) {
+      final o = outs[i];
+      if (o is! Map) continue;
+      final tag = o['tag']?.toString() ?? '';
+      final proto = o['protocol']?.toString() ?? '';
+      if (proto == 'freedom' ||
+          proto == 'blackhole' ||
+          proto == 'dns' ||
+          tag == 'direct' ||
+          tag == 'block') {
+        continue;
+      }
+      final m = Map<String, dynamic>.from(o);
+      fn(m);
+      outs[i] = m;
     }
   }
 }

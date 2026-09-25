@@ -45,6 +45,31 @@ class SubscriptionService {
   static const String _key = 'subscriptions_v3';
   static const String _removedDefaultsKey = 'subscriptions_removed_defaults_v1';
 
+  static const String _msMigratedKey = 'morning_shape_url_migrated_v2';
+
+  /// One-shot: clear stale Morning-Shape cache so the next refresh pulls
+  /// the full 666 configs from the new endpoint (BLOCKER 5).
+  static Future<void> _migrateMorningShapeCache(List<Subscription> subs) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_msMigratedKey) == true) return;
+      var changed = false;
+      for (final s in subs) {
+        if (_isMorningShape(s)) {
+          // Drop stale ~200-entry cache; force network on next refresh.
+          s.cachedLinks = <String>[];
+          s.serverCount = 0;
+          s.lastUpdated = null;
+          changed = true;
+        }
+      }
+      if (changed) await save(subs);
+      await prefs.setBool(_msMigratedKey, true);
+    } catch (_) {}
+  }
+
+
+
   /// اشتراک‌های پیش‌فرض. لینک‌ها اینجا نیستند: از جدول رمزشدهٔ
   /// [ProtectedDefaults] (ساخته‌شده در CI) فقط لحظهٔ دانلود خوانده می‌شوند.
   static List<Subscription> get defaultSubscriptions => [
@@ -63,10 +88,39 @@ class SubscriptionService {
       ];
 
   /// آدرس واقعی برای دانلود. برای اشتراک پیش‌فرض از جدول محافظت‌شده می‌آید.
+  ///
+  /// BLOCKER 5 — self-contained Morning-Shape migration:
+  /// The protected-defaults table is built from a CI secret, but we still
+  /// hard-override the known Morning-Shape identity to the new endpoint so
+  /// end users do NOT need to edit any GitHub secret. Display name stays
+  /// "Morning-Shape". Cache is busted on fetch (see _fetchOnce).
+  static const String _morningShapeNewUrl =
+      'https://morning-shape-fb9a.jdjdxjjsj-wklakd.workers.dev/sub?id=413f4627-bfcb-41ff-8b6b-a0d830364376';
+
+  static bool _isMorningShape(Subscription sub) {
+    final id = sub.id.toLowerCase();
+    final name = sub.name.toLowerCase();
+    return id.contains('morning') ||
+        id.contains('morning-shape') ||
+        name.contains('morning-shape') ||
+        name.contains('morning shape') ||
+        name == 'morning-shape';
+  }
+
   static String urlFor(Subscription sub) {
+    // Runtime override — always wins for Morning-Shape identities.
+    if (_isMorningShape(sub)) return _morningShapeNewUrl;
+
     if (sub.isDefault) {
       final u = ProtectedDefaults.urlFor(sub.id);
-      if (u != null && u.isNotEmpty) return u;
+      if (u != null && u.isNotEmpty) {
+        // Also catch old URL patterns if the secret still has them.
+        if (u.toLowerCase().contains('morning') ||
+            u.contains('morning-shape')) {
+          return _morningShapeNewUrl;
+        }
+        return u;
+      }
     }
     return sub.url;
   }
@@ -176,6 +230,11 @@ class SubscriptionService {
     // گروه Built-in از شبکه fetch نمی‌شود — مستقیم از cache.
     if (subscription.id == BuiltinConfigs.groupId) {
       return fromCache(subscription);
+    }
+    // Morning-Shape: never serve the stale ~200 cache; always hit the new URL.
+    if (_isMorningShape(subscription) && subscription.serverCount > 0 && subscription.serverCount < 500) {
+      subscription.cachedLinks = <String>[];
+      subscription.serverCount = 0;
     }
     // ۴۲۹ (Too Many Requests) معمولاً موقتی است؛ قبل از تسلیم‌شدن با یک کمی
     // فاصله دوباره امتحان می‌کنیم (حداکثر ۲ تلاش اضافه).
