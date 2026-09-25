@@ -697,30 +697,6 @@ class _TorScreenState extends State<TorScreen> {
         bridgesToUse = [line, ...bridgesToUse.where((b) => b != line)];
       }
     }
-    // webtunnel requires a personal bridge; short-circuit with clear message
-    if (_bridgeType == 'webtunnel') {
-      final hasWebtunnel = bridgesToUse.any(
-        (b) => b.trim().toLowerCase().startsWith('webtunnel'),
-      );
-      if (!hasWebtunnel) {
-        if (mounted) {
-          setState(() {
-            _connecting = false;
-            _running = false;
-            _bootstrapMsg = '';
-            _error = _t(
-              'WebTunnel نیاز به لینک پل شخصی داره. از bridges.torproject.org/bridges?transport=webtunnel بگیر و در بخش «پل‌های شخصی» اضافه کن.',
-              'WebTunnel requires a personal bridge. Get one from bridges.torproject.org/bridges?transport=webtunnel and add it in Custom Bridges.',
-            );
-          });
-          _snack(_t(
-            'پل WebTunnel شخصی لازم است',
-            'Personal WebTunnel bridge required',
-          ));
-        }
-        return;
-      }
-    }
     final r = await TorService.start(
       bridgeType: _bridgeType,
       customBridges: bridgesToUse.isEmpty ? null : bridgesToUse,
@@ -733,16 +709,7 @@ class _TorScreenState extends State<TorScreen> {
       List<String> fallback = <String>[];
       // mobile-first fallback: webtunnel → snowflake → meek → obfs4
       if (failed == 'webtunnel') {
-        // اگه کاربر WebTunnel رو انتخاب کرده ولی پل شخصی نداشته باشه،
-        // fallback پنهان نکن تا کاربر بفهمه مشکل از نبودن bridge بوده.
-        final hasWebtunnel = _bridgesForConnect().any(
-          (b) => b.trim().toLowerCase().startsWith('webtunnel'),
-        );
-        if (!hasWebtunnel) {
-          fallback = <String>[];
-        } else {
-          fallback = <String>['snowflake', 'meek_lite', 'obfs4'];
-        }
+        fallback = <String>['snowflake', 'meek_lite', 'obfs4'];
       } else if (failed == 'snowflake') {
         fallback = <String>['meek_lite', 'webtunnel', 'obfs4'];
       } else if (failed == 'meek_lite') {

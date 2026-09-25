@@ -283,14 +283,6 @@ object TorService {
             "vanilla" -> {
                 // بدون پل
             }
-            "webtunnel" -> {
-                if (obfs4Path != null) {
-                    sb.appendLine("UseBridges 1")
-                    sb.appendLine("ClientTransportPlugin webtunnel exec ${obfs4Path}")
-                    val bridges = if (!customBridges.isNullOrEmpty()) customBridges else emptyList()
-                    bridges.take(2).forEach { sb.appendLine("Bridge $it") }
-                }
-            }
             "obfs4" -> {
                 if (obfs4Path != null) {
                     sb.appendLine("UseBridges 1")
