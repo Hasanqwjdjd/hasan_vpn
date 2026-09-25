@@ -32,10 +32,47 @@ object TorService {
     fun getSocksPort(): Int = socksPort
     fun getLastError(): String? = lastError
 
+    /** صبر تا پورت آزاد شه (timeout). true اگه آزاد شد. */
+    private fun waitForPortFree(port: Int, timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                java.net.Socket().use { sock ->
+                    sock.connect(java.net.InetSocketAddress("127.0.0.1", port), 150)
+                }
+                try { Thread.sleep(200) } catch (_: Exception) {}
+            } catch (_: Exception) {
+                return true
+            }
+        }
+        return false
+    }
+
     /** نقطه‌ی شروع. bridgeType: 'vanilla','obfs4','snowflake','meek_lite','conjure','dnstt' */
     fun start(context: Context, bridgeType: String, customBridges: List<String>?, sni: String? = null): Map<String, Any> {
         synchronized(lock) {
             if (running) return mapOf("ok" to true, "socksPort" to socksPort, "alreadyRunning" to true)
+
+            // ۱) kill پروسه قدیمی و صبر تا بمیره
+            try {
+                val old = torProcess
+                if (old != null && old.isAlive) {
+                    SafeLog.d(TAG, "Waiting for previous Tor process to exit before starting new")
+                    old.destroy()
+                    try {
+                        old.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+                    } catch (_: Exception) {}
+                    if (old.isAlive) {
+                        try { old.destroyForcibly() } catch (_: Exception) {}
+                        try {
+                            old.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+                        } catch (_: Exception) {}
+                    }
+                }
+            } catch (_: Exception) {}
+            torProcess = null
+            // ۲) صبر تا پورت 9050 آزاد شه (تا ۸ ثانیه)
+            try { waitForPortFree(socksPort, 8000) } catch (_: Exception) {}
 
             lastError = null
             bootstrapPercent = 0
@@ -167,7 +204,8 @@ object TorService {
             try {
                 torProcess?.destroy()
             } catch (_: Exception) {}
-            torProcess = null
+            // عمداً torProcess = null نمی‌کنیم — start() باید بتونه
+            // منتظر پروسه بمونه تا پورت 9050 آزاد شه.
             running = false
             bootstrapPercent = 0
             bootstrapMessage = ""
