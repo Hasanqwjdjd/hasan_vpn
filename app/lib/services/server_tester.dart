@@ -75,12 +75,17 @@ class ServerTester {
     await V2RayEngine.loadDelayUrl();
     final budget = await TestBudget.load();
 
+    // Turbo mode → force TCP-only
+    final effectiveOnlyTcp = onlyTcp || budget.isTurbo;
+
     final regular = servers.where((s) => !s.isPsiphon).toList();
     final summary = TestSummary()..total = regular.length;
 
     final realGate = _Semaphore(budget.realConcurrency);
     final tcpGate = _Semaphore(
-      onlyTcp ? budget.realConcurrency * 2 : budget.tcpConcurrency,
+      effectiveOnlyTcp
+          ? budget.realConcurrency * 2
+          : budget.tcpConcurrency,
     );
     final aetherGate = _Semaphore(budget.aetherConcurrency);
 
@@ -105,7 +110,7 @@ class ServerTester {
         (server) => _testServer(
           server,
           session: session,
-          onlyTcp: onlyTcp,
+          onlyTcp: effectiveOnlyTcp,
           gate: server.isAether ? aetherGate : realGate,
           tcpGate: tcpGate,
           budget: budget,

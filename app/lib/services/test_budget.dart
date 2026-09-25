@@ -2,6 +2,12 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// حالت تست پینگ:
+///   turbo    → فقط TCP connect (بدون Xray). برای ۱۰۰۰+ سرور در چند ثانیه.
+///   balanced → TCP برای همه + real HTTP فقط برای چند سرور برتر (پیش‌فرض).
+///   accurate → TCP + real HTTP برای همه‌ی سرورهای آنلاین (کندترین، دقیق‌ترین).
+enum TestMode { turbo, balanced, accurate }
+
 /// بودجه پینگ — مقادیر پیش‌فرض نزدیک به PattNG:
 /// concurrent real-ping = 16 (1..64), TCP pre-check 1s, real budget ~12s.
 class TestBudget {
@@ -16,16 +22,45 @@ class TestBudget {
   final bool tcpFallback;
   final bool tcpPrecheck;
 
+  final TestMode mode;
+
   const TestBudget({
     this.timeoutSec = 8,
     this.direct = 32,
     this.samples = 1,
     this.tcpFallback = true,
     this.tcpPrecheck = true,
+    this.mode = TestMode.balanced,
   });
 
-  /// PattNG getRealPingConcurrency: default 16, clamp 1..64
-  int get realConcurrency => direct.clamp(1, 64).toInt();
+  /// Concurrency برای تست‌های real HTTP.
+  /// - turbo: 0 (اصلاً اجرا نمی‌شود)
+  /// - balanced: 8 (فقط برای سرورهای برتر)
+  /// - accurate: مقدار direct کاربر
+  int get realConcurrency {
+    switch (mode) {
+      case TestMode.turbo:
+        return 0;
+      case TestMode.balanced:
+        return direct.clamp(1, 12).toInt();
+      case TestMode.accurate:
+        return direct.clamp(1, 64).toInt();
+    }
+  }
+
+  /// حداکثر تعداد سرورهایی که در حالت balanced تست real می‌شوند.
+  int get realTestLimit {
+    switch (mode) {
+      case TestMode.turbo:
+        return 0;
+      case TestMode.balanced:
+        return 40;
+      case TestMode.accurate:
+        return 100000;
+    }
+  }
+
+  bool get isTurbo => mode == TestMode.turbo;
 
   /// TCP pre-check pool (can be higher; cheap)
   int get tcpConcurrency => (realConcurrency * 2).clamp(2, 128).toInt();
@@ -48,12 +83,18 @@ class TestBudget {
       if (raw == null) return const TestBudget();
       final m = jsonDecode(raw);
       if (m is! Map) return const TestBudget();
+      final modeStr = (m['mode'] ?? 'balanced').toString();
+      final mode = TestMode.values.firstWhere(
+        (e) => e.name == modeStr,
+        orElse: () => TestMode.balanced,
+      );
       return TestBudget(
         timeoutSec: _pick(m['timeoutSec'], timeoutOptions, 8),
         direct: _pick(m['directConcurrency'], directOptions, 32),
         samples: _pick(m['samples'], sampleOptions, 1),
         tcpFallback: m['tcpFallback'] != false,
         tcpPrecheck: m['tcpPrecheck'] != false,
+        mode: mode,
       );
     } catch (_) {
       return const TestBudget();
