@@ -20,6 +20,16 @@ class BuiltinConfigs {
 
     // VLESS - hasanzeus
     r'vless://36ba6d53-6867-4ad8-babd-d7d000000000@vy2i69-z707bh-2sjvq6.ekz8gsezum2s.workers.dev:443?path=%2Fsync&security=tls&encryption=none&insecure=0&host=vy2i69-z707bh-2sjvq6.ekz8gsezum2s.workers.dev&fp=chrome&type=ws&allowInsecure=0&sni=vy2i69-z707bh-2sjvq6.ekz8gsezum2s.workers.dev#V-Core-443',
+
+    // ─── Hysteria2 — SferaVPN (Germany) ───
+    r'hysteria2://cd74c0a406664a5bc0bac098220a2468@de1.sferavpn.pro:443?security=tls&obfs=salamander&obfs-password=44f1c1e2f8b99e792ceed574627a1eb0&insecure=1&sni=de1.sferavpn.pro#hamedvpns-DE',
+    r'hysteria2://cd74c0a406664a5bc0bac098220a2468@de1.sferavpn.pro:443?security=tls&obfs=salamander&obfs-password=44f1c1e2f8b99e792ceed574627a1eb0&insecure=0&sni=de1.sferavpn.pro#hamedvpns-DE-secure',
+
+    // ─── Hysteria2 — AspidNet (Germany) ───
+    r'hysteria2://QCgqi_I4EkV8UR-OgQ_tG4EnVTEVvIyR2GgRBzrIn2s@hy2-new.aspidnet.xyz:443?security=tls&obfs=salamander&obfs-password=c1b4086fea89914496c7e10967a419216566&insecure=0&sni=hy2-new.aspidnet.xyz#hamedvpns-DE-aspid',
+
+    // ─── Hysteria2 — SferaVPN (Russia) ───
+    r'hysteria2://cd74c0a406664a5bc0bac098220a2468@ru1.sferavpn.pro:443?security=tls&obfs=salamander&obfs-password=44f1c1e2f8b99e792ceed574627a1eb0&insecure=0&sni=ru1.sferavpn.pro#hamedvpns-RU',
   ];
 
   /// کانفیگ‌های اضافی که از GitHub بارگیری می‌شوند (روزانه).
