@@ -706,14 +706,19 @@ class _TorScreenState extends State<TorScreen> {
       _snack(_t('اتصال Tor قطع شد', 'Tor disconnected'));
       return;
     }
-    setState(() {
-      _connecting = true;
-      _bootstrap = 0;
-      _bootstrapMsg = _t('شروع...', 'Starting...');
-      _error = null;
-    });
-    // کم‌پینگ‌ترین پل‌ها (حداکثر ۴) برای سرعت بهتر
+    // ذخیره binding برای ویجت (فوراً مثل سرورها)
+    final widNow = widget.pendingWidgetId;
+    if (widNow != null && widNow > 0 && _bridgeType.isNotEmpty) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+            'widget_server_$widNow', 'tor|$_bridgeType|Tor');
+        const ch = MethodChannel('com.hasan.hasan_vpn/widget');
+        await ch.invokeMethod('updateWidgets');
+      } catch (_) {}
+    }
     var bridgesToUse = _bridgesForConnect();
+    // dnstt inject
     // dnstt inject
     if (_bridgeType == 'dnstt') {
       final line = _buildDnsttBridgeLine();
