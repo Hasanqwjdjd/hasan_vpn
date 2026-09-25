@@ -56,6 +56,25 @@ class WidgetHeadlessActivity : FlutterActivity() {
         // اتصال Activity را برپا می‌کند — چیزی دستی لازم نیست.
         super.configureFlutterEngine(flutterEngine)
 
+        // ثبت کانال Tor (چون MainActivity اینجا نیست)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.hasan.hasan_vpn/tor")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "status" -> result.success(TorService.status())
+                    "start" -> {
+                        val bt = call.argument<String>("bridgeType") ?: "vanilla"
+                        val cb = call.argument<List<String>>("customBridges")
+                        val sni = call.argument<String>("sni")
+                        Thread {
+                            val map = TorService.start(applicationContext, bt, cb, sni)
+                            runOnUiThread { result.success(map) }
+                        }.start()
+                    }
+                    "stop" -> { TorService.stopWithContext(applicationContext); result.success(true) }
+                    else -> result.notImplemented()
+                }
+            }
+
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         channel!!.setMethodCallHandler { call, result ->
             when (call.method) {
