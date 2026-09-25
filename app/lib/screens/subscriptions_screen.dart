@@ -36,6 +36,195 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 
   Future<void> _addSub() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.elevated(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border(ctx),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              leading: Icon(Icons.link, color: AppColors.accent),
+              title: Text(_t('اشتراک با لینک', 'Subscription from URL'),
+                  style: TextStyle(color: AppColors.fg(ctx))),
+              subtitle: Text(
+                  _t('یک لینک http/https یا کانفیگ اشتراک بده',
+                      'Provide a http/https URL or subscription link'),
+                  style:
+                      TextStyle(color: AppColors.muted2(ctx), fontSize: 11)),
+              onTap: () => Navigator.pop(ctx, 'url'),
+            ),
+            ListTile(
+              leading: Icon(Icons.folder_special, color: AppColors.accent),
+              title: Text(_t('گروه خالی (بدون لینک)',
+                  'Empty group (no link)'),
+                  style: TextStyle(color: AppColors.fg(ctx))),
+              subtitle: Text(
+                  _t('گروه بساز و کانفیگ‌ها را دستی داخلش بریز',
+                      'Create a group and paste configs manually'),
+                  style:
+                      TextStyle(color: AppColors.muted2(ctx), fontSize: 11)),
+              onTap: () => Navigator.pop(ctx, 'empty'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted || choice == null) return;
+    if (choice == 'url') {
+      await _addSubWithUrl();
+    } else if (choice == 'empty') {
+      await _addEmptyGroup();
+    }
+  }
+
+  Future<void> _addEmptyGroup() async {
+    final nameCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.elevated(ctx),
+        title: Text(_t('گروه جدید', 'New group'),
+            style: TextStyle(color: AppColors.fg(ctx))),
+        content: TextField(
+          controller: nameCtrl,
+          autofocus: true,
+          style: TextStyle(color: AppColors.fg(ctx)),
+          decoration: InputDecoration(
+            labelText: _t('نام گروه', 'Group name'),
+            labelStyle: TextStyle(color: AppColors.muted(ctx)),
+            enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: AppColors.border(ctx))),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(_t('لغو', 'Cancel'),
+                style: TextStyle(color: AppColors.muted(ctx))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(_t('بساز', 'Create'),
+                style: const TextStyle(color: AppColors.accent)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final name = nameCtrl.text.trim();
+    if (name.isEmpty) {
+      _showMsg(_t('نام گروه لازم است', 'Group name is required'));
+      return;
+    }
+    final sub = Subscription(
+      id: 'manual_${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      url: '',
+      isDefault: false,
+      autoUpdate: false,
+      intervalHours: 0,
+    );
+    setState(() => _subs.add(sub));
+    await SubscriptionService.save(_subs);
+    widget.onChanged(_subs);
+    if (!mounted) return;
+    await _showPasteConfigDialog(sub);
+  }
+
+  Future<void> _showPasteConfigDialog(Subscription sub) async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.elevated(ctx),
+        title: Text(
+            _t('کانفیگ‌ها را داخل گروه بریز', 'Paste configs into group'),
+            style: TextStyle(color: AppColors.fg(ctx))),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _t(
+                  'هر خط یک کانفیگ: vless://, vmess://, trojan://, ss://, hysteria2:// یا JSON کامل Xray',
+                  'One config per line: vless://, vmess://, trojan://, ss://, hysteria2:// or full Xray JSON',
+                ),
+                style: TextStyle(
+                    color: AppColors.muted2(ctx), fontSize: 11, height: 1.5),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                maxLines: 8,
+                style: TextStyle(color: AppColors.fg(ctx), fontSize: 12),
+                decoration: InputDecoration(
+                  hintText: 'vless://...\nvmess://...\ntrojan://...',
+                  hintStyle: TextStyle(
+                      color: AppColors.muted2(ctx), fontSize: 11),
+                  enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: AppColors.border(ctx))),
+                  border: OutlineInputBorder(
+                      borderSide: BorderSide(color: AppColors.border(ctx))),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(_t('بعداً', 'Later'),
+                style: TextStyle(color: AppColors.muted(ctx))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(_t('ذخیره', 'Save'),
+                style: const TextStyle(color: AppColors.accent)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final raw = ctrl.text;
+    if (raw.trim().isEmpty) return;
+    final servers = SubscriptionService.parseContent(raw, sub.id);
+    if (servers.isEmpty) {
+      _showMsg(_t('هیچ کانفیگ معتبری پیدا نشد',
+          'No valid config found'));
+      return;
+    }
+    sub.cachedLinks = servers.map((s) => s.shareLink).toList();
+    sub.serverCount = servers.length;
+    sub.lastUpdated = DateTime.now();
+    sub.lastError = null;
+    sub.lastErrorCode = null;
+    await SubscriptionService.save(_subs);
+    widget.onChanged(_subs);
+    if (mounted) {
+      setState(() {});
+      _showMsg('${servers.length} ${_t('کانفیگ اضافه شد', 'configs added')}');
+    }
+  }
+
+  Future<void> _addSubWithUrl() async {
     final nameCtrl = TextEditingController();
     final urlCtrl = TextEditingController();
 
