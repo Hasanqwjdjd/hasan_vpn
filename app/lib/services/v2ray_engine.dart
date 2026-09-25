@@ -19,7 +19,8 @@ import 'xray_settings.dart';
 class V2RayEngine {
   V2RayEngine._();
 
-  static const String _defaultDelayUrl = 'http://www.gstatic.com/generate_204';
+  /// Matches v2rayNG AppConfig.DELAY_TEST_URL (https, not http).
+  static const String _defaultDelayUrl = 'https://www.gstatic.com/generate_204';
   static String delayUrl = _defaultDelayUrl;
 
   static const MethodChannel _deviceChannel =
@@ -724,18 +725,21 @@ class V2RayEngine {
     }
   }
 
-  /// چند URL تأخیر — بعضی هسته‌ها فقط HTTP ساده را پشتیبانی می‌کنند.
-  /// PattNG DELAY_TEST_URL / DELAY_TEST_URL2 order (https gstatic first).
+  /// MarbleNG DelayTest candidates (Models.kt): three operators, never two Google spellings.
+  /// Primary = DelayTest.URL, secondary = Cloudflare, tertiary = Firefox captive portal.
+  /// http mirrors kept last for cores that reject https-only measure paths.
   static const List<String> _delayUrls = <String>[
-    'http://www.gstatic.com/generate_204',
     'https://www.gstatic.com/generate_204',
+    'https://cp.cloudflare.com/generate_204',
+    'https://detectportal.firefox.com/success.txt',
+    'http://www.gstatic.com/generate_204',
     'http://cp.cloudflare.com/generate_204',
-    'http://connectivitycheck.gstatic.com/generate_204',
   ];
 
+  /// Per-sample budget. MarbleNG AppSettings.pingTimeoutSec default = 5.
   static Future<int> realDelay(
     VpnServer server, {
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = const Duration(seconds: 5),
   }) async {
     String? config = _fullConfigOf(server);
     if (config == null || config.trim().isEmpty) return -2;

@@ -50,20 +50,28 @@ class _Semaphore {
   }
 }
 
-/// پینگ به سبک PattNG (RealPingWorkerService):
+/// پینگ هم‌راستا با MarbleNG (DelayTest + RouteProbe + PingBudget):
 ///
-/// 1) هم‌زمانی پیش‌فرض ۱۶ (سقف ۶۴)
-/// 2) پیش‌چک TCP یک‌ثانیه‌ای — fail → آفلاین بدون realDelay
-/// 3) realDelay با gstatic generate_204 و بودجه ~۱۲ث
-/// 4) TCP-only فقط تقریبی است (online نمی‌شود)
-/// 5) Aether: measureDelay جدا
-/// Ping: TCP precheck + HTTP generate_204 (SocksProbe / realDelay).
+/// 1) هم‌زمانی از TestBudget (پیش‌فرض MarbleNG: ۱۶، سقف ۶۴ — PingBudget)
+/// 2) پیش‌چک TCP با TCP_GATE_TIMEOUT_MS=1000 — fail → بدون realDelay
+/// 3) realDelay: candidates DelayTest (gstatic → cloudflare → firefox)
+/// 4) median؛ warm-up فقط وقتی samples>=3؛ spacing 60ms؛ abandon بعد از ۲ fail متوالی
+/// 5) فیلتر <20ms ندارد
+/// 6) TCP-only تقریبی (online نمی‌شود)؛ Aether: measureDelay جدا
 /// concurrency from TestBudget; live updates via onChanged.
+///
+/// ایزولاسیون: MarbleNG برای Real delay هستهٔ throwaway / live SOCKS دارد؛
+/// در Flutter نزدیک‌ترین معادل getServerDelay / SocksProbe است.
 class ServerTester {
   ServerTester._();
 
-  static const int _tcpTimeoutMs = 1200; // MarbleNG از ۱۲۰۰ms استفاده می‌کند
-  static const int _realBudgetSec = 8;
+  /// MarbleNG DelayTest.TCP_GATE_TIMEOUT_MS = 1_000 (Models.kt).
+  static const int _tcpTimeoutMs = 1000;
+  /// MarbleNG PingBudget.SAMPLE_SPACING_MS.
+  static const int _sampleSpacingMs = 60;
+  /// MarbleNG RouteProbe.CONSECUTIVE_FAILURES_BEFORE_ABANDON.
+  static const int _consecutiveFailuresBeforeAbandon = 2;
+  static const int _realBudgetSec = 15;
 
   static Future<TestSummary> testAll(
     List<VpnServer> servers, {
@@ -300,18 +308,19 @@ class ServerTester {
     return summary;
   }
 
+  /// MarbleNG RouteProbe.summarize: median; warm-up dropped only when samples >= 3
+  /// (RouteProbe.kt ~L322–L345). Do NOT filter sub-20ms — task forbids it; MarbleNG
+  /// only floors SMART display with maxOf(ms, 20), it does not fail low RTTs.
   static (int, int?) _summarize(List<int> values, {required bool dropWarmup}) {
     if (values.isEmpty) return (-1, null);
     var used = List<int>.from(values);
-    if (dropWarmup && used.length >= 2) used = used.sublist(1);
+    if (dropWarmup && used.length >= 3) used = used.sublist(1);
     used.sort();
     final mid = used.length ~/ 2;
     final ms =
         used.length.isOdd ? used[mid] : (used[mid - 1] + used[mid]) ~/ 2;
-    // MarbleNG: پینگ زیر ۲۰ms جعلی است (احتمالاً پاسخ محلی یا کش).
-    if (ms < 20) return (-1, null);
     final jitter = used.length >= 2 ? used.last - used.first : null;
-    return (ms, jitter);
+    return (ms < 1 ? 1 : ms, jitter);
   }
 
   static bool _tcpPrecheckEligible(VpnServer server) {
@@ -340,28 +349,37 @@ class ServerTester {
     }
   }
 
+  /// MarbleNG Real delay (RouteProbe + V160):
+  /// - each sample gets full per-sample timeout (not shared across samples)
+  /// - SAMPLE_SPACING_MS = 60 between samples (PingBudget)
+  /// - abandon after 2 consecutive failures (CONSECUTIVE_FAILURES_BEFORE_ABANDON)
+  /// - median; warm-up discard when samples >= 3
+  /// - live SOCKS when connected to same server; else plugin getServerDelay
   static Future<(int, int?)> _measureReal(
     VpnServer server,
     TestBudget budget,
     TestSession session,
   ) async {
     final timeout = Duration(
-      seconds: budget.timeoutSec.clamp(5, _realBudgetSec),
+      seconds: budget.timeoutSec.clamp(1, 30),
     );
     final values = <int>[];
-    final samples = budget.samples.clamp(1, 3);
+    final samples = budget.samples.clamp(1, 10);
+    var consecutiveFailures = 0;
 
     for (var i = 0; i < samples; i++) {
       if (session.cancelled) break;
-      // C1: if VPN already up, measure real HTTP through local SOCKS (v2rayNG-style).
-      // Otherwise fall back to engine realDelay (spawns/uses core for that config).
+      if (i > 0) {
+        await Future<void>.delayed(const Duration(milliseconds: _sampleSpacingMs));
+      }
       int result;
       if (V2RayEngine.isConnected &&
           V2RayEngine.localSocksPort > 0 &&
           V2RayEngine.current?.id == server.id) {
+        // One sample per loop iteration (session reuse is inside SocksProbe when samples=1).
         final probe = await SocksProbe.measure(
           port: V2RayEngine.localSocksPort,
-          samples: budget.samples,
+          samples: 1,
           timeout: timeout,
         );
         result = probe.ok ? (probe.ms ?? -1) : -1;
@@ -372,11 +390,16 @@ class ServerTester {
       if (result == -2) return (-2, null);
       if (result > 0) {
         values.add(result);
-      } else if (values.isEmpty) {
-        break;
+        consecutiveFailures = 0;
+      } else {
+        consecutiveFailures++;
+        if (values.isEmpty && consecutiveFailures >= _consecutiveFailuresBeforeAbandon) {
+          break;
+        }
+        if (values.isEmpty) break;
       }
     }
-    return _summarize(values, dropWarmup: samples >= 2);
+    return _summarize(values, dropWarmup: samples >= 3);
   }
 
   static Future<void> _testServer(
@@ -444,7 +467,7 @@ class ServerTester {
         return;
       }
 
-      // PattNG fail-fast TCP pre-check (1s)
+      // v2rayNG RealPing fail-fast TCP pre-check (1000ms)
       if (_tcpPrecheckEligible(server) && budget.tcpPrecheck) {
         await tcpGate.acquire();
         final tcp = await _tcpConnectMs(server);

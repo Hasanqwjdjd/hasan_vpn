@@ -8,13 +8,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///   accurate → TCP + real HTTP برای همه‌ی سرورهای آنلاین (کندترین، دقیق‌ترین).
 enum TestMode { turbo, balanced, accurate }
 
-/// بودجه پینگ — مقادیر پیش‌فرض نزدیک به PattNG:
-/// concurrent real-ping = 16 (1..64), TCP pre-check 1s, real budget ~12s.
+/// بودجه پینگ — هم‌راستا با MarbleNG PingBudget (Models.kt):
+/// timeout default 5s, samples default 3, concurrency default 16 (1..64),
+/// TCP gate 1s, SAMPLE_SPACING_MS=60. turbo/balanced/accurate hasan-specific modes kept.
 class TestBudget {
   static const String storageKey = 'test_settings_v1';
-  static const List<int> timeoutOptions = [5, 8, 10, 12, 15];
+  /// MarbleNG TIMEOUT_CHOICES plus a few extras for hasan UI compatibility.
+  static const List<int> timeoutOptions = [2, 3, 5, 8, 10, 15];
   static const List<int> directOptions = [1, 2, 4, 8, 16, 32, 64];
-  static const List<int> sampleOptions = [1, 2, 3];
+  /// MarbleNG SAMPLE_CHOICES subset that fits mobile UX (full set is 1..10).
+  static const List<int> sampleOptions = [1, 2, 3, 5];
 
   final int timeoutSec;
   final int direct;
@@ -25,9 +28,9 @@ class TestBudget {
   final TestMode mode;
 
   const TestBudget({
-    this.timeoutSec = 8,
-    this.direct = 32,
-    this.samples = 1,
+    this.timeoutSec = 5,
+    this.direct = 16,
+    this.samples = 3,
     this.tcpFallback = true,
     this.tcpPrecheck = true,
     this.mode = TestMode.balanced,
@@ -89,9 +92,9 @@ class TestBudget {
         orElse: () => TestMode.balanced,
       );
       return TestBudget(
-        timeoutSec: _pick(m['timeoutSec'], timeoutOptions, 8),
-        direct: _pick(m['directConcurrency'], directOptions, 32),
-        samples: _pick(m['samples'], sampleOptions, 1),
+        timeoutSec: _pick(m['timeoutSec'], timeoutOptions, 5),
+        direct: _pick(m['directConcurrency'], directOptions, 16),
+        samples: _pick(m['samples'], sampleOptions, 3),
         tcpFallback: m['tcpFallback'] != false,
         tcpPrecheck: m['tcpPrecheck'] != false,
         mode: mode,
