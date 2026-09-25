@@ -398,6 +398,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
           _buildBoosterPanel(),
           if (_testingAll) _buildProgressBar(),
           _buildCategoryChips(),
+          _buildStabilityLegend(),
           _buildSortRow(visible.length),
           Expanded(
             child: visible.isEmpty
@@ -614,6 +615,35 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     );
   }
 
+  Widget _buildStabilityLegend() {
+    Widget item(Color c, String fa, String en) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 4),
+              Text(_t(fa, en),
+                  style: TextStyle(color: AppColors.muted2(context), fontSize: 10)),
+            ],
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
+      child: Row(
+        children: [
+          item(const Color(0xFF3DCF9A), 'پایدار', 'Stable'),
+          item(const Color(0xFFFFB74D), 'متوسط', 'Medium'),
+          item(const Color(0xFFE07070), 'ناپایدار', 'Unstable'),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSortRow(int count) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
@@ -670,8 +700,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       subtitle: Text(
         '${e.provider} · ${e.country}'
         '${e.xrayPrimary.isNotEmpty ? ' · ${e.xrayPrimary}' : ''}'
-        '${ping != null ? ' · ${ping}ms' : ''}'
-        '${jitter != null ? ' · j${jitter}ms' : ''}',
+        '${jitter != null ? ' · jitter ${jitter}ms' : ''}',
         style: TextStyle(color: AppColors.muted2(context), fontSize: 11),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -679,7 +708,35 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (pinned) Icon(Icons.push_pin, size: 16, color: AppColors.accent),
+          if (pinned)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Icon(Icons.push_pin, size: 16, color: AppColors.accent),
+            ),
+          if (ping != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _pingBgColor(ping),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${ping}ms',
+                style: TextStyle(
+                  color: _pingTextColor(ping),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                '—',
+                style: TextStyle(color: AppColors.muted2(context), fontSize: 14),
+              ),
+            ),
           IconButton(
             icon: Icon(Icons.more_vert, size: 18, color: AppColors.muted2(context)),
             onPressed: () => _openActionSheet(e),
@@ -687,6 +744,18 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
         ],
       ),
     );
+  }
+
+  Color _pingBgColor(int ms) {
+    if (ms < 100) return const Color(0x223DCF9A);
+    if (ms < 300) return const Color(0x22FFB74D);
+    return const Color(0x22E07070);
+  }
+
+  Color _pingTextColor(int ms) {
+    if (ms < 100) return const Color(0xFF3DCF9A);
+    if (ms < 300) return const Color(0xFFFFB74D);
+    return const Color(0xFFE07070);
   }
 
   void _openActionSheet(DnsEntry e) {

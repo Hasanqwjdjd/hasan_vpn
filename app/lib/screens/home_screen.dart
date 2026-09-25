@@ -139,6 +139,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _bootstrap();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // ignore: unawaited_futures
+      _readWidgetSelectionIntent();
+    });
   }
 
   Future<void> _bootstrap() async {

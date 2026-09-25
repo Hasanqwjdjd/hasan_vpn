@@ -97,17 +97,17 @@ class ServerTester {
     final twoPhase = !effectiveOnlyTcp && budget.mode == TestMode.balanced;
 
     if (twoPhase) {
-      // ═══ Phase 1: TCP-only for everyone (fast) ═══
+      // ═══ Phase 1: TCP-only for everyone — ترتیبی (یکی پس از دیگری) ═══
       final tcpGate = _Semaphore(budget.tcpConcurrency);
-      await Future.wait(
-        regular.where((s) => !s.isAether).map((server) =>
-            _tcpOnlyPhase(
-              server,
-              session: session,
-              tcpGate: tcpGate,
-              notify: notify,
-            )),
-      );
+      for (final server in regular.where((s) => !s.isAether)) {
+        if (session.cancelled) break;
+        await _tcpOnlyPhase(
+          server,
+          session: session,
+          tcpGate: tcpGate,
+          notify: notify,
+        );
+      }
       if (session.cancelled) {
         throttle?.cancel();
         return summary;
@@ -128,7 +128,8 @@ class ServerTester {
       // ═══ Phase 2: real HTTP for top N ═══
       final realGate = _Semaphore(budget.realConcurrency);
       final aetherGate = _Semaphore(budget.aetherConcurrency);
-      await Future.wait(regular.map((server) async {
+      for (final server in regular) {
+        if (session.cancelled) break;
         if (topIds.contains(server.id)) {
           await _realPhase(
             server,
@@ -139,7 +140,6 @@ class ServerTester {
             notify: notify,
           );
         } else {
-          // Keep TCP result from phase 1
           if (server.ping != null && server.ping! > 0) {
             summary.unknown++;
           } else {
@@ -147,7 +147,7 @@ class ServerTester {
           }
         }
         if (!session.cancelled) onServerDone?.call(server);
-      }));
+      }
     } else {
       // ═══ Single pass (turbo / accurate / onlyTcp) ═══
       final realGate = _Semaphore(budget.realConcurrency);
@@ -158,22 +158,20 @@ class ServerTester {
       );
       final aetherGate = _Semaphore(budget.aetherConcurrency);
 
-      await Future.wait(
-        regular.map(
-          (server) => _testServer(
-            server,
-            session: session,
-            onlyTcp: effectiveOnlyTcp,
-            gate: server.isAether ? aetherGate : realGate,
-            tcpGate: tcpGate,
-            budget: budget,
-            summary: summary,
-            notify: notify,
-          ).then((_) {
-            if (!session.cancelled) onServerDone?.call(server);
-          }),
-        ),
-      );
+      for (final server in regular) {
+        if (session.cancelled) break;
+        await _testServer(
+          server,
+          session: session,
+          onlyTcp: effectiveOnlyTcp,
+          gate: server.isAether ? aetherGate : realGate,
+          tcpGate: tcpGate,
+          budget: budget,
+          summary: summary,
+          notify: notify,
+        );
+        if (!session.cancelled) onServerDone?.call(server);
+      }
     }
 
     throttle?.cancel();
