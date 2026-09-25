@@ -99,6 +99,7 @@ class WidgetConnectHandler {
   static void listen(
     void Function(WidgetConnectRequest req) onRequest, {
     void Function(int widgetId)? onNeedsServer,
+    void Function(int widgetId)? onChooseTorBridge,
   }) {
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onWidgetIntent') {
@@ -113,6 +114,13 @@ class WidgetConnectHandler {
           }
 
           final action = args['widget_action']?.toString() ?? 'connect';
+          if (action == 'choose_tor_bridge') {
+            final wid = (args['widget_id'] as num?)?.toInt();
+            if (wid != null && wid > 0) {
+              onChooseTorBridge?.call(wid);
+            }
+            return null;
+          }
           final payload = args['widget_payload']?.toString() ?? '';
           if (payload.isEmpty) return null;
           onRequest(WidgetConnectRequest(

@@ -13,6 +13,8 @@ import 'services/subscription_service.dart';
 import 'services/settings_service.dart';
 import 'services/app_colors.dart';
 import 'screens/home_screen.dart';
+import 'screens/tor_screen.dart';
+import 'services/widget_connect_handler.dart';
 import 'screens/subscriptions_screen.dart';
 import 'screens/settings_screen.dart';
 
@@ -156,6 +158,8 @@ class HasanApp extends StatefulWidget {
   State<HasanApp> createState() => _HasanAppState();
 }
 
+final GlobalKey<NavigatorState> _rootNavKey = GlobalKey<NavigatorState>();
+
 class _HasanAppState extends State<HasanApp> {
   List<Subscription> _subs = [];
   List<VpnServer> _subServers = [];
@@ -166,7 +170,26 @@ class _HasanAppState extends State<HasanApp> {
   @override
   void initState() {
     super.initState();
+    WidgetConnectHandler.listen(
+      (req) {
+        // درخواست اتصال معمولی از ویجت؛ فعلاً فقط لاگ.
+      },
+      onChooseTorBridge: _openTorBridgePicker,
+    );
     _bootstrap();
+  }
+
+  Future<void> _openTorBridgePicker(int widgetId) async {
+    final nav = _rootNavKey.currentState;
+    if (nav == null) return;
+    await nav.push(
+      MaterialPageRoute(
+        builder: (_) => TorScreen(
+          language: _language,
+          pendingWidgetId: widgetId,
+        ),
+      ),
+    );
   }
 
   Future<void> _bootstrap() async {
@@ -289,6 +312,7 @@ class _HasanAppState extends State<HasanApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _rootNavKey,
       title: _language == 'fa' ? 'حسن' : 'Hasan',
       debugShowCheckedModeBanner: false,
       theme: _lightTheme(),
