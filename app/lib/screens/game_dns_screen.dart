@@ -799,8 +799,8 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               },
             ),
             ListTile(
-              leading: Icon(Icons.visibility_off_outlined, color: AppColors.fg(context)),
-              title: Text(_t('مخفی کردن', 'Hide')),
+              leading: Icon(Icons.delete_outline, color: AppColors.danger),
+              title: Text(_t('حذف از لیست', 'Remove from list'), style: const TextStyle(color: AppColors.danger)),
               onTap: () {
                 Navigator.pop(context);
                 _hide(e);
