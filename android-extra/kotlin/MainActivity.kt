@@ -89,21 +89,28 @@ class MainActivity : FlutterActivity() {
                         Thread {
                             try {
                                 val pm = applicationContext.packageManager
-                                val intent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
-                                val resolved = pm.queryIntentActivities(intent, 0)
+                                val myPkg = applicationContext.packageName
+                                // همه اپ‌های نصب‌شده — نه فقط آن‌هایی که آیکون لانچر دارند
+                                val packages = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                    pm.getInstalledPackages(android.content.pm.PackageManager.PackageInfoFlags.of(0L))
+                                } else {
+                                    @Suppress("DEPRECATION")
+                                    pm.getInstalledPackages(0)
+                                }
                                 val out = ArrayList<Map<String, Any?>>()
-                                for (ri in resolved) {
-                                    val pkg = ri.activityInfo.packageName ?: continue
+                                val seen = HashSet<String>()
+                                for (pi in packages) {
+                                    val pkg = pi.packageName ?: continue
+                                    if (pkg == myPkg) continue
+                                    if (seen.contains(pkg)) continue
+                                    seen.add(pkg)
+                                    val appInfo = pi.applicationInfo ?: continue
                                     val label = try {
-                                        ri.loadLabel(pm)?.toString() ?: pkg
+                                        pm.getApplicationLabel(appInfo).toString()
                                     } catch (_: Exception) {
                                         pkg
                                     }
-                                    val isSystem = try {
-                                        (ri.activityInfo.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-                                    } catch (_: Exception) {
-                                        false
-                                    }
+                                    val isSystem = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
                                     out.add(mapOf(
                                         "package" to pkg,
                                         "label" to label,

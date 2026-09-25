@@ -401,6 +401,7 @@ jobs:
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+              <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
           """
           if 'android.permission.INTERNET' not in text:
               text = text.replace("<application", perms + "    <application", 1)
