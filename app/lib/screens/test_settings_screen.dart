@@ -6,6 +6,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/app_colors.dart';
 import '../services/test_budget.dart';
 
+class _ModeOption {
+  final TestMode mode;
+  final String faTitle;
+  final String enTitle;
+  final String faSub;
+  final String enSub;
+  final IconData icon;
+  const _ModeOption(
+      this.mode, this.faTitle, this.enTitle, this.faSub, this.enSub, this.icon);
+}
+
 class TestSettingsScreen extends StatefulWidget {
   final String language;
 
@@ -135,8 +146,8 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
   }
 
   Widget _modeChips() {
-    final items = <(TestMode, String, String, String, IconData)>[
-      (
+    const items = <_ModeOption>[
+      _ModeOption(
         TestMode.turbo,
         '🚀 توربو (TCP فقط)',
         '🚀 Turbo (TCP only)',
@@ -144,7 +155,7 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
         'Fastest — TCP connect only. Good for 1000+ servers in seconds.',
         Icons.rocket_launch,
       ),
-      (
+      _ModeOption(
         TestMode.balanced,
         '⚖️ متعادل (پیشنهادی)',
         '⚖️ Balanced (recommended)',
@@ -152,7 +163,7 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
         'TCP for all + real ping for top 40. Best speed/accuracy balance.',
         Icons.balance,
       ),
-      (
+      _ModeOption(
         TestMode.accurate,
         '🎯 دقیق (real برای همه)',
         '🎯 Accurate (real for all)',
@@ -169,7 +180,7 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
             padding: const EdgeInsets.only(bottom: 8),
             child: InkWell(
               onTap: () {
-                setState(() => _mode = item.$1);
+                setState(() => _mode = item.mode);
                 _save();
               },
               borderRadius: BorderRadius.circular(10),
@@ -177,22 +188,22 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: _mode == item.$1
+                  color: _mode == item.mode
                       ? AppColors.accent.withOpacity(0.15)
                       : AppColors.surface(context),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: _mode == item.$1
+                    color: _mode == item.mode
                         ? AppColors.accent
                         : AppColors.border(context),
-                    width: _mode == item.$1 ? 1.5 : 1,
+                    width: _mode == item.mode ? 1.5 : 1,
                   ),
                 ),
                 child: Row(
                   children: [
-                    Icon(item.$5,
+                    Icon(item.icon,
                         size: 20,
-                        color: _mode == item.$1
+                        color: _mode == item.mode
                             ? AppColors.accent
                             : AppColors.muted(context)),
                     const SizedBox(width: 10),
@@ -201,7 +212,7 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _t(item.$2, item.$3),
+                            _t(item.faTitle, item.enTitle),
                             style: TextStyle(
                               color: AppColors.fg(context),
                               fontWeight: FontWeight.w600,
@@ -210,7 +221,7 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            _t(item.$4, item.$4),
+                            _t(item.faSub, item.enSub),
                             style: TextStyle(
                                 color: AppColors.muted2(context),
                                 fontSize: 11,
@@ -219,7 +230,7 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                         ],
                       ),
                     ),
-                    if (_mode == item.$1)
+                    if (_mode == item.mode)
                       const Icon(Icons.check_circle,
                           color: AppColors.accent, size: 18),
                   ],
