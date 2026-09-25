@@ -162,6 +162,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _handleWidgetRequest(req);
       },
       onNeedsServer: (widgetId) => _activateWidgetSelection(widgetId),
+      onChooseTorBridge: (widgetId) => _openTorBridgePickerForWidget(widgetId),
     );
     // ★ ابتدا بررسی انتخاب سرور برای ویجت (اگر pending server selection هست، اپ رو نبند)
     await _readWidgetSelectionIntent();
@@ -2005,6 +2006,79 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     if (mounted) setState(() => _pendingWidgetId = null);
+  }
+
+  Future<void> _openTorBridgePickerForWidget(int widgetId) async {
+    String? defaultMode;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('widget_server_$widgetId') ?? '';
+      final parts = raw.split('|');
+      if (parts.length >= 2 && parts[0] == 'tor' && parts[1].isNotEmpty) {
+        defaultMode = parts[1];
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+    final mode = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                widget.language == 'fa'
+                    ? 'نوع اتصال Tor را انتخاب کنید'
+                    : 'Choose Tor mode',
+                style: TextStyle(
+                  color: AppColors.fg(ctx),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            for (final m in const [
+              ['vanilla', 'ساده (بدون پل)', 'Vanilla (no bridge)'],
+              ['obfs4', 'obfs4', 'obfs4'],
+              ['snowflake', 'Snowflake (P2P)', 'Snowflake (P2P)'],
+              ['meek_lite', 'Meek / Azure', 'Meek / Azure'],
+              ['webtunnel', 'WebTunnel', 'WebTunnel'],
+            ])
+              ListTile(
+                leading: Icon(
+                  m[0] == defaultMode
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                  color: AppColors.accent,
+                ),
+                title: Text(
+                  widget.language == 'fa' ? m[1] : m[2],
+                  style: TextStyle(color: AppColors.fg(ctx)),
+                ),
+                onTap: () => Navigator.pop(ctx, m[0]),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (mode == null || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TorScreen(
+          language: widget.language,
+          pendingWidgetId: widgetId,
+          initialBridgeType: mode,
+          autoConnect: true,
+        ),
+      ),
+    );
   }
 
   Widget _buildPatternihaBanner() {

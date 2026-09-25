@@ -234,6 +234,7 @@ class MainActivity : FlutterActivity() {
 
         val map = mutableMapOf<String, Any?>(
             "widget_action" to action,
+            "widget_id" to widgetId,
             "widget_type" to intent.getStringExtra("widget_type"),
             "widget_payload" to intent.getStringExtra("widget_payload"),
             "widget_title" to intent.getStringExtra("widget_title"),

@@ -41,8 +41,9 @@ class QuickConnectWidget1x1 : AppWidgetProvider() {
             val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
             val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
 
-            // Tor: دیالوگ انتخاب mode را از داخل اپ باز کن
-            if (type == "tor") {
+            // Tor با mode ذخیره‌شده → headless (بدون UI)
+            // Tor بدون mode → app picker
+            if (type == "tor" && payload.isEmpty()) {
                 try {
                     val launch = context.packageManager
                         .getLaunchIntentForPackage(context.packageName)
