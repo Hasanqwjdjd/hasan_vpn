@@ -75,23 +75,12 @@ class ServerTester {
     await V2RayEngine.loadDelayUrl();
     final budget = await TestBudget.load();
 
-    // Turbo mode → force TCP-only
     final effectiveOnlyTcp = onlyTcp || budget.isTurbo;
-
     final regular = servers.where((s) => !s.isPsiphon).toList();
     final summary = TestSummary()..total = regular.length;
 
-    final realGate = _Semaphore(budget.realConcurrency);
-    final tcpGate = _Semaphore(
-      effectiveOnlyTcp
-          ? budget.realConcurrency * 2
-          : budget.tcpConcurrency,
-    );
-    final aetherGate = _Semaphore(budget.aetherConcurrency);
-
     Timer? throttle;
     var dirty = false;
-
     void notify() {
       if (session.cancelled) return;
       dirty = true;
@@ -105,26 +94,189 @@ class ServerTester {
       });
     }
 
-    await Future.wait(
-      regular.map(
-        (server) => _testServer(
-          server,
-          session: session,
-          onlyTcp: effectiveOnlyTcp,
-          gate: server.isAether ? aetherGate : realGate,
-          tcpGate: tcpGate,
-          budget: budget,
-          summary: summary,
-          notify: notify,
-        ).then((_) {
-          if (!session.cancelled) onServerDone?.call(server);
-        }),
-      ),
-    );
+    final twoPhase = !effectiveOnlyTcp && budget.mode == TestMode.balanced;
+
+    if (twoPhase) {
+      // ═══ Phase 1: TCP-only for everyone (fast) ═══
+      final tcpGate = _Semaphore(budget.tcpConcurrency);
+      await Future.wait(
+        regular.where((s) => !s.isAether).map((server) =>
+            _tcpOnlyPhase(
+              server,
+              session: session,
+              tcpGate: tcpGate,
+              notify: notify,
+            )),
+      );
+      if (session.cancelled) {
+        throttle?.cancel();
+        return summary;
+      }
+
+      // Rank candidates by TCP ping ascending; Aether always first
+      final ranked = regular
+          .where((s) => s.isAether || (s.ping != null && s.ping! > 0))
+          .toList()
+        ..sort((a, b) {
+          if (a.isAether && !b.isAether) return -1;
+          if (!a.isAether && b.isAether) return 1;
+          return (a.ping ?? 999999).compareTo(b.ping ?? 999999);
+        });
+      final topIds =
+          ranked.take(budget.realTestLimit).map((s) => s.id).toSet();
+
+      // ═══ Phase 2: real HTTP for top N ═══
+      final realGate = _Semaphore(budget.realConcurrency);
+      final aetherGate = _Semaphore(budget.aetherConcurrency);
+      await Future.wait(regular.map((server) async {
+        if (topIds.contains(server.id)) {
+          await _realPhase(
+            server,
+            session: session,
+            gate: server.isAether ? aetherGate : realGate,
+            budget: budget,
+            summary: summary,
+            notify: notify,
+          );
+        } else {
+          // Keep TCP result from phase 1
+          if (server.ping != null && server.ping! > 0) {
+            summary.unknown++;
+          } else {
+            summary.offline++;
+          }
+        }
+        if (!session.cancelled) onServerDone?.call(server);
+      }));
+    } else {
+      // ═══ Single pass (turbo / accurate / onlyTcp) ═══
+      final realGate = _Semaphore(budget.realConcurrency);
+      final tcpGate = _Semaphore(
+        effectiveOnlyTcp
+            ? budget.realConcurrency * 2
+            : budget.tcpConcurrency,
+      );
+      final aetherGate = _Semaphore(budget.aetherConcurrency);
+
+      await Future.wait(
+        regular.map(
+          (server) => _testServer(
+            server,
+            session: session,
+            onlyTcp: effectiveOnlyTcp,
+            gate: server.isAether ? aetherGate : realGate,
+            tcpGate: tcpGate,
+            budget: budget,
+            summary: summary,
+            notify: notify,
+          ).then((_) {
+            if (!session.cancelled) onServerDone?.call(server);
+          }),
+        ),
+      );
+    }
 
     throttle?.cancel();
     if (!session.cancelled) onChanged?.call();
     return summary;
+  }
+
+  /// فاز ۱ از حالت balanced: فقط TCP برای همه‌ی سرورها.
+  static Future<void> _tcpOnlyPhase(
+    VpnServer server, {
+    required TestSession session,
+    required _Semaphore tcpGate,
+    required void Function() notify,
+  }) async {
+    if (session.cancelled || server.isPsiphon) return;
+    await tcpGate.acquire();
+    try {
+      if (session.cancelled) return;
+      final tcp = await _tcpConnectMs(server);
+      if (session.cancelled) return;
+      if (tcp > 0) {
+        server.ping = tcp;
+        server.jitter = null;
+        server.pingKind = PingKind.tcp;
+        server.status = ServerStatus.idle;
+      } else {
+        server.ping = null;
+        server.jitter = null;
+        server.pingKind = PingKind.none;
+        server.status = ServerStatus.offline;
+      }
+      notify();
+    } finally {
+      tcpGate.release();
+    }
+  }
+
+  /// فاز ۲ از حالت balanced: real HTTP برای سرورهای برتر.
+  /// اگر real fail شد، مقدار TCP از فاز ۱ نگه داشته می‌شود.
+  static Future<void> _realPhase(
+    VpnServer server, {
+    required TestSession session,
+    required _Semaphore gate,
+    required TestBudget budget,
+    required TestSummary summary,
+    required void Function() notify,
+  }) async {
+    if (session.cancelled || server.isPsiphon) return;
+    await gate.acquire();
+    try {
+      if (session.cancelled) return;
+      server.status = ServerStatus.testing;
+      notify();
+
+      if (server.isAether) {
+        final ms = await AetherService.measureDelay(
+          server,
+          budget:
+              Duration(seconds: budget.timeoutSec.clamp(8, _realBudgetSec)),
+        );
+        if (session.cancelled) return;
+        if (ms > 0) {
+          server.ping = ms;
+          server.jitter = null;
+          server.pingKind = PingKind.real;
+          server.status = ServerStatus.online;
+          summary.online++;
+        } else {
+          server.ping = null;
+          server.jitter = null;
+          server.pingKind = PingKind.none;
+          server.status = ServerStatus.offline;
+          summary.offline++;
+        }
+        return;
+      }
+
+      final (ms, jitter) = await _measureReal(server, budget, session);
+      if (session.cancelled) return;
+      if (ms > 0) {
+        server.ping = ms;
+        server.jitter = jitter;
+        server.pingKind = PingKind.real;
+        server.status = ServerStatus.online;
+        summary.online++;
+      } else {
+        // Fall back to TCP value from phase 1
+        if (server.ping != null && server.ping! > 0) {
+          server.pingKind = PingKind.tcp;
+          server.jitter = null;
+          server.status = ServerStatus.idle;
+          summary.unknown++;
+        } else {
+          server.ping = null;
+          server.jitter = null;
+          server.pingKind = PingKind.none;
+          server.status = ServerStatus.offline;
+          summary.offline++;
+        }
+      }
+    } finally {
+      gate.release();
+    }
   }
 
   static Future<TestSummary> testOne(
