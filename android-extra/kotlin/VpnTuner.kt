@@ -41,7 +41,7 @@ object VpnTuner {
     }
 
     @JvmStatic
-    fun setAssetDir(dir: String) {
+    fun applyAssetDir(dir: String) {
         assetDir = dir
         Log.i(TAG, "assetDir=$assetDir")
     }

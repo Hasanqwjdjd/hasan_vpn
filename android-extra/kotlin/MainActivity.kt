@@ -141,7 +141,7 @@ class MainActivity : FlutterActivity() {
                         val dir = (call.arguments as? String)
                             ?: call.argument<String>("dir")
                             ?: ""
-                        VpnTuner.setAssetDir(dir)
+                        VpnTuner.applyAssetDir(dir)
                         VpnTuner.persist(applicationContext)
                         VpnTuner.ensureAssetSymlinks(applicationContext)
                         result.success(true)
