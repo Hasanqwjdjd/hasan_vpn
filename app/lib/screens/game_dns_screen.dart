@@ -17,6 +17,7 @@
 // file a reasonable size — flag if you want drag-reorder back.
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
 import '../models/dns_entry.dart';
@@ -56,6 +57,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   _SortMode _sortMode = _SortMode.ping;
 
   String? _activeId;
+  List<String> _manualOrder = <String>[];
   bool _testingAll = false;
   int _tested = 0;
   int _total = 0;
@@ -84,13 +86,22 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     final custom = await _registry.loadCustom();
     final activeId = await _registry.getActiveId();
     final booster = await GameBoosterSettings.load();
+    final prefs = await SharedPreferences.getInstance();
+    final order = prefs.getStringList('dns_manual_order_v1') ?? <String>[];
     if (!mounted) return;
     setState(() {
       _stats = stats;
       _custom = custom;
       _activeId = activeId;
       _booster = booster;
+      _manualOrder = order;
     });
+  }
+
+  Future<void> _saveManualOrder(List<String> order) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('dns_manual_order_v1', order);
+    if (mounted) setState(() => _manualOrder = order);
   }
 
   // ---------------------------------------------------------- Data helpers
@@ -173,6 +184,20 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
       case _Category.myCountry:
         list = list.where((e) => e.country == _myCountry).toList();
         break;
+    }
+
+    // مرتب‌سازی بر اساس _manualOrder
+    if (_manualOrder.isNotEmpty) {
+      final pos = <String, int>{};
+      for (var i = 0; i < _manualOrder.length; i++) {
+        pos[_manualOrder[i]] = i;
+      }
+      list.sort((a, b) {
+        final ai = pos[a.id] ?? 9999999;
+        final bi = pos[b.id] ?? 9999999;
+        if (ai != bi) return ai.compareTo(bi);
+        return 0;
+      });
     }
 
     if (_searchQuery.trim().isNotEmpty) {
@@ -424,9 +449,21 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
           Expanded(
             child: visible.isEmpty
                 ? Center(child: Text(_t('چیزی پیدا نشد', 'Nothing found'), style: TextStyle(color: AppColors.muted(context))))
-                : ListView.builder(
+                : ReorderableListView.builder(
+                    buildDefaultDragHandles: false,
                     itemCount: visible.length,
-                    itemBuilder: (context, i) => _buildTile(visible[i]),
+                    onReorder: (oldIndex, newIndex) {
+                      if (newIndex > oldIndex) newIndex -= 1;
+                      final ids = visible.map((e) => e.id).toList();
+                      final moved = ids.removeAt(oldIndex);
+                      ids.insert(newIndex, moved);
+                      _saveManualOrder(ids);
+                    },
+                    itemBuilder: (context, i) => ReorderableDragStartListener(
+                      key: ValueKey(visible[i].id),
+                      index: i,
+                      child: _buildTile(visible[i]),
+                    ),
                   ),
           ),
         ],
