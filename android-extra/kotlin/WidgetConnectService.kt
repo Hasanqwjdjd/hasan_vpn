@@ -92,9 +92,9 @@ class WidgetConnectService : Service() {
 
         launchHeadless(type, payload, title, action)
 
-        // سرویس حداکثر ۲۰ ثانیه زنده بماند (کمی بیشتر از قبل، چون این‌بار
-        // واقعاً یک اتصال VPN واقعی از طریق Activity متصل کامل می‌شود).
-        handler.postDelayed({ stopSoon() }, 20000)
+        // Tor به ۶۰-۸۰ ثانیه برای bootstrap نیاز داره؛ سرورها ۵-۱۰ ثانیه.
+        val aliveMs = if (type == "tor") 95000L else 20000L
+        handler.postDelayed({ stopSoon() }, aliveMs)
 
         return START_NOT_STICKY
     }
@@ -102,6 +102,10 @@ class WidgetConnectService : Service() {
     /// آیا الان یک تونل VPN فعال روی دستگاه برقرار است؟ (منبع حقیقت واحد،
     /// مستقل از هر state داخلی Dart که بین اجراهای headless پایدار نیست.)
     private fun isVpnConnected(): Boolean {
+        // Tor running?
+        try {
+            if (TorService.isRunning()) return true
+        } catch (_: Exception) {}
         // FIX_VPN_FLAG: اول flag قابل‌اعتماد Flutter رو چک کن.
         // چون TRANSPORT_VPN روی بعضی دستگاه‌ها/ROM ها درست کار نمی‌کنه.
         try {
@@ -215,8 +219,13 @@ class WidgetConnectService : Service() {
     private fun readWidgetBinding(widgetId: Int): Triple<String, String, String>? {
         return try {
             val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-            val key = "flutter.widget_server_$widgetId"
-            val raw = prefs.getString(key, null) ?: return null
+            // اول از widget_server_$widgetId بخون (استاندارد برای ۱×۱)
+            var raw = prefs.getString("flutter.widget_server_$widgetId", null)
+            // اگر خالی بود، از widget_tor_$widgetId (سازگاری با گذشته)
+            if (raw.isNullOrBlank()) {
+                raw = prefs.getString("flutter.widget_tor_$widgetId", null)
+            }
+            if (raw.isNullOrBlank()) return null
             // فرمت: type|payload|title
             val parts = raw.split("|", limit = 3)
             if (parts.size != 3) return null

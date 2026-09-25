@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'services/v2ray_engine.dart';
+import 'services/tor_service.dart';
 import 'services/settings_service.dart';
 import 'models/server.dart';
 
@@ -45,7 +46,28 @@ Future<void> widgetHeadlessMain() async {
   String? error;
 
   try {
-    if (action == 'disconnect') {
+    if (type == 'tor' && action == 'connect') {
+      final parts = payload.split('|');
+      final mode = parts.length >= 2 && parts[1].isNotEmpty
+          ? parts[1]
+          : 'vanilla';
+      try {
+        final r = await TorService.start(bridgeType: mode);
+        ok = r['ok'] == true;
+        if (!ok) error = r['error']?.toString() ?? 'tor start failed';
+      } catch (e) {
+        ok = false;
+        error = e.toString();
+      }
+    } else if (type == 'tor' && action == 'disconnect') {
+      try {
+        await TorService.stop();
+        ok = true;
+      } catch (e) {
+        ok = false;
+        error = e.toString();
+      }
+    } else if (action == 'disconnect') {
       await V2RayEngine.init();
       // FIX_DISCONNECT_V3:
       // مشکل V2 این بود که isolate بعد از 4 تلاش می‌مرد و native layer

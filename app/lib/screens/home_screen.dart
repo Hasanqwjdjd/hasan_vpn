@@ -1981,10 +1981,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
           TextButton.icon(
-            onPressed: _bindTorToPendingWidget,
+            onPressed: _openTorScreenForWidget,
             icon: const Icon(Icons.security, size: 16, color: AppColors.accent),
             label: Text(
-              _t('استفاده از Tor', 'Use Tor'),
+              _t('رفتن به قسمت تور', 'Go to Tor'),
               style: const TextStyle(color: AppColors.accent, fontSize: 12),
             ),
           ),
@@ -1993,26 +1993,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _bindTorToPendingWidget() async {
+  Future<void> _openTorScreenForWidget() async {
     final wid = _pendingWidgetId;
     if (wid == null) return;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('widget_server_$wid', 'tor||Tor');
-      const ch = MethodChannel('com.hasan.hasan_vpn/widget');
-      await ch.invokeMethod('updateWidgets');
-    } catch (_) {}
-    if (!mounted) return;
-    setState(() => _pendingWidgetId = null);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_t(
-          'ویجت به Tor وصل شد — با لمس ویجت، نوع Tor را انتخاب کنید',
-          'Widget bound to Tor — tap the widget to choose the mode',
-        )),
-        duration: const Duration(seconds: 4),
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TorScreen(
+          language: widget.language,
+          pendingWidgetId: wid,
+        ),
       ),
     );
+    if (mounted) setState(() => _pendingWidgetId = null);
   }
 
   Widget _buildPatternihaBanner() {

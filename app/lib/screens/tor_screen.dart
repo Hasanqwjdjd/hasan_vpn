@@ -132,7 +132,11 @@ class _TorScreenState extends State<TorScreen> {
     if (wid == null || wid <= 0) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      // binding
+      // وقتی bootstrap 100% شد، binding در key استاندارد ویجت ۱×۱ ذخیره میشه
+      if (_running && _bootstrap >= 100 && _bridgeType.isNotEmpty) {
+        await prefs.setString('widget_server_$wid', 'tor|$_bridgeType|Tor');
+      }
+      // binding قدیم (۲×۱ که حذف شده — بی‌ضرره)
       final line = _currentBridgeLine();
       if (line != null && line.isNotEmpty) {
         final label = _bridgeType.isNotEmpty ? _bridgeType : 'Tor';
@@ -1229,6 +1233,36 @@ class _TorScreenState extends State<TorScreen> {
                     color: AppColors.muted(context), fontSize: 12, height: 1.6),
               ),
             ),
+            if (widget.pendingWidgetId != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.accent),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline,
+                        color: AppColors.accent, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _t(
+                          'برای اتصال سریع، فقط «Tor ساده» و «WebTunnel» توصیه می‌شن.',
+                          'For fast connect, only "Simple Tor" and "WebTunnel" are recommended.',
+                        ),
+                        style: TextStyle(
+                            color: AppColors.fg(context),
+                            fontSize: 12,
+                            height: 1.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
 
             Text(
