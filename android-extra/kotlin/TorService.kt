@@ -236,9 +236,10 @@ object TorService {
         sb.appendLine("DataDirectory ${dataDir.absolutePath}")
         sb.appendLine("Log notice stdout")
         sb.appendLine("SafeLogging 0")
-        // AvoidDiskWrites removed — allows caching consensus/guards/circuits to disk for faster reconnect
-        // بهینه‌سازی سرعت/پایداری مدار
-        sb.appendLine("CircuitBuildTimeout 30")
+        // --- tuning (بازگشت به مقادیر قبل از 9e5b72c) ---
+        // ExitNodes/StrictNodes عمداً حذف شده‌اند: geoip6 همراه APK نیست.
+        sb.appendLine("AvoidDiskWrites 1")
+        sb.appendLine("CircuitBuildTimeout 12")
         sb.appendLine("LearnCircuitBuildTimeout 0")
         sb.appendLine("CircuitStreamTimeout 45")
         sb.appendLine("KeepalivePeriod 60")
@@ -248,11 +249,9 @@ object TorService {
         sb.appendLine("ClientOnly 1")
         sb.appendLine("ConnectionPadding 0")
         sb.appendLine("ReducedConnectionPadding 1")
-        // ─── بهینه‌سازی سرعت ───
-        sb.appendLine("NumEntryGuards 1")
-        sb.appendLine("NumDirectoryGuards 2")
+        sb.appendLine("NumEntryGuards 2")
+        sb.appendLine("NumDirectoryGuards 1")
         sb.appendLine("UseEntryGuards 1")
-        sb.appendLine("ExitNodes {de},{nl},{gb},{us},{fr},{ca},{jp}")
         sb.appendLine("StrictNodes 0")
         // دانلود سریع‌تر consensus
         sb.appendLine("ClientBootstrapConsensusAuthorityDownloadInitialDelay 0")
@@ -268,6 +267,7 @@ object TorService {
                 sb.appendLine("ClientTransportPlugin obfs3 exec ${obfs4Path}")
                 sb.appendLine("ClientTransportPlugin scramblesuit exec ${obfs4Path}")
                 sb.appendLine("ClientTransportPlugin meek_lite exec ${obfs4Path}")
+                sb.appendLine("ClientTransportPlugin webtunnel exec ${obfs4Path}")
             }
             if (snowflakePath != null) {
                 sb.appendLine(
@@ -284,6 +284,14 @@ object TorService {
         when (bridgeType) {
             "vanilla" -> {
                 // بدون پل
+            }
+            "webtunnel" -> {
+                if (obfs4Path != null) {
+                    sb.appendLine("UseBridges 1")
+                    sb.appendLine("ClientTransportPlugin webtunnel exec ${obfs4Path}")
+                    val bridges = if (!customBridges.isNullOrEmpty()) customBridges else emptyList()
+                    bridges.take(2).forEach { sb.appendLine("Bridge $it") }
+                }
             }
             "obfs4" -> {
                 if (obfs4Path != null) {
