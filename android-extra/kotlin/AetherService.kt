@@ -441,6 +441,16 @@ class AetherService : Service() {
             SafeLog.i(TAG, "AETHER_ENV_DUMP $k=$v")
         }
         val proc = try {
+            // AETHER_ENV_DUMP — full env dump for debugging
+            try {
+                val dumpLines = env.entries.joinToString(" ") { (k, v) ->
+                    "$k=$v"
+                }
+                SafeLog.d(TAG, "AETHER_ENV_DUMP ${binary.absolutePath}")
+                SafeLog.d(TAG, "AETHER_ENV_DUMP $dumpLines")
+            } catch (e: Exception) {
+                SafeLog.e(TAG, "AETHER_ENV_DUMP failed", e)
+            }
             builder.start()
         } catch (error: Exception) {
             SafeLog.e(TAG, "ProcessBuilder.start failed", error)

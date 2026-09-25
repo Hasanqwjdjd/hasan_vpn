@@ -95,9 +95,11 @@ class VpnServer {
   bool get usesUdpTransport => protocol == VpnProtocol.hysteria2;
 
   /// نام نهایی برای نمایش (شامل override کاربر).
-  String get displayName => (nameOverride == null || nameOverride!.isEmpty)
-      ? name
-      : nameOverride!;
+  String get displayName => sanitizeServerName(
+        (nameOverride == null || nameOverride!.isEmpty)
+            ? name
+            : nameOverride!,
+      );
 
   /// کپی با فیلدهای اختیاری جدید (فیلدهای final را نمی‌شود مستقیم عوض کرد).
   VpnServer copyWith({

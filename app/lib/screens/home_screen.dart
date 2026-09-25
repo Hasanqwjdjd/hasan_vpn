@@ -341,7 +341,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     for (final server in allServers) {
       final ov = overrides[server.id];
       if (ov != null && ov.isNotEmpty) {
-        server.nameOverride = ov;
+        server.nameOverride = VpnServer.sanitizeServerName(ov);
       }
     }
   }
@@ -390,7 +390,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await SettingsService.setServerNameOverride(server.id, newName);
     if (!mounted) return;
     setState(() {
-      server.nameOverride = newName;
+      server.nameOverride = VpnServer.sanitizeServerName(newName);
     });
   }
 
@@ -610,7 +610,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       name: newName.isNotEmpty ? newName : null,
       shareLink: newLink,
       host: peerHost,
-      nameOverride: newName.isNotEmpty ? newName : null,
+      nameOverride: newName.isNotEmpty
+          ? VpnServer.sanitizeServerName(newName)
+          : null,
     );
     final idx = _customServers.indexWhere((s) => s.id == server.id);
     if (idx >= 0) {
