@@ -964,7 +964,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             style: TextStyle(color: AppColors.fg(context), fontSize: 12),
             decoration: _siphonDecoration(
               '{ "SponsorId": "...", "PropagationChannelId": "..." }',
-              hintSize: 11,
             ),
           ),
         ],
