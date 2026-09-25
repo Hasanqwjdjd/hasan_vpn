@@ -120,11 +120,18 @@ class _TorScreenState extends State<TorScreen> {
       }
       // progress
       if (_running) {
-        final pct = _bootstrapPercent;
+        // try to extract "Bootstrapped NN%" from message, else show message
         final msg = _bootstrapMsg;
-        final p = (pct > 0 && pct < 100)
-            ? 'Bootstrapped $pct%'
-            : (msg.isNotEmpty ? msg : 'Tor ready');
+        final m = RegExp(r'Bootstrapped\s+(\d+)%').firstMatch(msg);
+        String p;
+        if (m != null) {
+          final pct = int.tryParse(m.group(1) ?? '') ?? 0;
+          p = 'Bootstrapped $pct%';
+        } else if (msg.isNotEmpty) {
+          p = msg;
+        } else {
+          p = 'Tor ready';
+        }
         await prefs.setString('widget_tor_progress_$wid', p);
       } else {
         await prefs.setString('widget_tor_progress_$wid', 'Disconnected');
