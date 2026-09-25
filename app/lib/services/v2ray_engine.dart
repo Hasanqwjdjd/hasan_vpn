@@ -360,10 +360,18 @@ class V2RayEngine {
       config = await _applyGameDns(config);
       config = await _applyGameBooster(config);
 
+      // Per-app proxy: resolve blocked apps based on user's mode
+      // (all / blacklist / whitelist) and pass to startConfig.
+      List<String>? blockedApps;
+      try {
+        blockedApps = await resolveBlockedApps();
+      } catch (_) {}
+
       final ok = await startConfig(
         remark: remark,
         config: config,
         server: server,
+        blockedApps: blockedApps,
       );
       // FIX_VPN_FLAG
       if (ok) {
