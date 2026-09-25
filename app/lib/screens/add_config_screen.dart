@@ -585,22 +585,16 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       return;
     }
     setState(() => _aetherWorking = true);
-    // Prefer Cloudflare reg API; fall back to clearing local identity.
-    final reg = await AetherService.registerWarpKey();
-    if (reg['ok'] == true) {
-      if (!mounted) return;
-      setState(() => _aetherWorking = false);
-      _showMsg(_t('کلید WARP ثبت شد', 'WARP key registered'));
-      return;
-    }
+    // Aether خودش موقع اجرا حساب WARP می‌سازد؛ فقط هویت قبلی را پاک
+    // می‌کنیم تا از صفر شروع کند. (HTTP reg API کلید واقعی X25519
+    // می‌خواهد که بدون cryptography در Dart در دسترس نیست.)
     final ok = await AetherService.resetIdentity();
     if (!mounted) return;
     setState(() => _aetherWorking = false);
     _showMsg(ok
-        ? _t('هویت WARP پاک شد — اتصال بعدی یک حساب تازه می‌سازد',
-            'WARP identity cleared — next connect creates a fresh account')
-        : _t('ثبت کلید ناموفق: ${reg['error'] ?? reg['status']}',
-            'Key registration failed: ${reg['error'] ?? reg['status']}'));
+        ? _t('هویت پاک شد — اتصال بعدی حساب WARP تازه می‌سازد',
+            'Identity cleared — next connect creates a fresh WARP account')
+        : _t('پاک‌کردن هویت ناموفق', 'Could not reset identity'));
   }
 
   Future<void> _aetherDumpEnv() async {

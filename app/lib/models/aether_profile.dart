@@ -371,14 +371,12 @@ class AetherProfile {
         (protocol == 'auto' || protocol == 'gool')) {
       attempts.add(_attempt('gool', false, scan == 'smart' ? 'balanced' : scan,
           forceNoize: noize == 'auto' ? 'balanced' : null));
-      if (protocol == 'gool') {
-        // فقط gool با endpoint ثابت — بدون اسکن طولانی ironclad
-        if (lastGood != null && quickReconnect) {
-          attempts.removeWhere((a) => a.sameAs(lastGood));
-          attempts.insert(0, lastGood);
-        }
-        return attempts;
+      // endpoint مشخص داده شده → همان یک تلاش کافی است، اسکن اضافی نکن.
+      if (lastGood != null && quickReconnect) {
+        attempts.removeWhere((a) => a.sameAs(lastGood));
+        attempts.insert(0, lastGood);
       }
+      return attempts;
     }
 
     if (protocol == 'auto') {
@@ -396,7 +394,7 @@ class AetherProfile {
       attempts.add(_attempt('masque', false, fixedScan ?? 'turbo')); // H3
       attempts.add(_attempt('wg', false, fixedScan ?? 'balanced',
           forceNoize: 'gfw'));
-      attempts.add(_attempt('gool', false, fixedScan ?? 'ironclad',
+      attempts.add(_attempt('gool', false, fixedScan ?? 'balanced',
           forceNoize: 'aggressive'));
       attempts.add(_attempt('mim', false, fixedScan ?? 'thorough',
           forceNoize: 'gfw'));
@@ -430,7 +428,7 @@ class AetherProfile {
         if (proto == 'gool' || proto == 'mim') {
           attempts.add(_attempt(proto, h2, 'balanced', forceNoize: 'gfw'));
           attempts.add(_attempt(proto, h2, 'thorough', forceNoize: 'gfw'));
-          attempts.add(_attempt(proto, h2, 'ironclad', forceNoize: 'aggressive'));
+          attempts.add(_attempt(proto, h2, 'thorough', forceNoize: 'aggressive'));
           attempts.add(_attempt(proto, h2, 'verified', forceNoize: 'aggressive'));
         } else if (h2) {
           // MASQUE/H2: TCP 443 — اولویت برای 4G
