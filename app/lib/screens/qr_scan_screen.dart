@@ -9,7 +9,12 @@ import '../services/link_parser.dart';
 class QrScanScreen extends StatefulWidget {
   final String language;
 
-  const QrScanScreen({super.key, this.language = 'fa'});
+  /// 'vpn' (پیش‌فرض) = فقط لینک VPN معتبر
+  /// 'dns' = DNS line/JSON قبول می‌کند
+  /// 'any' = هر محتوایی
+  final String mode;
+
+  const QrScanScreen({super.key, this.language = 'fa', this.mode = 'vpn'});
 
   @override
   State<QrScanScreen> createState() => _QrScanScreenState();
@@ -30,7 +35,20 @@ class _QrScanScreenState extends State<QrScanScreen> {
 
   /// QR معتبر = حداقل یک لینک پشتیبانی‌شده (vless / vmess / trojan / ss /
   /// hysteria2 / aether) داخل متن داشته باشد.
-  bool _looksValid(String raw) => LinkParser.extractLinks(raw).isNotEmpty;
+  bool _looksValid(String raw) {
+    final mode = widget.mode;
+    if (mode == 'any') return raw.trim().isNotEmpty;
+    if (mode == 'dns') {
+      final t = raw.trim();
+      if (t.isEmpty) return false;
+      if (t.startsWith('{') || t.startsWith('[')) return true;
+      // الگوی IP یا host: primary,secondary
+      return RegExp(r'^[^
+,]{1,80}(,[^
+,]{1,80}){0,2}$').hasMatch(t);
+    }
+    return LinkParser.extractLinks(raw).isNotEmpty;
+  }
 
   void _onDetect(BarcodeCapture capture) {
     if (_handled) return;
@@ -72,7 +90,10 @@ class _QrScanScreenState extends State<QrScanScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 0,
-        title: Text(_t('اسکن QR کانفیگ', 'Scan Config QR'),
+        title: Text(
+            widget.mode == 'dns'
+                ? _t('اسکن QR DNS', 'Scan DNS QR')
+                : _t('اسکن QR کانفیگ', 'Scan Config QR'),
             style: const TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [

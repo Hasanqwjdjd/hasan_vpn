@@ -302,7 +302,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   Future<void> _importFromQr() async {
     final result = await Navigator.of(context).push<String>(
       MaterialPageRoute(
-        builder: (_) => QrScanScreen(language: widget.language),
+        builder: (_) => QrScanScreen(language: widget.language, mode: 'dns'),
       ),
     );
     if (result == null || result.isEmpty || !mounted) return;
