@@ -2012,6 +2012,72 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) setState(() => _pendingWidgetId = null);
   }
 
+  Future<void> _addSelectedToGroup() async {
+    final ids = _selectedIds.toList();
+    if (ids.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final groupsRaw = prefs.getString('server_groups_v1') ?? '{}';
+    Map<String, dynamic> groups;
+    try {
+      final decoded = jsonDecode(groupsRaw);
+      groups = decoded is Map ? Map<String, dynamic>.from(decoded) : {};
+    } catch (_) {
+      groups = {};
+    }
+    if (!mounted) return;
+    final ctrl = TextEditingController();
+    final groupName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface(ctx),
+        title: Text(_t('افزودن به گروه', 'Add to group'),
+            style: TextStyle(color: AppColors.fg(ctx))),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (groups.isNotEmpty)
+              ...groups.keys.map((name) => ListTile(
+                    dense: true,
+                    title: Text(name,
+                        style: TextStyle(color: AppColors.fg(ctx))),
+                    onTap: () => Navigator.pop(ctx, name),
+                  )),
+            TextField(
+              controller: ctrl,
+              style: TextStyle(color: AppColors.fg(ctx)),
+              decoration: InputDecoration(
+                labelText: _t('یا گروه جدید', 'Or new group'),
+                labelStyle: TextStyle(color: AppColors.muted2(ctx)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('OK'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(_t('انصراف', 'Cancel')),
+          ),
+        ],
+      ),
+    );
+    if (groupName == null || groupName.isEmpty) return;
+    final existing = (groups[groupName] as List?)?.cast<String>() ?? [];
+    final merged = {...existing, ...ids}.toList();
+    groups[groupName] = merged;
+    await prefs.setString('server_groups_v1', jsonEncode(groups));
+    if (!mounted) return;
+    setState(() {
+      _selectionMode = false;
+      _selectedIds.clear();
+    });
+    _showMsg(_t('$groupName: ${merged.length} سرور',
+        '$groupName: ${merged.length} servers'));
+  }
+
   Future<void> _openTorBridgePickerForWidget(int widgetId) async {
     String? defaultMode;
     try {
@@ -2139,19 +2205,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         style: TextStyle(color: AppColors.fg(context)),
                       ),
                     ),
-                    TextButton(
-                      onPressed: () async {
-                        final ids = _selectedIds.toSet();
+                    IconButton(
+                      icon: const Icon(Icons.copy, size: 20),
+                      tooltip: _t('کپی', 'Copy'),
+                      onPressed: () {
+                        final selected = _servers
+                            .where((s) => _selectedIds.contains(s.id))
+                            .map((s) => s.shareLink)
+                            .join('\n');
+                        Clipboard.setData(ClipboardData(text: selected));
+                        _showMsg(_t('کپی شد', 'Copied'));
                         setState(() {
-                          _servers.removeWhere((s) => ids.contains(s.id) && s.isDeletable);
-                          _customServers.removeWhere((s) => ids.contains(s.id));
                           _selectionMode = false;
                           _selectedIds.clear();
                         });
                       },
-                      child: Text(_t('حذف', 'Delete')),
                     ),
-                    TextButton(
+                    IconButton(
+                      icon: const Icon(Icons.vertical_align_top, size: 20),
+                      tooltip: _t('انتقال به بالا', 'Move to top'),
+                      onPressed: () async {
+                        final selected = _servers
+                            .where((s) => _selectedIds.contains(s.id))
+                            .toList();
+                        if (selected.isEmpty) return;
+                        setState(() {
+                          _servers.removeWhere((s) => _selectedIds.contains(s.id));
+                          _servers.insertAll(0, selected);
+                          _manualOrder = _servers.map((s) => s.id).toList();
+                          _selectionMode = false;
+                          _selectedIds.clear();
+                        });
+                        await _saveManualOrder();
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.folder_special, size: 20),
+                      tooltip: _t('افزودن به گروه', 'Add to group'),
+                      onPressed: _addSelectedToGroup,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.push_pin, size: 20),
+                      tooltip: _t('پین', 'Pin'),
                       onPressed: () {
                         setState(() {
                           for (final s in _servers) {
@@ -2161,9 +2257,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           _selectedIds.clear();
                         });
                       },
-                      child: Text(_t('پین', 'Pin')),
                     ),
-                    TextButton(
+                    IconButton(
+                      icon: const Icon(Icons.speed, size: 20),
+                      tooltip: _t('تست', 'Test'),
                       onPressed: () async {
                         final targets = _servers
                             .where((s) => _selectedIds.contains(s.id))
@@ -2177,7 +2274,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           if (mounted) setState(() {});
                         }
                       },
-                      child: Text(_t('تست', 'Test')),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.danger),
+                      tooltip: _t('حذف', 'Delete'),
+                      onPressed: () async {
+                        final ids = _selectedIds.toSet();
+                        setState(() {
+                          _servers.removeWhere((s) => ids.contains(s.id) && s.isDeletable);
+                          _customServers.removeWhere((s) => ids.contains(s.id));
+                          _selectionMode = false;
+                          _selectedIds.clear();
+                        });
+                      },
                     ),
                   ],
                 ),
