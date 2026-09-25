@@ -42,10 +42,13 @@ class _QrScanScreenState extends State<QrScanScreen> {
       final t = raw.trim();
       if (t.isEmpty) return false;
       if (t.startsWith('{') || t.startsWith('[')) return true;
-      // الگوی IP یا host: primary,secondary
-      return RegExp(r'^[^
-,]{1,80}(,[^
-,]{1,80}){0,2}$').hasMatch(t);
+      // هر خط: نام/IP/پورت، جدا شده با کاما (حداکثر ۳ بخش)
+      for (final line in t.split('\n')) {
+        final segs = line.split(',');
+        if (segs.length > 3) return false;
+        if (segs.any((x) => x.trim().isEmpty)) return false;
+      }
+      return true;
     }
     return LinkParser.extractLinks(raw).isNotEmpty;
   }
