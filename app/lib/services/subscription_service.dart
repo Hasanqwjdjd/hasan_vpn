@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/server.dart';
 import '../models/subscription.dart';
 import 'link_parser.dart';
+import 'builtin_configs.dart';
 import 'protected_defaults.dart';
 import 'xray_json.dart';
 
@@ -47,12 +48,19 @@ class SubscriptionService {
   /// اشتراک‌های پیش‌فرض. لینک‌ها اینجا نیستند: از جدول رمزشدهٔ
   /// [ProtectedDefaults] (ساخته‌شده در CI) فقط لحظهٔ دانلود خوانده می‌شوند.
   static List<Subscription> get defaultSubscriptions => [
+        // گروه پیش‌فرض با کانفیگ‌های بسته‌بندی‌شده — همیشه در بالای لیست.
+        Subscription(
+          id: BuiltinConfigs.groupId,
+          name: BuiltinConfigs.groupName,
+          url: '',
+          isDefault: true,
+        ),
         for (final e in ProtectedDefaults.entries)
           // Aetris / GitVerse را از پیش‌فرض‌ها حذف می‌کنیم (۴۰۴/timeout مکرر)
           if (!e[1].toLowerCase().contains('aetris') &&
               !e[1].toLowerCase().contains('gitverse'))
             Subscription(id: e[0], name: e[1], url: '', isDefault: true),
-];
+      ];
 
   /// آدرس واقعی برای دانلود. برای اشتراک پیش‌فرض از جدول محافظت‌شده می‌آید.
   static String urlFor(Subscription sub) {
@@ -77,6 +85,7 @@ class SubscriptionService {
 
   /// اشتراک پیش‌فرضی که کاربر حذف کرده نباید در اجرای بعدی برگردد.
   static Future<void> markRemoved(Subscription subscription) async {
+    if (subscription.id == BuiltinConfigs.groupId) return; // هرگز حذف نمی‌شود
     if (!subscription.isDefault) return;
     final prefs = await SharedPreferences.getInstance();
     final removed = await _loadRemovedDefaults(prefs);
@@ -108,10 +117,30 @@ class SubscriptionService {
 
       final removed = await _loadRemovedDefaults(prefs);
       for (final defaultSub in defaultSubscriptions) {
-        if (removed.contains(defaultSub.id)) continue;
+        if (removed.contains(defaultSub.id) &&
+            defaultSub.id != BuiltinConfigs.groupId) {
+          continue;
+        }
         if (!subscriptions.any((s) => s.id == defaultSub.id)) {
           subscriptions.add(defaultSub);
         }
+      }
+
+      // Built-in group: بار اول seed با کانفیگ‌های بسته‌بندی‌شده.
+      final bi = subscriptions.firstWhere(
+        (s) => s.id == BuiltinConfigs.groupId,
+        orElse: () => Subscription(
+          id: BuiltinConfigs.groupId,
+          name: BuiltinConfigs.groupName,
+          url: '',
+          isDefault: true,
+        ),
+      );
+      if (bi.cachedLinks.isEmpty) {
+        bi.cachedLinks = List<String>.from(BuiltinConfigs.rawConfigs);
+        bi.serverCount = bi.cachedLinks.length;
+        bi.lastUpdated = DateTime.now();
+        if (!subscriptions.contains(bi)) subscriptions.insert(0, bi);
       }
 
       await save(subscriptions);
@@ -144,6 +173,10 @@ class SubscriptionService {
       '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
   static Future<List<VpnServer>> fetch(Subscription subscription) async {
+    // گروه Built-in از شبکه fetch نمی‌شود — مستقیم از cache.
+    if (subscription.id == BuiltinConfigs.groupId) {
+      return fromCache(subscription);
+    }
     // ۴۲۹ (Too Many Requests) معمولاً موقتی است؛ قبل از تسلیم‌شدن با یک کمی
     // فاصله دوباره امتحان می‌کنیم (حداکثر ۲ تلاش اضافه).
     const maxRetries = 2;
