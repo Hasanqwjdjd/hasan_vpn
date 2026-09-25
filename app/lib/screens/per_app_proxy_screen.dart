@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../services/app_colors.dart';
 import '../services/settings_service.dart';
 
+/// صفحه‌ی «پراکسی هر برنامه» — سه حالت مثل v2rayNG.
 class PerAppProxyScreen extends StatefulWidget {
   const PerAppProxyScreen({super.key, required this.language});
   final String language;
@@ -16,7 +17,8 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
   static const _ch = MethodChannel('com.hasan.hasan_vpn/device');
   bool _loading = true;
   List<Map<String, dynamic>> _apps = [];
-  final Set<String> _blocked = {};
+  final Set<String> _selected = {};
+  String _mode = 'all';
   String _q = '';
 
   String _t(String fa, String en) =>
@@ -29,18 +31,23 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
   }
 
   Future<void> _load() async {
-    final blocked = await SettingsService.getBlockedApps();
-    _blocked.addAll(blocked);
+    final mode = await SettingsService.getProxyMode();
+    final selected = await SettingsService.getBlockedApps();
+    _mode = mode;
+    _selected.addAll(selected);
     try {
       final raw = await _ch.invokeMethod<List<dynamic>>('listApps');
       final list = <Map<String, dynamic>>[];
       if (raw != null) {
         for (final e in raw) {
-          if (e is Map) {
-            list.add(Map<String, dynamic>.from(e));
-          }
+          if (e is Map) list.add(Map<String, dynamic>.from(e));
         }
       }
+      list.sort((a, b) {
+        final la = (a['label'] ?? '').toString().toLowerCase();
+        final lb = (b['label'] ?? '').toString().toLowerCase();
+        return la.compareTo(lb);
+      });
       if (mounted) {
         setState(() {
           _apps = list;
@@ -52,15 +59,20 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
     }
   }
 
+  Future<void> _setMode(String mode) async {
+    setState(() => _mode = mode);
+    await SettingsService.setProxyMode(mode);
+  }
+
   Future<void> _toggle(String pkg, bool on) async {
     setState(() {
       if (on) {
-        _blocked.add(pkg);
+        _selected.add(pkg);
       } else {
-        _blocked.remove(pkg);
+        _selected.remove(pkg);
       }
     });
-    await SettingsService.setBlockedApps(_blocked.toList()..sort());
+    await SettingsService.setBlockedApps(_selected.toList()..sort());
   }
 
   @override
@@ -71,6 +83,7 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
             final l = '${a['label']} ${a['package']}'.toLowerCase();
             return l.contains(_q.toLowerCase());
           }).toList();
+    final listEnabled = _mode != 'all';
 
     return Scaffold(
       backgroundColor: AppColors.bg(context),
@@ -83,37 +96,132 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
           : Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: TextField(
-                    decoration: InputDecoration(
-                      hintText: _t('جستجو', 'Search'),
-                      prefixIcon: const Icon(Icons.search),
-                    ),
-                    onChanged: (v) => setState(() => _q = v),
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _modeCard(context, 'all',
+                          'همه برنامه‌ها تونل بشن',
+                          'All apps through VPN',
+                          'تمام ترافیک برنامه‌ها از تونل عبور می‌کند',
+                          'All app traffic goes through the tunnel'),
+                      const SizedBox(height: 6),
+                      _modeCard(context, 'blacklist',
+                          'برنامه‌های انتخاب‌شده تونل نشن',
+                          'Selected apps bypass VPN',
+                          'این برنامه‌ها از تونل مستثنی می‌شوند',
+                          'These apps are excluded from the tunnel'),
+                      const SizedBox(height: 6),
+                      _modeCard(context, 'whitelist',
+                          'فقط برنامه‌های انتخاب‌شده تونل بشن',
+                          'Only selected apps through VPN',
+                          'بقیه‌ی برنامه‌ها از تونل مستثنی می‌شوند',
+                          'All other apps bypass the tunnel'),
+                    ],
                   ),
                 ),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: filtered.length,
-                    itemBuilder: (ctx, i) {
-                      final a = filtered[i];
-                      final pkg = a['package']?.toString() ?? '';
-                      final label = a['label']?.toString() ?? pkg;
-                      final on = _blocked.contains(pkg);
-                      return SwitchListTile(
-                        title: Text(label,
-                            style: TextStyle(color: AppColors.fg(context))),
-                        subtitle: Text(pkg,
-                            style: TextStyle(
-                                color: AppColors.muted2(context), fontSize: 11)),
-                        value: on,
-                        onChanged: (v) => _toggle(pkg, v),
-                      );
-                    },
+                const Divider(height: 1),
+                if (listEnabled)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: TextField(
+                      decoration: InputDecoration(
+                        hintText: _t('جستجو', 'Search'),
+                        prefixIcon: const Icon(Icons.search),
+                      ),
+                      onChanged: (v) => setState(() => _q = v),
+                    ),
                   ),
+                Expanded(
+                  child: !listEnabled
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              _t(
+                                'در این حالت همه‌ی برنامه‌ها از تونل رد می‌شوند.',
+                                'In this mode all apps go through the tunnel.',
+                              ),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  color: AppColors.muted(context),
+                                  height: 1.7),
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: filtered.length,
+                          itemBuilder: (ctx, i) {
+                            final a = filtered[i];
+                            final pkg = a['package']?.toString() ?? '';
+                            final label = a['label']?.toString() ?? pkg;
+                            final on = _selected.contains(pkg);
+                            return SwitchListTile(
+                              title: Text(label,
+                                  style: TextStyle(
+                                      color: AppColors.fg(context))),
+                              subtitle: Text(pkg,
+                                  style: TextStyle(
+                                      color: AppColors.muted2(context),
+                                      fontSize: 11)),
+                              value: on,
+                              onChanged: (v) => _toggle(pkg, v),
+                            );
+                          },
+                        ),
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _modeCard(BuildContext context, String key, String tFa, String tEn,
+      String sFa, String sEn) {
+    final active = _mode == key;
+    return InkWell(
+      onTap: () => _setMode(key),
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: active
+              ? AppColors.accent.withOpacity(0.15)
+              : AppColors.surface(context),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: active ? AppColors.accent : AppColors.border(context),
+            width: active ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              active ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: active ? AppColors.accent : AppColors.muted(context),
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_t(tFa, tEn),
+                      style: TextStyle(
+                          color: AppColors.fg(context),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(_t(sFa, sEn),
+                      style: TextStyle(
+                          color: AppColors.muted2(context),
+                          fontSize: 11,
+                          height: 1.4)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
