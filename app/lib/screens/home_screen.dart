@@ -1297,7 +1297,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _markDisconnected(_t('آماده', 'Ready'));
       return;
     }
-    final selected = _selected;
+    var selected = _selected;
+    // Auto-select fastest: if the user enabled it in settings, replace
+    // the manual selection with the highest-scoring online server.
+    try {
+      final autoFastest = await SettingsService.getConnectFastest();
+      if (autoFastest) {
+        final best = ServerTester.fastest(_servers);
+        if (best != null &&
+            best.status == ServerStatus.online &&
+            best.ping != null) {
+          selected = best;
+          if (mounted) {
+            setState(() {
+              _selected = best;
+              _status = _t(
+                  'اتصال به سریع‌ترین: ${best.displayName}',
+                  'Fastest: ${best.displayName}');
+            });
+          }
+        }
+      }
+    } catch (_) {}
+
     if (selected == null) {
       _showMsg(_t('اول یک سرور انتخاب کن', 'Select a server first'));
       return;

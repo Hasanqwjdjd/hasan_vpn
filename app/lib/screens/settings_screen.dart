@@ -37,11 +37,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late String _theme;
   late String _lang;
   String _vpnMode = 'vpn';
+  bool _connectFastest = false;
   bool _checkingUpdate = false;
 
   @override
   void initState() {
     super.initState();
+    _loadConnectFastest();
     _theme = widget.themeMode;
     _lang = widget.language;
     SettingsService.getVpnMode().then((m) {
@@ -215,6 +217,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       height: 1.5),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ------- اتصال هوشمند -------
+          _sectionTitle(_t('اتصال هوشمند', 'Smart connect')),
+          _card(
+            context,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                _t('اتصال به سریع‌ترین سرور',
+                    'Connect to fastest server'),
+                style: TextStyle(color: AppColors.fg(context), fontSize: 14),
+              ),
+              subtitle: Text(
+                _lang == 'fa'
+                    ? 'قبل از اتصال، سرور آنلاین با کمترین پینگ و jitter انتخاب می‌شود (به‌جای آخرین سرور انتخابی)'
+                    : 'Before connecting, pick the fastest online server (lowest ping + jitter) instead of the last manual selection',
+                style: TextStyle(
+                    color: AppColors.muted2(context),
+                    fontSize: 11,
+                    height: 1.5),
+              ),
+              value: _connectFastest,
+              activeColor: AppColors.accent,
+              onChanged: (v) async {
+                setState(() => _connectFastest = v);
+                await SettingsService.setConnectFastest(v);
+              },
             ),
           ),
           const SizedBox(height: 16),
@@ -596,6 +628,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _loadConnectFastest() async {
+    try {
+      final v = await SettingsService.getConnectFastest();
+      if (mounted) setState(() => _connectFastest = v);
+    } catch (_) {}
   }
 
   Widget _sectionTitle(String text) => Padding(
