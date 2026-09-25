@@ -53,8 +53,32 @@ Future<void> widgetHeadlessMain() async {
           : 'vanilla';
       try {
         final r = await TorService.start(bridgeType: mode);
-        ok = r['ok'] == true;
-        if (!ok) error = r['error']?.toString() ?? 'tor start failed';
+        if (r['ok'] != true) {
+          ok = false;
+          error = r['error']?.toString() ?? 'tor start failed';
+        } else {
+          // صبر کن تا bootstrap 100% بشه (timeout 90s) — نوتیفیکیشن
+          // تا اون موقع روی «Connecting…» می‌مونه.
+          final deadline =
+              DateTime.now().add(const Duration(seconds: 90));
+          while (DateTime.now().isBefore(deadline)) {
+            await Future.delayed(const Duration(milliseconds: 800));
+            final st = await TorService.status();
+            final pct = (st['bootstrapPercent'] as num?)?.toInt() ?? 0;
+            if (pct >= 100) {
+              ok = true;
+              break;
+            }
+            if (st['running'] != true) {
+              ok = false;
+              error = st['error']?.toString() ?? 'tor stopped early';
+              break;
+            }
+          }
+          if (!ok && error == null) {
+            error = 'bootstrap timeout (90s)';
+          }
+        }
       } catch (e) {
         ok = false;
         error = e.toString();

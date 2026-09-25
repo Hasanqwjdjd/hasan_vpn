@@ -92,8 +92,10 @@ class WidgetConnectService : Service() {
 
         launchHeadless(type, payload, title, action)
 
-        // Tor به ۶۰-۸۰ ثانیه برای bootstrap نیاز داره؛ سرورها ۵-۱۰ ثانیه.
-        val aliveMs = if (type == "tor") 95000L else 20000L
+        // Tor به ۶۰-۹۰ ثانیه برای bootstrap نیاز داره؛ سرورها ۵-۱۰ ثانیه.
+        // زمان رو کمی بیشتر از timeout Dart (90s) می‌گذاریم تا notification
+        // قبل از دیدن نتیجه kill نشه.
+        val aliveMs = if (type == "tor") 110000L else 20000L
         handler.postDelayed({ stopSoon() }, aliveMs)
 
         return START_NOT_STICKY
