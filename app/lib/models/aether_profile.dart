@@ -566,16 +566,18 @@ class AetherProfile {
     }
 
     // ---- Psiphon chain (بومیِ خود Aether، نه PsiphonService.kt) ----
+    // Aether یک env var تک‌مقداری می‌خواهد: AETHER_PSIPHON=chain|reverse|only
     if (psiphonMode != 'off') {
       switch (psiphonMode) {
         case 'inside':
-          env['AETHER_PSIPHON'] = '1';
+        case 'chain':
+          env['AETHER_PSIPHON'] = 'chain';
           break;
         case 'reverse':
-          env['AETHER_PSIPHON_REVERSE'] = '1';
+          env['AETHER_PSIPHON'] = 'reverse';
           break;
         case 'only':
-          env['AETHER_PSIPHON_ONLY'] = '1';
+          env['AETHER_PSIPHON'] = 'only';
           break;
       }
       if (psiphonRegion.isNotEmpty) env['AETHER_PSIPHON_REGION'] = psiphonRegion;
@@ -583,16 +585,18 @@ class AetherProfile {
     }
 
     // ---- Tor chain (بومیِ خود Aether، نه TorService.kt) ----
+    // Aether یک env var تک‌مقداری می‌خواهد: AETHER_TOR=chain|reverse|only
     if (torMode != 'off') {
       switch (torMode) {
         case 'inside':
-          env['AETHER_TOR'] = '1';
+        case 'chain':
+          env['AETHER_TOR'] = 'chain';
           break;
         case 'reverse':
-          env['AETHER_TOR_REVERSE'] = '1';
+          env['AETHER_TOR'] = 'reverse';
           break;
         case 'only':
-          env['AETHER_TOR_ONLY'] = '1';
+          env['AETHER_TOR'] = 'only';
           break;
       }
       // AETHER_TOR_BRIDGE / AETHER_TOR_RELAYS: used by AetherST; official
