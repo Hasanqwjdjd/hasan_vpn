@@ -173,7 +173,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle(_t('حالت اتصال', 'Connection Mode')),
           _card(
             context,
-            child: Column(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
@@ -228,7 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle(_t('اتصال هوشمند', 'Smart connect')),
           _card(
             context,
-            child: SwitchListTile(
+            SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(
                 _t('اتصال به سریع‌ترین سرور',
@@ -274,7 +274,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle(_t('DNS بازی', 'Game DNS')),
           _card(
             context,
-            child: InkWell(
+            InkWell(
               onTap: () async {
                 await Navigator.push(
                   context,
@@ -324,7 +324,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle(_t('هسته و تست', 'Core & Test')),
           _card(
             context,
-            child: Column(
+            Column(
               children: [
                 _navRow(
                   context,
@@ -466,7 +466,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // ------- تم -------
           _card(
             context,
-            child: ListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.apps, color: AppColors.accent, size: 20),
               title: Text(
@@ -493,7 +493,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle(_t('عیب‌یابی', 'Diagnostics')),
           _card(
             context,
-            child: ListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.bug_report_outlined,
                   color: AppColors.accent, size: 20),
@@ -520,7 +520,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle(_t('تم برنامه', 'Theme')),
           _card(
             context,
-            child: Column(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
@@ -558,7 +558,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle(_t('زبان', 'Language')),
           _card(
             context,
-            child: Row(
+            Row(
               children: [
                 Icon(Icons.language,
                     color: AppColors.muted(context), size: 20),
@@ -581,7 +581,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle(_t('بروزرسانی', 'Update')),
           _card(
             context,
-            child: InkWell(
+            InkWell(
               onTap: _checkingUpdate ? null : _checkUpdate,
               child: Row(
                 children: [
@@ -623,7 +623,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle(_t('درباره برنامه', 'About')),
           _card(
             context,
-            child: Column(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
@@ -703,7 +703,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 fontWeight: FontWeight.w600)),
       );
 
-  Widget _card(BuildContext context, {required Widget child}) => Container(
+  Widget _card(BuildContext context, Widget child) => Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: AppColors.surface(context),
