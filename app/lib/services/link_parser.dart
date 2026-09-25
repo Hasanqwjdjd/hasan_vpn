@@ -138,16 +138,28 @@ class LinkParser {
     );
 
     final sni = query['sni'] ?? query['host'] ?? host;
+    final correctSni = _railwaySni(host, sni);
+
+    // اگه SNI محاسبه‌شده با query فرق داره، shareLink رو بازنویسی کن تا
+    // FlutterVless.parse() دوباره SNI درست رو بخونه. (رفع مشکل Railway)
+    var finalLink = link;
+    final qSni = query['sni'];
+    if (correctSni != null && correctSni != qSni) {
+      try {
+        final rewritten = applySniOverride(link, correctSni);
+        if (rewritten.isNotEmpty) finalLink = rewritten;
+      } catch (_) {}
+    }
 
     return VpnServer(
       id: id,
       name: name,
       flag: guessFlag(name),
-      shareLink: link,
+      shareLink: finalLink,
       protocol: protocol,
       host: host,
       port: port,
-      sniOrHost: _railwaySni(host, sni),
+      sniOrHost: correctSni,
     );
   }
 
