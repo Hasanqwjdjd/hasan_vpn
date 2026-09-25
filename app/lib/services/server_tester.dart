@@ -62,7 +62,7 @@ class _Semaphore {
 class ServerTester {
   ServerTester._();
 
-  static const int _tcpTimeoutMs = 800;
+  static const int _tcpTimeoutMs = 1200; // MarbleNG از ۱۲۰۰ms استفاده می‌کند
   static const int _realBudgetSec = 8;
 
   static Future<TestSummary> testAll(
@@ -308,8 +308,10 @@ class ServerTester {
     final mid = used.length ~/ 2;
     final ms =
         used.length.isOdd ? used[mid] : (used[mid - 1] + used[mid]) ~/ 2;
+    // MarbleNG: پینگ زیر ۲۰ms جعلی است (احتمالاً پاسخ محلی یا کش).
+    if (ms < 20) return (-1, null);
     final jitter = used.length >= 2 ? used.last - used.first : null;
-    return (ms < 1 ? 1 : ms, jitter);
+    return (ms, jitter);
   }
 
   static bool _tcpPrecheckEligible(VpnServer server) {

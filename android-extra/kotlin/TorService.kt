@@ -276,7 +276,6 @@ object TorService {
         sb.appendLine("SafeLogging 0")
         // --- tuning (بازگشت به مقادیر قبل از 9e5b72c) ---
         // ExitNodes/StrictNodes عمداً حذف شده‌اند: geoip6 همراه APK نیست.
-        sb.appendLine("AvoidDiskWrites 1")
         sb.appendLine("CircuitBuildTimeout 12")
         sb.appendLine("LearnCircuitBuildTimeout 0")
         sb.appendLine("CircuitStreamTimeout 45")

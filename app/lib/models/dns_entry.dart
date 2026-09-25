@@ -86,6 +86,7 @@ class DnsStats {
   int failureCount;
   bool pinned;
   bool hidden;
+  bool deleted;
   String? notes;
 
   DnsStats({
@@ -96,6 +97,7 @@ class DnsStats {
     this.failureCount = 0,
     this.pinned = false,
     this.hidden = false,
+    this.deleted = false,
     this.notes,
   });
 
@@ -109,6 +111,7 @@ class DnsStats {
         failureCount: (j['failureCount'] as int?) ?? 0,
         pinned: (j['pinned'] as bool?) ?? false,
         hidden: (j['hidden'] as bool?) ?? false,
+        deleted: (j['deleted'] as bool?) ?? false,
         notes: j['notes'] as String?,
       );
 
@@ -120,6 +123,7 @@ class DnsStats {
         'failureCount': failureCount,
         'pinned': pinned,
         'hidden': hidden,
+        'deleted': deleted,
         'notes': notes,
       };
 

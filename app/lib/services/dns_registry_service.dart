@@ -67,6 +67,9 @@ class DnsRegistryService {
   Future<void> setHidden(String entryId, bool hidden) =>
       updateStat(entryId, (s) => s.hidden = hidden);
 
+  Future<void> setDeleted(String entryId, bool deleted) =>
+      updateStat(entryId, (s) => s.deleted = deleted);
+
   Future<void> setNotes(String entryId, String? notes) =>
       updateStat(entryId, (s) => s.notes = notes);
 

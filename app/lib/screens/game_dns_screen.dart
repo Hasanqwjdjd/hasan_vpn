@@ -143,8 +143,9 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   List<DnsEntry> get _visibleEntries {
     final showHidden = _category == _Category.hidden;
     var list = _allEntries.where((e) {
-      final isHidden = _statFor(e.id).hidden;
-      return showHidden ? isHidden : !isHidden;
+      final stat = _statFor(e.id);
+      if (stat.deleted) return false;
+      return showHidden ? stat.hidden : !stat.hidden;
     }).toList();
 
     switch (_category) {
@@ -270,6 +271,16 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   Future<void> _unhide(DnsEntry e) async {
     await _registry.setHidden(e.id, false);
     await _load();
+  }
+
+  Future<void> _delete(DnsEntry e) async {
+    if (e.provider == 'Custom') {
+      await _registry.removeCustom(e.id);
+    } else {
+      await _registry.setDeleted(e.id, true);
+    }
+    await _load();
+    _toast(_t('حذف شد', 'Deleted'));
   }
 
   Future<void> _copyIp(DnsEntry e) async {
@@ -821,24 +832,22 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               )
             else
               ListTile(
-                leading: const Icon(Icons.delete_outline, color: AppColors.danger),
-                title: Text(_t('حذف از لیست', 'Remove from list'),
-                    style: const TextStyle(color: AppColors.danger)),
+                leading: Icon(Icons.visibility_off_outlined, color: AppColors.fg(context)),
+                title: Text(_t('مخفی کردن', 'Hide')),
                 onTap: () {
                   Navigator.pop(context);
                   _hide(e);
                 },
               ),
-            if (e.provider == 'Custom')
-              ListTile(
-                leading: Icon(Icons.delete_outline, color: AppColors.danger),
-                title: Text(_t('حذف', 'Delete'), style: TextStyle(color: AppColors.danger)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _registry.removeCustom(e.id);
-                  await _load();
-                },
-              ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: AppColors.danger),
+              title: Text(_t('حذف', 'Delete'),
+                  style: const TextStyle(color: AppColors.danger)),
+              onTap: () {
+                Navigator.pop(context);
+                _delete(e);
+              },
+            ),
           ],
         ),
       ),

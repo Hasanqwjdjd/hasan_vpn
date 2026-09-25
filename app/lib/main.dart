@@ -60,7 +60,7 @@ Future<void> widgetHeadlessMain() async {
           // صبر کن تا bootstrap 100% بشه (timeout 90s) — نوتیفیکیشن
           // تا اون موقع روی «Connecting…» می‌مونه.
           final deadline =
-              DateTime.now().add(const Duration(seconds: 90));
+              DateTime.now().add(const Duration(seconds: 180));
           while (DateTime.now().isBefore(deadline)) {
             await Future.delayed(const Duration(milliseconds: 800));
             final st = await TorService.status();
@@ -76,7 +76,7 @@ Future<void> widgetHeadlessMain() async {
             }
           }
           if (!ok && error == null) {
-            error = 'bootstrap timeout (90s)';
+            error = 'bootstrap timeout (180s)';
           }
         }
       } catch (e) {
