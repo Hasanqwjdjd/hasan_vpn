@@ -155,6 +155,11 @@ class DnsRegistryService {
     await prefs.setString(_activeIdKey, id);
   }
 
+  Future<void> clearActiveId() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_activeIdKey);
+  }
+
   // ---------------------------------------------------------- Import / export
 
   Future<String> exportJson() async {

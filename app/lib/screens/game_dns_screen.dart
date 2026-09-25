@@ -243,6 +243,14 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     _toast(_t('تنظیم شد: ${e.name}', 'Set active: ${e.name}'));
   }
 
+  Future<void> _clearActive() async {
+    await SettingsService.clearGameDns();
+    await _registry.clearActiveId();
+    if (!mounted) return;
+    setState(() => _activeId = null);
+    _toast(_t('DNS غیرفعال شد', 'DNS disabled'));
+  }
+
   Future<void> _togglePin(DnsEntry e) async {
     final cur = _statFor(e.id).pinned;
     await _registry.setPinned(e.id, !cur);
@@ -462,10 +470,34 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
               ],
             ),
           ),
-          TextButton(
-            onPressed: _autoSelectBest,
-            child: Text(_t('انتخاب بهترین خودکار', 'Auto-select best'), style: TextStyle(color: AppColors.accent)),
-          ),
+          if (active == null)
+            TextButton(
+              onPressed: _autoSelectBest,
+              child: Text(
+                _t('اتصال', 'Connect'),
+                style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w600),
+              ),
+            )
+          else
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton(
+                  onPressed: _autoSelectBest,
+                  child: Text(
+                    _t('تغییر', 'Change'),
+                    style: TextStyle(color: AppColors.muted(context)),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _clearActive,
+                  child: Text(
+                    _t('قطع', 'Disconnect'),
+                    style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
     );
