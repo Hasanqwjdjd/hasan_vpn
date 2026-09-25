@@ -20,11 +20,16 @@ class TorScreen extends StatefulWidget {
   final String? initialBridgeLine;
   final bool autoConnect;
 
+  /// اگر از ویجت Tor باز شده باشد، آیدی ویجت اینجا ذخیره می‌شود تا
+  /// پس از انتخاب پل، binding در FlutterSharedPreferences نوشته شود.
+  final int? pendingWidgetId;
+
   const TorScreen({
     super.key,
     this.language = 'fa',
     this.initialBridgeLine,
     this.autoConnect = false,
+    this.pendingWidgetId,
   });
 
   @override
@@ -54,6 +59,7 @@ class _TorScreenState extends State<TorScreen> {
   int _socksPort = 0;
   String? _error;
   Timer? _pollTimer;
+  Timer? _widgetSyncTimer;
   bool _routingThroughVpn = false;
   bool _routing = false;
 
@@ -95,11 +101,50 @@ class _TorScreenState extends State<TorScreen> {
       }
     });
     _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
+    _widgetSyncTimer =
+        Timer.periodic(const Duration(seconds: 2), (_) => _syncTorWidget());
+  }
+
+  /// نوشتن binding + progress در FlutterSharedPreferences تا ویجت Tor
+  /// (۲×۱) هر لحظه مقدار درست را نشان دهد.
+  Future<void> _syncTorWidget() async {
+    final wid = widget.pendingWidgetId;
+    if (wid == null || wid <= 0) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // binding
+      final line = _currentBridgeLine();
+      if (line != null && line.isNotEmpty) {
+        final label = _bridgeType.isNotEmpty ? _bridgeType : 'Tor';
+        await prefs.setString('widget_tor_$wid', 'tor|$line|$label');
+      }
+      // progress
+      if (_running) {
+        final pct = _bootstrapPercent;
+        final msg = _bootstrapMsg;
+        final p = (pct > 0 && pct < 100)
+            ? 'Bootstrapped $pct%'
+            : (msg.isNotEmpty ? msg : 'Tor ready');
+        await prefs.setString('widget_tor_progress_$wid', p);
+      } else {
+        await prefs.setString('widget_tor_progress_$wid', 'Disconnected');
+      }
+    } catch (_) {}
+  }
+
+  /// خط پل فعلی — همان چیزی که به TorService پاس می‌شود.
+  String? _currentBridgeLine() {
+    try {
+      final lines = _bridgesForConnect();
+      if (lines.isNotEmpty) return lines.first;
+    } catch (_) {}
+    return null;
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _widgetSyncTimer?.cancel();
     _dnsttDomainCtrl.dispose();
     _dnsttPubkeyCtrl.dispose();
     _dnsttResolverCtrl.dispose();
