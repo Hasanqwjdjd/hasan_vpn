@@ -40,6 +40,30 @@ class QuickConnectWidget1x1 : AppWidgetProvider() {
             val payload = intent.getStringExtra(EXTRA_PAYLOAD) ?: ""
             val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
             val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, -1)
+
+            // Tor: دیالوگ انتخاب mode را از داخل اپ باز کن
+            if (type == "tor") {
+                try {
+                    val launch = context.packageManager
+                        .getLaunchIntentForPackage(context.packageName)
+                    if (launch != null) {
+                        launch.action = Intent.ACTION_VIEW
+                        launch.putExtra("widget_action", "choose_tor_bridge")
+                        launch.putExtra("widget_id", widgetId)
+                        if (payload.isNotEmpty()) {
+                            launch.putExtra("widget_default_mode", payload)
+                        }
+                        launch.addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                        )
+                        context.startActivity(launch)
+                    }
+                } catch (_: Exception) {}
+                return
+            }
+
             // ─── اتصال کاملاً بدون UI از طریق WidgetConnectService ───
             try {
                 WidgetConnectService.start(context, type, payload, title, widgetId)

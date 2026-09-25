@@ -18,6 +18,7 @@ import '../services/v2ray_engine.dart';
 class TorScreen extends StatefulWidget {
   final String language;
   final String? initialBridgeLine;
+  final String? initialBridgeType;
   final bool autoConnect;
 
   /// اگر از ویجت Tor باز شده باشد، آیدی ویجت اینجا ذخیره می‌شود تا
@@ -28,6 +29,7 @@ class TorScreen extends StatefulWidget {
     super.key,
     this.language = 'fa',
     this.initialBridgeLine,
+    this.initialBridgeType,
     this.autoConnect = false,
     this.pendingWidgetId,
   });
@@ -82,6 +84,24 @@ class _TorScreenState extends State<TorScreen> {
   void initState() {
     super.initState();
     _loadPrefs().then((_) async {
+      // initialBridgeType از ویجت: mode انتخاب‌شده را ست کن و binding را به‌روز کن
+      final ibt = widget.initialBridgeType;
+      if (ibt != null && ibt.isNotEmpty) {
+        if (!mounted) return;
+        setState(() {
+          if (_bridgeTypes.any((e) => e['id'] == ibt)) {
+            _bridgeType = ibt;
+          }
+        });
+        await _savePrefs();
+        final wid = widget.pendingWidgetId;
+        if (wid != null && wid > 0) {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('widget_server_$wid', 'tor|$ibt|Tor');
+          } catch (_) {}
+        }
+      }
       final line = widget.initialBridgeLine?.trim();
       if (line != null && line.isNotEmpty) {
         final type = line.split(RegExp(r'\s+')).first.toLowerCase();

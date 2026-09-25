@@ -1957,6 +1957,64 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// بنر انتخاب Tor برای ویجتِ در انتظار
+  Widget _buildWidgetPickerBanner() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.accent),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.widgets, color: AppColors.accent, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _t(
+                'یک سرور از لیست انتخاب کنید، یا Tor را برای این ویجت فعال کنید',
+                'Pick a server from the list, or use Tor for this widget',
+              ),
+              style: TextStyle(color: AppColors.fg(context), fontSize: 12),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _bindTorToPendingWidget,
+            icon: const Icon(Icons.security, size: 16, color: AppColors.accent),
+            label: Text(
+              _t('استفاده از Tor', 'Use Tor'),
+              style: const TextStyle(color: AppColors.accent, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _bindTorToPendingWidget() async {
+    final wid = _pendingWidgetId;
+    if (wid == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('widget_server_$wid', 'tor||Tor');
+      const ch = MethodChannel('com.hasan.hasan_vpn/widget');
+      await ch.invokeMethod('updateWidgets');
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _pendingWidgetId = null);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_t(
+          'ویجت به Tor وصل شد — با لمس ویجت، نوع Tor را انتخاب کنید',
+          'Widget bound to Tor — tap the widget to choose the mode',
+        )),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
   Widget _buildPatternihaBanner() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -2064,6 +2122,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _buildTopBar(),
             const SizedBox(height: 4),
             _buildSubTabs(),
+            if (_pendingWidgetId != null) ...[
+              const SizedBox(height: 6),
+              _buildWidgetPickerBanner(),
+            ],
             if (_isPatternihaActive()) ...[
               const SizedBox(height: 6),
               _buildPatternihaBanner(),

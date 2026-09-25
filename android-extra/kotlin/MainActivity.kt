@@ -248,10 +248,6 @@ class MainActivity : FlutterActivity() {
     private fun refreshAllWidgets() {
         val mgr = AppWidgetManager.getInstance(this)
         try {
-            val w2 = ComponentName(this, QuickConnectWidget::class.java)
-            for (id in mgr.getAppWidgetIds(w2)) QuickConnectWidget.updateAppWidget(this, mgr, id)
-        } catch (_: Exception) { }
-        try {
             val w1 = ComponentName(this, QuickConnectWidget1x1::class.java)
             for (id in mgr.getAppWidgetIds(w1)) QuickConnectWidget1x1.updateAppWidget(this, mgr, id)
         } catch (_: Exception) { }

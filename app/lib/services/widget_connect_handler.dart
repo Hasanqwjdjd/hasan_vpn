@@ -101,6 +101,19 @@ class WidgetConnectHandler {
     void Function(int widgetId)? onNeedsServer,
     void Function(int widgetId)? onChooseTorBridge,
   }) {
+    // Cold-start: اگر intent از ویجت Tor آمده بود، یک‌بار پردازش کن
+    Future.microtask(() async {
+      try {
+        final map = await _channel.invokeMethod<Map>('getLaunchExtras');
+        if (map == null) return;
+        final action = map['widget_action']?.toString() ?? '';
+        final wid = (map['widget_id'] as num?)?.toInt();
+        if (action == 'choose_tor_bridge' && wid != null && wid > 0) {
+          onChooseTorBridge?.call(wid);
+        }
+      } catch (_) {}
+    });
+
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onWidgetIntent') {
         final args = call.arguments;
