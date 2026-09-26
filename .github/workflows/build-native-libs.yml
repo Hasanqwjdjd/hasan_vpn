@@ -165,7 +165,7 @@ jobs:
           export PATH="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
           ./Configure android-arm64 -D__ANDROID_API__=${ANDROID_API} \
             --prefix=/tmp/openssl-out --openssldir=/tmp/openssl-out \
-            no-tests no-docs no-shared
+            no-tests no-shared
           make -j"$(nproc)" build_libs
           make install_sw
           ls -la /tmp/openssl-out/lib/
