@@ -59,11 +59,10 @@ class TorBridges {
 
   static const List<String> conjure = <String>[];
 
-  static const List<String> dnstt = <String>[
-    'dnstt dns.google resolver=8.8.8.8:53',
-    'dnstt cloudflare-dns.com resolver=1.1.1.1:53',
-    'dnstt dns.quad9.net resolver=9.9.9.9:53',
-  ];
+  /// DNSTT بدون pubkey معتبر کار نمی‌کند — خالی نگه داشته می‌شود تا کاربر
+  /// بتواند پل سفارشی با فرمت `dnstt <pubkey-hex> <domain> [resolver=..]`
+  /// اضافه کند.
+  static const List<String> dnstt = <String>[];
 
   static List<String> forType(String bridgeType, {String? sni}) {
     switch (bridgeType) {
@@ -97,7 +96,7 @@ class TorBridges {
       case 'meek_lite':
       case 'obfs4':
       case 'dnstt':
-        return true;
+        return false;
       case 'conjure':
         return false;
       default:

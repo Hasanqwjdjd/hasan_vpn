@@ -67,6 +67,8 @@ class _TorScreenState extends State<TorScreen> {
   String? _error;
   Timer? _pollTimer;
   Timer? _widgetSyncTimer;
+  DateTime? _bootstrapStartedAt;
+  bool _fallbackRunning = false;
   bool _routingThroughVpn = false;
   bool _routing = false;
 
@@ -498,6 +500,22 @@ class _TorScreenState extends State<TorScreen> {
             !_routing) {
           unawaited(_startVpnRouting());
         }
+
+        // ★ watchdog: اگر ۵۰ ثانیه بین 1..99٪ مونده → پل بعدی
+        if (running && bp > 0 && bp < 100 && _connecting) {
+          _bootstrapStartedAt ??= DateTime.now();
+          final stuck =
+              DateTime.now().difference(_bootstrapStartedAt!).inSeconds;
+          if (stuck >= 50 && !_fallbackRunning) {
+            _fallbackRunning = true;
+            _bootstrapStartedAt = null;
+            // ignore: unawaited_futures
+            _autoFallbackFromStuck();
+          }
+        } else {
+          _bootstrapStartedAt = null;
+          if (bp >= 100 || !running) _fallbackRunning = false;
+        }
       }
     } catch (_) {}
   }
@@ -621,6 +639,81 @@ class _TorScreenState extends State<TorScreen> {
 
   /// وقتی اتصال fail شد، خودکار بریج‌های جایگزین را تست می‌کند.
   /// ترتیب fallback: از بریج فعلی → obfs4 → snowflake
+  /// صبر می‌کند تا bootstrap به 100% برسه؛ اگر تا [maxSec] نشد، false.
+  Future<bool> _waitForBootstrap(int maxSec) async {
+    final deadline = DateTime.now().add(Duration(seconds: maxSec));
+    while (DateTime.now().isBefore(deadline)) {
+      if (!mounted) return false;
+      await Future.delayed(const Duration(milliseconds: 700));
+      try {
+        final s = await TorService.status();
+        final pct = (s['bootstrapPercent'] as num?)?.toInt() ?? 0;
+        if (pct >= 100) return true;
+        if (s['running'] != true) return false;
+      } catch (_) {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  /// زنجیرهٔ پل بعدی برای نوع فعلی.
+  List<String> _fallbackFor(String current) {
+    if (current == 'webtunnel') return ['snowflake', 'meek_lite', 'obfs4'];
+    if (current == 'snowflake') return ['meek_lite', 'webtunnel', 'obfs4'];
+    if (current == 'meek_lite') return ['snowflake', 'webtunnel', 'obfs4'];
+    if (current == 'obfs4') return ['webtunnel', 'snowflake', 'meek_lite'];
+    if (current == 'dnstt') return ['snowflake', 'meek_lite', 'obfs4'];
+    return [];
+  }
+
+  Future<void> _autoFallbackFromStuck() async {
+    final stuckType = _bridgeType;
+    if (!mounted) return;
+    _snack(_t(
+      '$stuckType گیر کرد — تلاش با پل بعدی…',
+      '$stuckType stuck — trying next…',
+    ));
+    try {
+      await TorService.stop();
+    } catch (_) {}
+    if (!mounted) return;
+    final chain = _fallbackFor(stuckType);
+    if (chain.isNotEmpty) {
+      final ok = await _tryFallbackChain(chain);
+      if (ok) return;
+    }
+    // آخرین تلاش: vanilla
+    try {
+      final r = await TorService.start(bridgeType: 'vanilla');
+      if (r['ok'] == true) {
+        final booted = await _waitForBootstrap(30);
+        if (!mounted) return;
+        if (booted) {
+          setState(() {
+            _bridgeType = 'vanilla';
+            _running = true;
+            _connecting = false;
+            _bootstrapMsg =
+                _t('Bootstrap کامل شد', 'Bootstrap complete');
+            _error = null;
+          });
+          _snack(_t('با Tor ساده وصل شد', 'Connected with vanilla'));
+          _fallbackRunning = false;
+          return;
+        }
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _running = false;
+      _connecting = false;
+      _error = _t('همه پل‌ها امتحان شدند ولی هیچ‌کدام وصل نشد',
+          'All bridges tried, none worked');
+    });
+    _fallbackRunning = false;
+  }
+
   Future<bool> _tryFallbackChain(List<String> chain) async {
     for (final bt in chain) {
       if (!mounted) return false;
@@ -646,15 +739,26 @@ class _TorScreenState extends State<TorScreen> {
         continue;
       }
       if (!mounted) return true;
-      if (r['ok'] == true) {
+      if (r['ok'] != true) continue;
+
+      setState(() {
+        _running = true;
+        _connecting = true;
+        _socksPort = (r['socksPort'] as num?)?.toInt() ?? 9050;
+        _bootstrapMsg = _t('در حال Bootstrap با $bt…',
+            'Bootstrapping with $bt…');
+        _error = null;
+      });
+
+      // ★ صبر کن تا واقعاً به 100% برسه — اگر نه، پل بعدی
+      final booted = await _waitForBootstrap(40);
+      if (!mounted) return true;
+      if (booted) {
         setState(() {
           _running = true;
           _connecting = false;
-          _socksPort = (r['socksPort'] as num?)?.toInt() ?? 9050;
-          _bootstrapMsg = _t('در حال Bootstrap…', 'Bootstrapping…');
-          _error = null;
+          _bootstrapMsg = _t('Bootstrap کامل شد', 'Bootstrap complete');
         });
-        // ذخیره بریج موفق تا دفعه بعد خودکار انتخاب شود
         try {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('tor_bridge_type', bt);
@@ -665,6 +769,11 @@ class _TorScreenState extends State<TorScreen> {
         ));
         return true;
       }
+
+      // گیر کرد → stop و پل بعدی
+      try {
+        await TorService.stop();
+      } catch (_) {}
     }
     return false;
   }
@@ -779,10 +888,56 @@ class _TorScreenState extends State<TorScreen> {
     } else {
       setState(() {
         _running = true;
-        _connecting = false;
+        _connecting = true;
         _socksPort = (r['socksPort'] as num?)?.toInt() ?? 9050;
         _bootstrapMsg = _t('در حال Bootstrap…', 'Bootstrapping…');
       });
+
+      // ★ صبر کن تا bootstrap 100% بشه — اگر نه، پل بعدی
+      final booted = await _waitForBootstrap(45);
+      if (!mounted) return;
+      if (booted) {
+        setState(() {
+          _running = true;
+          _connecting = false;
+          _bootstrapMsg = _t('Bootstrap کامل شد', 'Bootstrap complete');
+        });
+      } else {
+        // گیر کرد → watchdog fallback (که خودش chain رو می‌زنه)
+        final chain = _fallbackFor(_bridgeType);
+        if (chain.isNotEmpty) {
+          _fallbackRunning = true;
+          final ok = await _tryFallbackChain(chain);
+          _fallbackRunning = false;
+          if (ok) return;
+        }
+        // vanilla آخرین تلاش
+        try {
+          final rv = await TorService.start(bridgeType: 'vanilla');
+          if (rv['ok'] == true) {
+            final b2 = await _waitForBootstrap(30);
+            if (mounted && b2) {
+              setState(() {
+                _bridgeType = 'vanilla';
+                _running = true;
+                _connecting = false;
+                _bootstrapMsg =
+                    _t('Bootstrap کامل شد', 'Bootstrap complete');
+                _error = null;
+              });
+              return;
+            }
+          }
+        } catch (_) {}
+        if (!mounted) return;
+        try { await TorService.stop(); } catch (_) {}
+        setState(() {
+          _running = false;
+          _connecting = false;
+          _error = _t('هیچ پلی وصل نشد — Tor ساده هم کار نکرد',
+              'No bridge worked — vanilla also failed');
+        });
+      }
     }
   }
 
