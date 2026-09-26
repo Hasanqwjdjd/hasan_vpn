@@ -831,6 +831,151 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _saveManualOrder();
   }
 
+  Widget _compactIconButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+    Color? color,
+  }) {
+    return IconButton(
+      icon: Icon(icon, size: 18, color: color),
+      tooltip: tooltip,
+      onPressed: onPressed,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  Future<void> _openReorderSelectedSheet() async {
+    final selected = _servers
+        .where((s) => _selectedIds.contains(s.id))
+        .toList();
+    if (selected.length < 2) {
+      _showMsg(_t('حداقل ۲ سرور انتخاب کنید', 'Select at least 2'));
+      return;
+    }
+
+    final result = await showModalBottomSheet<List<VpnServer>>(
+      context: context,
+      backgroundColor: AppColors.elevated(context),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        var items = List<VpnServer>.from(selected);
+        return StatefulBuilder(
+          builder: (ctx, setModalState) => SafeArea(
+            child: SizedBox(
+              height: MediaQuery.of(ctx).size.height * 0.6,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.swap_vert, color: AppColors.accent),
+                        const SizedBox(width: 8),
+                        Text(
+                          _t('جابه‌جایی سرورها', 'Reorder servers'),
+                          style: TextStyle(
+                            color: AppColors.fg(ctx),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ReorderableListView.builder(
+                      buildDefaultDragHandles: false,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      itemCount: items.length,
+                      onReorder: (o, n) {
+                        setModalState(() {
+                          if (n > o) n -= 1;
+                          final moved = items.removeAt(o);
+                          items.insert(n, moved);
+                        });
+                      },
+                      itemBuilder: (ctx, i) => ReorderableDragStartListener(
+                        key: ValueKey('reorder_sel_${items[i].id}'),
+                        index: i,
+                        child: Card(
+                          margin: const EdgeInsets.symmetric(vertical: 3),
+                          color: AppColors.surface(ctx),
+                          child: ListTile(
+                            dense: true,
+                            title: Text(
+                              items[i].displayName,
+                              style: TextStyle(
+                                color: AppColors.fg(ctx),
+                                fontSize: 13,
+                              ),
+                            ),
+                            trailing: Icon(
+                              Icons.drag_handle,
+                              color: AppColors.muted2(ctx),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: Text(_t('انصراف', 'Cancel')),
+                          ),
+                        ),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.pop(ctx, items),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.accent,
+                            ),
+                            child: Text(
+                              _t('ذخیره', 'Save'),
+                              style: const TextStyle(color: Colors.black),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (result == null || result.isEmpty || !mounted) return;
+
+    final reorderedIds = result.map((s) => s.id).toList();
+    final rest = _servers
+        .where((s) => !_selectedIds.contains(s.id))
+        .map((s) => s.id)
+        .toList();
+
+    setState(() {
+      _manualOrder = <String>[...reorderedIds, ...rest];
+      _selectionMode = false;
+      _selectedIds.clear();
+    });
+    await _saveManualOrder();
+    _rebuildServerList();
+    if (mounted) setState(() {});
+  }
+
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -2194,24 +2339,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ? SafeArea(
               child: Container(
                 color: AppColors.elevated(context),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: Row(
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.close),
+                    _compactIconButton(
+                      icon: Icons.close,
+                      tooltip: _t('انصراف', 'Cancel'),
                       onPressed: () => setState(() {
                         _selectionMode = false;
                         _selectedIds.clear();
                       }),
                     ),
                     Expanded(
-                      child: Text(
-                        '${_selectedIds.length} ${_t('انتخاب شده', 'selected')}',
-                        style: TextStyle(color: AppColors.fg(context)),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Text(
+                          '${_selectedIds.length} ${_t('مورد', 'selected')}',
+                          style: TextStyle(
+                            color: AppColors.fg(context),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.copy, size: 20),
+                    _compactIconButton(
+                      icon: Icons.copy,
                       tooltip: _t('کپی', 'Copy'),
                       onPressed: () {
                         final selected = _servers
@@ -2226,32 +2380,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         });
                       },
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.vertical_align_top, size: 20),
-                      tooltip: _t('انتقال به بالا', 'Move to top'),
-                      onPressed: () async {
-                        final selected = _servers
-                            .where((s) => _selectedIds.contains(s.id))
-                            .toList();
-                        if (selected.isEmpty) return;
-                        setState(() {
-                          _servers.removeWhere((s) => _selectedIds.contains(s.id));
-                          _servers.insertAll(0, selected);
-                          _manualOrder = _servers.map((s) => s.id).toList();
-                          _selectionMode = false;
-                          _selectedIds.clear();
-                        });
-                        await _saveManualOrder();
-                        if (mounted) setState(() {});
-                      },
+                    _compactIconButton(
+                      icon: Icons.swap_vert,
+                      tooltip: _t('جابه‌جایی', 'Reorder'),
+                      onPressed: _openReorderSelectedSheet,
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.folder_special, size: 20),
+                    _compactIconButton(
+                      icon: Icons.folder_special,
                       tooltip: _t('افزودن به گروه', 'Add to group'),
                       onPressed: _addSelectedToGroup,
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.push_pin, size: 20),
+                    _compactIconButton(
+                      icon: Icons.push_pin,
                       tooltip: _t('پین', 'Pin'),
                       onPressed: () {
                         for (final s in _servers) {
@@ -2267,8 +2407,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         _savePinned();
                       },
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.speed, size: 20),
+                    _compactIconButton(
+                      icon: Icons.speed,
                       tooltip: _t('تست', 'Test'),
                       onPressed: () async {
                         final targets = _servers
@@ -2284,10 +2424,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         }
                       },
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.danger),
+                    _compactIconButton(
+                      icon: Icons.delete_outline,
                       tooltip: _t('حذف', 'Delete'),
-                      onPressed: () async {
+                      color: AppColors.danger,
+                      onPressed: () {
                         final ids = _selectedIds.toSet();
                         setState(() {
                           _servers.removeWhere((s) => ids.contains(s.id) && s.isDeletable);
