@@ -426,7 +426,8 @@ class SettingsService {
       final p = await SharedPreferences.getInstance();
       await p.setBool(_autoConnectBootKey, v);
     } catch (_) {}
-  
+  }
+
 
   // ------- Font scale -------
   static Future<double> getFontScale() async {
@@ -438,6 +439,4 @@ class SettingsService {
     final p = await SharedPreferences.getInstance();
     await p.setDouble(_fontScaleKey, v);
   }
-}
-
 }
