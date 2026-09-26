@@ -13,7 +13,7 @@ class RoutingService {
   static List<Map<String, dynamic>> get defaultRules => [
         {
           'id': 'block-udp443',
-          'enabled': false,
+          'enabled': true,
           'outboundTag': 'block',
           'domain': <String>[],
           'ip': <String>[],
@@ -24,7 +24,7 @@ class RoutingService {
         },
         {
           'id': 'proxy-google',
-          'enabled': false,
+          'enabled': true,
           'outboundTag': 'proxy',
           'domain': <String>['geosite:google'],
           'ip': <String>[],
@@ -54,7 +54,7 @@ class RoutingService {
         },
         {
           'id': 'cn-dns-ip',
-          'enabled': false,
+          'enabled': true,
           'outboundTag': 'direct',
           'domain': <String>[],
           'ip': <String>[
@@ -69,7 +69,7 @@ class RoutingService {
         },
         {
           'id': 'cn-dns-domain',
-          'enabled': false,
+          'enabled': true,
           'outboundTag': 'direct',
           'domain': <String>[
             'domain:alidns.com',
@@ -85,7 +85,7 @@ class RoutingService {
         },
         {
           'id': 'cn-ip',
-          'enabled': false,
+          'enabled': true,
           'outboundTag': 'direct',
           'domain': <String>[],
           'ip': <String>['geoip:cn'],
@@ -95,7 +95,7 @@ class RoutingService {
         },
         {
           'id': 'cn-domain',
-          'enabled': false,
+          'enabled': true,
           'outboundTag': 'direct',
           'domain': <String>['geosite:cn'],
           'ip': <String>[],

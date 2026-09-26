@@ -59,6 +59,19 @@ class TorSessionService {
   final Map<String, ValueNotifier<TorSessionState>> _notifiers = {};
   final Map<String, String> _bridgeTypes = {};
   String? _activeBridgeId;
+
+  /// تعداد Torهایی که ترافیک رو از VPN روت می‌کنن — برای listener توی
+  /// home_screen که سرور رو خودکار قطع کنه.
+  final ValueNotifier<int> routingCount = ValueNotifier(0);
+
+  bool _wasRouting = false;
+  void _updateRoutingFlag() {
+    final now = anyRouting;
+    if (now != _wasRouting) {
+      _wasRouting = now;
+      routingCount.value = now ? 1 : 0;
+    }
+  }
   Timer? _pollTimer;
   bool _routing = false;
 
@@ -125,6 +138,7 @@ class TorSessionService {
       notifierFor(id).value = const TorSessionState();
     }
     _activeBridgeId = null;
+    _updateRoutingFlag();
   }
 
   void _startPolling() {
@@ -158,6 +172,7 @@ class TorSessionService {
       if (running && bp >= 100 && !_routing) {
         await _startVpnRouting(port);
       }
+      _updateRoutingFlag();
       if (!running && !n.value.routingThroughVpn) {
         _pollTimer?.cancel();
         _pollTimer = null;
@@ -194,6 +209,7 @@ class TorSessionService {
               clearError: ok,
             );
       }
+      _updateRoutingFlag();
       if (!ok) _routing = false;
     } catch (_) {
       _routing = false;

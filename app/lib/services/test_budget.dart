@@ -31,11 +31,11 @@ class TestBudget {
 
   const TestBudget({
     this.timeoutSec = 5,
-    this.direct = 16,
+    this.direct = 32,
     this.samples = 3,
     this.tcpFallback = true,
     this.tcpPrecheck = true,
-    this.mode = TestMode.balanced,
+    this.mode = TestMode.accurate,
   });
 
   /// Concurrency برای تست‌های real HTTP.

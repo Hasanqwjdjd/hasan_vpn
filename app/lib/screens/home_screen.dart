@@ -15,6 +15,7 @@ import '../services/app_colors.dart';
 import '../services/server_tester.dart';
 import '../services/tor_session_service.dart';
 import '../services/telegram_source_service.dart';
+import '../services/geo_assets_service.dart';
 import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
 import '../services/exit_ip_service.dart';
@@ -178,6 +179,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _bootstrap() async {
+    // ─── مجوز اعلان + VPN در اولین اجرا ───
+    // ignore: unawaited_futures
+    _requestFirstLaunchPermissions();
+    // ─── دانلود خودکار Geo ایران در اولین اجرا ───
+    // ignore: unawaited_futures
+    _autoDownloadGeoIran();
+    // ─── listener برای قطع خودکار سرور وقتی Tor روت می‌کنه ───
+    TorSessionService.instance.routingCount.addListener(_onTorRoutingChanged);
+
     await _loadDeletedAndPinned();
     await _loadUiSettings();
     await _loadCustomServers();
@@ -1355,6 +1365,78 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _servers = <VpnServer>[...pinned, ...unpinned];
     }
     setState(() {});
+  }
+
+  void _onTorRoutingChanged() {
+    if (!mounted) return;
+    if (TorSessionService.instance.anyRouting && _connected) {
+      // Tor داره روت می‌کنه → سرور باید کاملاً قطع نمایش داده بشه
+      setState(() {
+        _connected = false;
+        _active = null;
+        _status = _t('اتصال از طریق Tor', 'Routing via Tor');
+      });
+    }
+  }
+
+  Future<void> _requestFirstLaunchPermissions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final asked = prefs.getBool('first_launch_perm_v1') ?? false;
+      if (asked) return;
+
+      // 1) مجوز اعلان
+      try {
+        const ch = MethodChannel('com.hasan.hasan_vpn/device');
+        await ch.invokeMethod('notifPermission');
+      } catch (_) {}
+
+      // 2) مجوز VPN — با یه warm-up کوتاه که دیالوگ سیستم رو باز می‌کنه
+      try {
+        await V2RayEngine.init();
+        // اتصال کوتاه به یه freedom config فقط برای باز شدن دیالوگ
+        final warmup = VpnServer(
+          id: 'perm_warmup',
+          name: 'Warmup',
+          flag: '⚡',
+          shareLink: 'xrayjson://warmup',
+          protocol: VpnProtocol.xrayJson,
+          host: '127.0.0.1',
+          port: 1,
+          isDeletable: false,
+        );
+        const cfg =
+            '{"inbounds":[{"tag":"s","port":10810,"listen":"127.0.0.1",'
+            '"protocol":"socks","settings":{"auth":"noauth"}}],'
+            '"outbounds":[{"tag":"direct","protocol":"freedom"}]}';
+        // ignore: unawaited_futures
+        V2RayEngine.startConfig(
+          remark: 'Warmup',
+          config: cfg,
+          server: warmup,
+        ).then((_) async {
+          // بلافاصله قطع کن
+          try {
+            await Future.delayed(const Duration(milliseconds: 800));
+            await V2RayEngine.disconnect();
+          } catch (_) {}
+        });
+      } catch (_) {}
+
+      await prefs.setBool('first_launch_perm_v1', true);
+    } catch (_) {}
+  }
+
+  Future<void> _autoDownloadGeoIran() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final done = prefs.getBool('geo_iran_downloaded_v1') ?? false;
+      if (done) return;
+      try {
+        await GeoAssetsService.downloadFromSource('chocolate4u-iran');
+      } catch (_) {}
+      await prefs.setBool('geo_iran_downloaded_v1', true);
+    } catch (_) {}
   }
 
   Future<void> _bootstrapFreeServers() async {
@@ -2916,6 +2998,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    try {
+      TorSessionService.instance.routingCount
+          .removeListener(_onTorRoutingChanged);
+    } catch (_) {}
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
     _session?.cancel();

@@ -254,12 +254,14 @@ class TelegramSourceService {
   static Future<List<String>> _fetchOne(String channel, int socksPort) async {
     final url = 'https://t.me/s/$channel';
 
-    // 1) SOCKS محلی
+    // 1) SOCKS محلی — هم t.me/s/ هم t.me/
     if (socksPort > 0) {
-      final html = await _nativeFetch(url, socksPort);
-      if (html != null) {
-        final l = _extractLinks(html);
-        if (l.isNotEmpty) return l;
+      for (final u in [url, 'https://t.me/$channel']) {
+        final html = await _nativeFetch(u, socksPort);
+        if (html != null) {
+          final l = _extractLinks(html);
+          if (l.isNotEmpty) return l;
+        }
       }
     }
 
@@ -301,8 +303,12 @@ class TelegramSourceService {
         .replaceAll('&amp;', '&')
         .replaceAll('&quot;', '"')
         .replaceAll('&#39;', "'")
+        .replaceAll('&#x27;', "'")
+        .replaceAll('&nbsp;', ' ')
         .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>');
+        .replaceAll('&gt;', '>')
+        .replaceAll('&NewLine;', '\n')
+        .replaceAll('&#x2F;', '/');
     final out = <String>[];
     for (final m in _linkRe.allMatches(decoded)) {
       var link = m.group(0)!;
