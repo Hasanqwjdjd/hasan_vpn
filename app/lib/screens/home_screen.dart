@@ -724,6 +724,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // ------------------------------------------------------------- loading
 
+  Future<void> _loadUiSettings() async {
+    try {
+      final xs = await XraySettings.load();
+      final showAll = xs['showAllTab'] != false;
+      final twoCol = xs['twoColumnGrid'] == true;
+      if (mounted) {
+        setState(() {
+          _showAllTab = showAll;
+          _twoColumnGrid = twoCol;
+        });
+      }
+    } catch (_) {}
+  }
+
   Future<void> _loadDeletedAndPinned() async {
     final prefs = await SharedPreferences.getInstance();
     final deletedRaw = prefs.getString(_deletedKey);
