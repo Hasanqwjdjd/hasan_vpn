@@ -102,23 +102,34 @@ class TelegramSourceService {
   }
 
   /// اگه هیچ مسیر فعالی نبود، Tor ساده رو خودکار بالا بیار.
+  /// اگه هیچ مسیر فعالی نبود، خودکار Tor رو با vanilla و بعد
+  /// webtunnel امتحان کن (توی ایران vanilla معمولاً بلاک می‌شه،
+  /// پس webtunnel به‌عنوان fallback دوم میاد).
   static Future<int> _ensureSocks() async {
-    var port = await _detectSocksPort();
-    if (port > 0) return port;
-    try {
-      final r = await TorService.start(bridgeType: 'vanilla');
-      if (r['ok'] != true) return 0;
-      final deadline = DateTime.now().add(const Duration(seconds: 90));
-      while (DateTime.now().isBefore(deadline)) {
-        await Future.delayed(const Duration(milliseconds: 900));
-        final st = await TorService.status();
-        final pct = (st['bootstrapPercent'] as num?)?.toInt() ?? 0;
-        if (pct >= 100) {
-          return (st['socksPort'] as num?)?.toInt() ?? 9050;
+    final port0 = await _detectSocksPort();
+    if (port0 > 0) return port0;
+
+    const bridgeTypes = <String>['vanilla', 'webtunnel'];
+    for (final bt in bridgeTypes) {
+      try {
+        final r = await TorService.start(bridgeType: bt);
+        if (r['ok'] != true) continue;
+        final deadline =
+            DateTime.now().add(const Duration(seconds: 60));
+        while (DateTime.now().isBefore(deadline)) {
+          await Future.delayed(const Duration(milliseconds: 900));
+          final st = await TorService.status();
+          final pct = (st['bootstrapPercent'] as num?)?.toInt() ?? 0;
+          if (pct >= 100) {
+            return (st['socksPort'] as num?)?.toInt() ?? 9050;
+          }
+          if (st['running'] != true) break;
         }
-        if (st['running'] != true) return 0;
-      }
-    } catch (_) {}
+        try {
+          await TorService.stop();
+        } catch (_) {}
+      } catch (_) {}
+    }
     return 0;
   }
 
