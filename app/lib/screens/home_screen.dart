@@ -15,6 +15,7 @@ import '../services/app_colors.dart';
 import '../services/server_tester.dart';
 import '../services/tor_session_service.dart';
 import '../services/telegram_source_service.dart';
+import '../services/connectivity_watcher.dart';
 import '../services/tunnel_session_service.dart';
 import '../models/tunnel_profile.dart';
 import '../models/ssh_profile.dart';
@@ -97,6 +98,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _freeFetching = false;
   int _freeFetchProgress = 0;
   int _freeFetchTotal = 0;
+
+  // ─── auto fastest interval + reconnect ───
+  Timer? _autoFastestTimer;
+  bool _autoReconnectRunning = false;
   List<String> _manualOrder = <String>[];
 
   String? _selectedSubId;
@@ -176,6 +181,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // بارگذاری سرورهای رایگان + refresh خودکار هر ۷ ساعت
     // ignore: unawaited_futures
     _bootstrapFreeServers();
+    // رصد تغییرات شبکه — اتصال مجدد خودکار
+    ConnectivityWatcher.instance.start(_onNetworkReconnected);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // ignore: unawaited_futures
       _readWidgetSelectionIntent();
@@ -210,6 +217,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await V2RayEngine.loadDelayUrl();
     if (!mounted) return;
     _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _poll());
+    _startAutoFastestInterval();
     // ویجت صفحهٔ اصلی: درخواست معلق اتصال
     WidgetConnectHandler.listen(
       (req) {
@@ -1373,6 +1381,57 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _servers = <VpnServer>[...pinned, ...unpinned];
     }
     setState(() {});
+  }
+
+  void _onNetworkReconnected() {
+    if (!mounted) return;
+    if (!_connected && !_connecting) return;
+    if (_autoReconnectRunning) return;
+    _autoReconnectRunning = true;
+    // ignore: unawaited_futures
+    _autoReconnect().whenComplete(() => _autoReconnectRunning = false);
+  }
+
+  Future<void> _autoReconnect() async {
+    try {
+      // اول قطع کامل
+      await _disconnectAll();
+    } catch (_) {}
+    if (!mounted) return;
+    await Future.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+    try {
+      await _toggleConnection();
+    } catch (_) {}
+  }
+
+  void _startAutoFastestInterval() {
+    _autoFastestTimer?.cancel();
+    _autoFastestTimer = Timer.periodic(
+      const Duration(minutes: 30),
+      (_) => _autoFastestTick(),
+    );
+  }
+
+  Future<void> _autoFastestTick() async {
+    try {
+      final enabled = await SettingsService.getConnectFastest();
+      if (!enabled) return;
+      if (!mounted) return;
+      final fastest = ServerTester.fastest(_servers);
+      if (fastest == null) return;
+      final same = _active?.id == fastest.id || _selected?.id == fastest.id;
+      if (same) return;
+      if (mounted) {
+        setState(() {
+          _selected = fastest;
+        });
+      }
+      // اگه متصل بودیم، با سرور جدید دوباره وصل شو
+      if (_connected && !_connecting) {
+        await _autoReconnect();
+      }
+    } catch (_) {}
   }
 
   void _onSshRoutingChanged() {
@@ -3097,6 +3156,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _autoFastestTimer?.cancel();
+    ConnectivityWatcher.instance.stop();
     try {
       TorSessionService.instance.routingCount
           .removeListener(_onTorRoutingChanged);

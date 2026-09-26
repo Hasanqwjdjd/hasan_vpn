@@ -13,6 +13,7 @@ dependencies:
   flutter_vless: 1.1.5
   http: ^1.1.0
   dartssh2: ^2.10.0
+  connectivity_plus: ^6.0.5
   crypto: ^3.0.3
   shared_preferences: ^2.2.2
   url_launcher: ^6.2.4

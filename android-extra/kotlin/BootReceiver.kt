@@ -32,18 +32,41 @@ class BootReceiver : BroadcastReceiver() {
                 Log.i(TAG, "auto-connect on boot disabled")
                 return
             }
-            Log.i(TAG, "BOOT_COMPLETED — scheduling auto-connect")
-            // Kick the headless widget / VPN service path already present in the app.
-            val i = Intent(context, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                putExtra("auto_connect_boot", true)
+            Log.i(TAG, "BOOT_COMPLETED — scheduling headless auto-connect")
+            // کاربر باید سرور آخر رو توی prefs داشته باشه. بدون اون نمی‌تونیم
+            // به چیزی وصل شیم.
+            // نام درست: settings_last_server_v1 (کلید SettingsService)
+            // و نسخه‌های قدیمی‌تر که ممکنه هنوز توی prefs باشن.
+            val lastId = try {
+                prefs.getString("flutter.settings_last_server_v1", null)
+            } catch (_: Exception) { null }
+            val lastId2 = lastId ?: try {
+                prefs.getString("flutter.settings_last_server_id_v1", null)
+            } catch (_: Exception) { null }
+
+            if (lastId2.isNullOrBlank()) {
+                Log.i(TAG, "no last server — skipping auto-connect")
+                return
             }
-            // Prefer starting the existing VPN service if available; otherwise
-            // launch activity which will pick up the extra.
+            // خواندن shareLink و نام از سرور ذخیره‌شده در prefs (اگه هست)
+            // سرورهای custom در custom_servers_v1 هستند؛ builtin در builtin_configs.
+            // در سادگی، فقط «آخرین سرور» رو به headless می‌سپاریم و اون خودش
+            // تصمیم می‌گیرد.
             try {
+                val i = Intent(context, WidgetHeadlessActivity::class.java).apply {
+                    putExtra(WidgetHeadlessActivity.EXTRA_TYPE, "current")
+                    putExtra(WidgetHeadlessActivity.EXTRA_PAYLOAD, lastId2)
+                    putExtra(WidgetHeadlessActivity.EXTRA_TITLE, "Boot")
+                    putExtra(WidgetHeadlessActivity.EXTRA_ACTION, "connect")
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_NO_ANIMATION or
+                            Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS,
+                    )
+                }
                 context.startActivity(i)
             } catch (e: Exception) {
-                Log.w(TAG, "could not start MainActivity for auto-connect: ${e.message}")
+                Log.w(TAG, "could not start headless activity for auto-connect: ${e.message}")
             }
         } catch (e: Exception) {
             Log.e(TAG, "BootReceiver error: ${e.message}")

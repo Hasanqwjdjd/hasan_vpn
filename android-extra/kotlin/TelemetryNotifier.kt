@@ -73,17 +73,36 @@ object TelemetryNotifier {
             )
         }
 
-        // Action button label reflects current VPN state.
-        val openPi = contentPi
-        if (openPi != null) {
-            val label = if (vpnActive) "\u0642\u0637\u0639 \u0627\u062a\u0635\u0627\u0644" else "\u0627\u062a\u0635\u0627\u0644"
-            val actionIcon = if (vpnActive) {
-                android.R.drawable.ic_menu_close_clear_cancel
-            } else {
-                android.R.drawable.ic_menu_manage
-            }
-            builder.addAction(actionIcon, label, openPi)
+        // Action button: real toggle via WidgetHeadlessActivity (no UI flash).
+        // This works even when the app was killed — Flutter engine spins up
+        // in background, runs `widgetHeadlessMain`, performs connect/disconnect.
+        val toggleIntent = Intent(context, WidgetHeadlessActivity::class.java).apply {
+            putExtra(WidgetHeadlessActivity.EXTRA_TYPE, "current")
+            putExtra(WidgetHeadlessActivity.EXTRA_PAYLOAD, "")
+            putExtra(WidgetHeadlessActivity.EXTRA_TITLE, "Notification")
+            putExtra(
+                WidgetHeadlessActivity.EXTRA_ACTION,
+                if (vpnActive) "disconnect" else "connect",
+            )
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_NO_ANIMATION or
+                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS,
+            )
         }
+        val togglePi = PendingIntent.getActivity(
+            context,
+            2,
+            toggleIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val label = if (vpnActive) "\u0642\u0637\u0639 \u0627\u062a\u0635\u0627\u0644" else "\u0627\u062a\u0635\u0627\u0644"
+        val actionIcon = if (vpnActive) {
+            android.R.drawable.ic_menu_close_clear_cancel
+        } else {
+            android.R.drawable.ic_menu_manage
+        }
+        builder.addAction(actionIcon, label, togglePi)
 
         builder
             .setContentTitle(title)

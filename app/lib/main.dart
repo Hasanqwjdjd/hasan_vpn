@@ -47,7 +47,42 @@ Future<void> widgetHeadlessMain() async {
   String? error;
 
   try {
-    if (type == 'tor' && action == 'connect') {
+    // type="current": از notification یا boot اومده — باید آخرین سرور
+    // فعلی رو وصل کنه. payload ممکنه id سرور باشه.
+    if (type == 'current' && action == 'connect') {
+      if (payload.isNotEmpty) {
+        // payload = server id؛ از لیست custom سرورها یا builtin پیداش کن
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final raw = prefs.getString('custom_servers_v1');
+          if (raw != null) {
+            final list = jsonDecode(raw);
+            if (list is List) {
+              for (final e in list) {
+                if (e is Map && e['id']?.toString() == payload) {
+                  final link = e['shareLink']?.toString() ?? '';
+                  if (link.isNotEmpty) {
+                    final server = _buildServerFromShareLink(
+                        link, e['name']?.toString() ?? '');
+                    if (server != null) {
+                      await V2RayEngine.init();
+                      ok = await V2RayEngine.connect(server);
+                      if (!ok) error = V2RayEngine.lastError;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          error = 'current-connect: $e';
+        }
+      }
+      if (ok == false && error == null) {
+        error = 'no server payload';
+      }
+    } else if (type == 'tor' && action == 'connect') {
       final parts = payload.split('|');
       final mode = parts.length >= 2 && parts[1].isNotEmpty
           ? parts[1]
