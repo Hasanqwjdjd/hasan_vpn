@@ -2621,16 +2621,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: const Color(0xFFAB47BC),
             ),
             _buildTypeCard(
-              title: 'SSH',
-              subtitle: _t(
-                'اتصال به سرور SSH + SOCKS5 روی سرور',
-                'Connect to SSH server + remote SOCKS5',
-              ),
-              icon: Icons.terminal,
-              type: 'ssh',
-              color: const Color(0xFF66BB6A),
-            ),
-            _buildTypeCard(
               title: _t('تونل DNS', 'DNS Tunnel'),
               subtitle: _t(
                 'DNSTT / Slipstream — عبور ترافیک از روی DNS',
