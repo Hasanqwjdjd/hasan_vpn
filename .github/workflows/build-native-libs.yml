@@ -150,6 +150,8 @@ jobs:
           git clone https://github.com/Mygod/slipstream-rust.git src
           cd src
           git checkout "${PIN_SHA}"
+          # picoquic lives in a git submodule; fetch it recursively.
+          git submodule update --init --recursive
           echo "RESOLVED_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Build OpenSSL for Android arm64 (needed by slipstream via native-tls)
