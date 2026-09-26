@@ -248,6 +248,7 @@ jobs:
           cp -f android-extra/kotlin/HevLauncher.kt "$KT_DIR/HevLauncher.kt"
           cp -f android-extra/kotlin/BootReceiver.kt "$KT_DIR/BootReceiver.kt"
           cp -f android-extra/kotlin/AetherService.kt "$KT_DIR/AetherService.kt"
+          cp -f android-extra/kotlin/TunnelService.kt "$KT_DIR/TunnelService.kt"
           cp -f android-extra/kotlin/TelemetryNotifier.kt "$KT_DIR/TelemetryNotifier.kt"
           cp -f android-extra/kotlin/SafeLog.kt "$KT_DIR/SafeLog.kt"
           cp -f android-extra/kotlin/TorService.kt "$KT_DIR/TorService.kt"
@@ -435,6 +436,11 @@ jobs:
                   android:foregroundServiceType="specialUse" />
               <service
                   android:name="com.hasan.hasan_vpn.AetherService"
+                  android:enabled="true"
+                  android:exported="false"
+                  android:foregroundServiceType="specialUse" />
+              <service
+                  android:name="com.hasan.hasan_vpn.TunnelService"
                   android:enabled="true"
                   android:exported="false"
                   android:foregroundServiceType="specialUse" />

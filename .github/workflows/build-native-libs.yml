@@ -1,0 +1,333 @@
+name: Build Native Libraries (arm64-v8a)
+
+on:
+  workflow_dispatch:
+
+env:
+  ANDROID_API: 21
+  ABI: arm64-v8a
+  NDK_VERSION: "26.1.10909125"
+
+jobs:
+  # ====================================================================
+  # 1. DNSTT (Go) — cross-compile with NDK clang
+  # ====================================================================
+  dnstt:
+    name: Build DNSTT
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    continue-on-error: true
+    env:
+      PIN_SHA: "4293e24"
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-dnstt-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-dnstt-
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+
+      - name: Checkout dnstt at pinned commit
+        run: |
+          set -euo pipefail
+          git clone https://github.com/Mygod/dnstt.git src
+          cd src
+          git checkout "${PIN_SHA}"
+          echo "RESOLVED_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Build (client binary, netcgo enabled)
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cd src/client
+          CC="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android${ANDROID_API}-clang" \
+          GOOS=android GOARCH=arm64 CGO_ENABLED=1 \
+          go build -tags=netcgo -o ../../out/libdnstt.so .
+
+      - name: Verify output
+        run: |
+          set -euo pipefail
+          cd out
+          file libdnstt.so | tee file_output.txt
+          readelf -h libdnstt.so | grep Machine | tee -a file_output.txt
+          nm -D libdnstt.so | head -20 | tee -a file_output.txt || true
+
+      - name: Write BUILD_INFO.txt
+        run: |
+          cat > out/BUILD_INFO.txt <<EOF
+          Library: dnstt
+          Upstream: https://github.com/Mygod/dnstt
+          Commit SHA: ${RESOLVED_SHA}
+          Build date: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          Runner: ubuntu-22.04
+          NDK: ${NDK_VERSION}
+          Flags: GOOS=android GOARCH=arm64 CGO_ENABLED=1 go build -tags=netcgo
+          File size: $(stat -c%s out/libdnstt.so)
+          Output verified: file / readelf / nm (see file_output.txt)
+          EOF
+
+      - name: Write README.md
+        run: |
+          cat > out/README.md <<'EOF'
+          # dnstt-arm64
+          Compiled dnstt client binary (arm64-v8a) tunneling TCP over DNS.
+          See BUILD_INFO.txt for provenance. Server-side (dnstt-server) is
+          not included; you must run it on your own VPS.
+          EOF
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dnstt-arm64
+          path: out/
+          if-no-files-found: warn
+
+  # ====================================================================
+  # 2. Slipstream (Rust) — QUIC over DNS
+  # ====================================================================
+  slipstream:
+    name: Build Slipstream
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    continue-on-error: true
+    env:
+      PIN_SHA: "42e3e75"
+    steps:
+      - name: Install build deps for picoquic
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 cmake make perl git build-essential
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-slipstream-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-slipstream-
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Checkout slipstream-rust at pinned commit
+        run: |
+          set -euo pipefail
+          git clone https://github.com/Mygod/slipstream-rust.git src
+          cd src
+          git checkout "${PIN_SHA}"
+          echo "RESOLVED_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Build (arm64-v8a)
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cd src
+          cargo ndk -t arm64-v8a -o ../out/jniLibs build --release -p slipstream-client
+
+      - name: Rename to lib*.so (Android requirement)
+        run: |
+          set -euo pipefail
+          cd out/jniLibs/arm64-v8a
+          # The binary built is named `slipstream-client`; Android needs lib*.so
+          if [ -f slipstream-client ]; then
+            mv slipstream-client libslipstream_client.so
+          fi
+          chmod 755 libslipstream_client.so
+          mkdir -p ../../flat
+          cp libslipstream_client.so ../../flat/
+          cd ../../flat
+          echo "SO_FILE=libslipstream_client.so" >> "$GITHUB_ENV"
+
+      - name: Verify output
+        run: |
+          set -euo pipefail
+          cd out/flat
+          file libslipstream_client.so | tee file_output.txt
+          readelf -h libslipstream_client.so | grep Machine | tee -a file_output.txt
+          nm -D libslipstream_client.so | head -20 | tee -a file_output.txt || true
+
+      - name: Write BUILD_INFO.txt
+        run: |
+          cat > out/BUILD_INFO.txt <<EOF
+          Library: slipstream
+          Upstream: https://github.com/Mygod/slipstream-rust
+          Commit SHA: ${RESOLVED_SHA}
+          Build date: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          Runner: ubuntu-22.04
+          NDK: ${NDK_VERSION}
+          Flags: cargo ndk -t arm64-v8a build --release -p slipstream-client
+          Renamed to: libslipstream_client.so (Android requirement)
+          File size: $(stat -c%s out/flat/libslipstream_client.so)
+          Output verified: file / readelf / nm (see file_output.txt)
+          EOF
+
+      - name: Write README.md
+        run: |
+          cat > out/README.md <<'EOF'
+          # slipstream-arm64
+          Compiled slipstream-client (arm64-v8a), QUIC-based covert channel
+          over DNS. Renamed to libslipstream_client.so for Android packaging.
+          Server component (slipgate) not included.
+          EOF
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slipstream-arm64
+          path: out/
+          if-no-files-found: warn
+
+  # ====================================================================
+  # 3. NaiveProxy — may fail; continue-on-error so it doesn't block others
+  # ====================================================================
+  naiveproxy:
+    name: Build NaiveProxy
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    continue-on-error: true
+    env:
+      PIN_SHA: "3ba967e2"
+    steps:
+      - name: Check available disk space
+        id: disk
+        run: |
+          set -euo pipefail
+          AVAIL_KB=$(df --output=avail / | tail -1)
+          AVAIL_GB=$((AVAIL_KB / 1024 / 1024))
+          echo "Available: ${AVAIL_GB} GB"
+          echo "avail_gb=${AVAIL_GB}" >> "$GITHUB_OUTPUT"
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+
+      - name: Skip if insufficient space
+        if: steps.disk.outputs.avail_gb < 25
+        run: |
+          mkdir -p out
+          echo "SKIPPED: only ${{ steps.disk.outputs.avail_gb }} GB free" > out/SKIPPED.txt
+          echo "SKIPPED=true" >> "$GITHUB_ENV"
+
+      - name: Fetch depot_tools
+        if: env.SKIPPED != 'true'
+        run: |
+          git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "$PWD/depot_tools" >> "$GITHUB_PATH"
+
+      - name: Fetch naiveproxy source
+        if: env.SKIPPED != 'true'
+        run: |
+          set -euo pipefail
+          git clone https://github.com/klzgrad/naiveproxy.git src
+          cd src
+          git checkout "${PIN_SHA}" || true
+          echo "RESOLVED_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Build (android/arm64)
+        if: env.SKIPPED != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cd src
+          EXTRA_FLAGS='target_os="android" target_cpu="arm64"' ./get-clang.sh || \
+            { echo "SKIPPED: get-clang.sh failed" > ../out/SKIPPED.txt; exit 0; }
+          EXTRA_FLAGS='target_os="android" target_cpu="arm64"' ./build.sh || \
+            { echo "SKIPPED: build.sh failed" > ../out/SKIPPED.txt; exit 0; }
+          find . -maxdepth 3 -name 'naive' -exec cp {} ../out/ \; || true
+
+      - name: Verify output (if built)
+        if: env.SKIPPED != 'true'
+        run: |
+          cd out
+          if [ -f naive ]; then
+            file naive | tee file_output.txt
+            readelf -h naive | grep Machine | tee -a file_output.txt
+          else
+            echo "SKIPPED: no 'naive' binary produced" >> SKIPPED.txt
+          fi
+
+      - name: Write BUILD_INFO.txt
+        if: always()
+        run: |
+          mkdir -p out
+          cat > out/BUILD_INFO.txt <<EOF
+          Library: naiveproxy
+          Upstream: https://github.com/klzgrad/naiveproxy
+          Commit SHA: ${RESOLVED_SHA:-N/A}
+          Build date: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          Runner: ubuntu-22.04
+          Notes: Requires full Chromium toolchain; often exceeds runner limits.
+          EOF
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: naiveproxy-arm64
+          path: out/
+          if-no-files-found: warn
+
+  # ====================================================================
+  # 4/5. NoizDNS & VayDNS — placeholder (no independent upstream)
+  # ====================================================================
+  noizdns:
+    name: NoizDNS (skipped — no independent source)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - run: |
+          mkdir -p out
+          echo "SKIPPED: No independent, redistributable upstream source located for NoizDNS." > out/SKIPPED.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: noizdns-arm64
+          path: out/
+
+  vaydns:
+    name: VayDNS (skipped — no independent source)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - run: |
+          mkdir -p out
+          echo "SKIPPED: No independent, redistributable upstream source located for VayDNS." > out/SKIPPED.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vaydns-arm64
+          path: out/

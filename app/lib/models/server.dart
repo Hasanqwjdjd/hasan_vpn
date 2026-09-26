@@ -10,6 +10,8 @@ enum VpnProtocol {
   xrayJson,
   /// هستهٔ واقعی Psiphon (کتابخانهٔ ca.psiphon)
   psiphon,
+  /// تونل DNS (DNSTT / NoizDNS / VayDNS) — باینری native + SOCKS محلی
+  tunnel,
 }
 
 /// idle: تست نشده | testing: در حال تست | online: سالم | offline: از کار افتاده

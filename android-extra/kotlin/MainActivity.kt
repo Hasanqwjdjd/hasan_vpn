@@ -238,6 +238,28 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.hasan.hasan_vpn/tunnel")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        val binary = call.argument<String>("binary") ?: ""
+                        val args = call.argument<List<String>>("args") ?: emptyList()
+                        val env = call.argument<Map<String, String>>("env") ?: emptyMap()
+                        val remark = call.argument<String>("remark") ?: "Tunnel"
+                        val ok = TunnelService.start(
+                            applicationContext, binary, args, env, remark,
+                        )
+                        result.success(ok)
+                    }
+                    "stop" -> {
+                        TunnelService.stop(applicationContext)
+                        result.success(true)
+                    }
+                    "status" -> result.success(TunnelService.status())
+                    else -> result.notImplemented()
+                }
+            }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, torChannel)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
