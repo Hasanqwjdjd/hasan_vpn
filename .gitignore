@@ -11,3 +11,4 @@ __pycache__/
 *.bak_tor
 *.bak_dns
 .new_servers.txt
+aether*.toml
