@@ -78,10 +78,15 @@ class TunnelProfile {
   List<String> buildArgs(int socksPort) {
     switch (kind) {
       case 'slipstream':
+        // CLI واقعی slipstream-client (از --help باینری arm64):
+        //   libslipstream_client.so [-l PORT] [--tcp-listen-host HOST]
+        //      -r RESOLVER -d DOMAIN [-c bbr|dcubic]
         return <String>[
-          '--dns-server', resolver,
-          '--domain', domain,
-          '--listen', '127.0.0.1:$socksPort',
+          '--tcp-listen-host', '127.0.0.1',
+          '-l', '$socksPort',
+          '-r', resolver,
+          '-d', domain,
+          '-c', 'bbr',
         ];
       case 'noizdns':
       case 'vaydns':
