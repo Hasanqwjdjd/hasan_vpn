@@ -5,6 +5,7 @@ import '../models/aether_profile.dart';
 import '../models/server.dart';
 import '../services/app_colors.dart';
 import '../services/psiphon_service.dart';
+import '../services/cdn_detector.dart';
 
 class ServerTile extends StatelessWidget {
   final VpnServer server;
@@ -204,6 +205,33 @@ class ServerTile extends StatelessWidget {
                   ),
 
                 Text(server.flag, style: const TextStyle(fontSize: 16)),
+                Builder(builder: (ctx) {
+                  final cdn = CdnDetector.label(server.host);
+                  if (cdn == null) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 3),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: AppColors.accent.withOpacity(0.4),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Text(
+                        cdn,
+                        style: const TextStyle(
+                          color: AppColors.accent,
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
                 const SizedBox(width: 6),
 
                 Expanded(

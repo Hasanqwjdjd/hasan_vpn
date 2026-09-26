@@ -345,6 +345,10 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
 
                 // ---- A4 Fragment ----
                 _section(_t('Fragment', 'Fragment'), icon: Icons.call_split),
+                _sw('skipCertVerify', 'نادیده‌گرفتن اعتبار گواهی TLS',
+                    'Skip TLS cert verification',
+                    subFa: 'برای سرورهای self-signed یا CDN شخصی',
+                    subEn: 'For self-signed or custom CDN servers'),
                 _sw('fragmentEnable', 'فعال‌سازی Fragment', 'Enable Fragment'),
                 _fragmentPresets(),
                 _textField('fragmentPackets', 'محدوده پکت', 'Packet ranges',

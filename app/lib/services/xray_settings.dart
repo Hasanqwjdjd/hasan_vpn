@@ -39,6 +39,7 @@ class XraySettings {
     'directDns': '1.1.1.1',
     'dnsHosts': '',
     'dnsLeakProtection': true,
+    'skipCertVerify': false,
 
     // ---- Mux (A3) ----
     'muxEnable': false,
@@ -374,6 +375,23 @@ class XraySettings {
             final m = Map<String, dynamic>.from(ob['mux'] as Map? ?? {});
             m['enabled'] = false;
             ob['mux'] = m;
+          }
+        });
+      }
+
+      // Skip cert verify: به همه outbound های TLS اجازه بده cert خودامضا
+      // قبول کنن (برای سرورهای بدون cert معتبر یا با CDN شخصی).
+      if (settings['skipCertVerify'] == true) {
+        _applyToOutbounds(map, (ob) {
+          final stream = Map<String, dynamic>.from(
+              ob['streamSettings'] as Map? ?? {});
+          final security = stream['security']?.toString().toLowerCase() ?? '';
+          if (security == 'tls' || security == 'xtls' || security == 'reality') {
+            final tls = Map<String, dynamic>.from(
+                stream['tlsSettings'] as Map? ?? {});
+            tls['allowInsecure'] = true;
+            stream['tlsSettings'] = tls;
+            ob['streamSettings'] = stream;
           }
         });
       }
