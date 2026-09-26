@@ -240,16 +240,19 @@ jobs:
       - name: Rename to lib*.so (Android requirement)
         run: |
           set -euo pipefail
-          # Locate the built binary in the cargo target dir.
-          BIN="target/aarch64-linux-android/release/slipstream-client"
-          if [ ! -f "$BIN" ]; then
-            echo "ERROR: binary not found at $BIN"
-            find target -name 'slipstream-client*' -type f -exec ls -la {} \;
+          # cargo-ndk ran inside src/, so the binary is under src/target/.
+          cd src
+          BIN=$(find target -type f -name 'slipstream-client' | head -1)
+          if [ -z "$BIN" ]; then
+            echo "ERROR: slipstream-client not found. Listing executables:"
+            find target -type f -executable | head -30 || true
             exit 1
           fi
+          echo "Found binary: $BIN"
           mkdir -p ../out/flat
           cp "$BIN" ../out/flat/libslipstream_client.so
           chmod 755 ../out/flat/libslipstream_client.so
+          file ../out/flat/libslipstream_client.so || true
           echo "SO_FILE=libslipstream_client.so" >> "$GITHUB_ENV"
           ls -la ../out/flat/
 
