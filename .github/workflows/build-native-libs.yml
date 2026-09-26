@@ -200,6 +200,11 @@ jobs:
           sudo rm -f /usr/lib/pkgconfig/libbrotli*.pc || true
           mkdir -p out
           cd src
+          # Wipe any prior host-target artifacts to avoid aarch64<->x86_64
+          # object mixing (picoquic's build script cc compiles some C sources
+          # via the host toolchain when cached).
+          cargo clean || true
+          rm -rf .picoquic-build
           cargo ndk -t arm64-v8a -o ../out/jniLibs build --release -p slipstream-client
 
       - name: Rename to lib*.so (Android requirement)
