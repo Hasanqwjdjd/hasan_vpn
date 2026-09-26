@@ -1880,6 +1880,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 tooltip: _t('اعلان‌ها', 'Announcements'),
               ),
               IconButton(
+                icon: Icon(
+                  _selectionMode
+                      ? Icons.check_box
+                      : Icons.check_box_outline_blank,
+                  color: _selectionMode
+                      ? AppColors.accent
+                      : AppColors.muted(context),
+                  size: 22,
+                ),
+                onPressed: () => setState(() {
+                  _selectionMode = !_selectionMode;
+                  if (!_selectionMode) _selectedIds.clear();
+                }),
+                tooltip: _t('حالت انتخاب', 'Selection mode'),
+              ),
+              IconButton(
                 icon: Icon(Icons.settings,
                     color: AppColors.muted(context), size: 22),
                 onPressed: widget.onOpenSettings,
@@ -2113,12 +2129,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           }
                           setState(() => _selected = server);
                           await SettingsService.setLastServer(server.id);
-                        },
-                        onLongPress: () {
-                          setState(() {
-                            _selectionMode = true;
-                            _selectedIds.add(server.id);
-                          });
                         },
                         onDelete: _customServers.any((s) => s.id == server.id)
                             ? () => _deleteServer(server)

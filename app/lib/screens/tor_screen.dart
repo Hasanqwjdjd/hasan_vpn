@@ -48,7 +48,7 @@ class _TorScreenState extends State<TorScreen> {
     {'id': 'dnstt', 'fa': 'DNSTT', 'en': 'DNSTT'},
   ];
 
-  String _bridgeType = 'snowflake';
+  String _bridgeType = 'vanilla';
   String _selectedSni = TorSniPresets.defaultSni;
   bool _sniEnabled = false;
   bool _sniAutoPicking = false;
