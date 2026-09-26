@@ -56,7 +56,11 @@ class TunnelService {
       return <String, dynamic>{'ok': false, 'error': e.toString()};
     }
 
-    // انتظار برای باز شدن SOCKS — تا ۲۰ ثانیه
+    // انتظار برای باز شدن listener محلی — تا ۲۰ ثانیه.
+    // نکته: dnstt-client یک TCP forward است (نه SOCKS)، ولی از دید Xray
+    // با یک outbound=socks کار می‌کند چون خود سرور dnstt به SOCKS سمت
+    // سرور وصل است — به شرط اینکه کاربر در Xray از این پورت به‌عنوان
+    // socks استفاده کند. فقط باز بودن پورت کافی است.
     final deadline = DateTime.now().add(const Duration(seconds: 20));
     while (DateTime.now().isBefore(deadline)) {
       await Future.delayed(const Duration(milliseconds: 500));

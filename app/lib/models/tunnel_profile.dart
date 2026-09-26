@@ -16,6 +16,12 @@ class TunnelProfile {
   /// resolver DNS — ip:port (مثلاً 8.8.8.8:53).
   final String resolver;
 
+  /// نوع DNS transport برای dnstt:
+  ///   udp → plaintext UDP DNS (resolver = "8.8.8.8:53")
+  ///   dot → DNS over TLS (resolver = "dot.example:853")
+  ///   doh → DNS over HTTPS (resolver = "https://resolver/dns-query")
+  final String transport;
+
   /// پورت SOCKS محلی. 0 = خودکار (اختصاص پورت آزاد).
   final int listenPort;
 
@@ -27,6 +33,7 @@ class TunnelProfile {
     this.domain = '',
     this.pubkey = '',
     this.resolver = '8.8.8.8:53',
+    this.transport = 'udp',
     this.listenPort = 0,
     this.name = '',
   });
@@ -47,7 +54,7 @@ class TunnelProfile {
 
   /// باینری‌هایی که از jniLibs اجرا می‌شوند (نام فایل .so).
   static const Map<String, String> kindBinaries = <String, String>{
-    'dnstt': 'libdnstt.so',
+    'dnstt': 'libdnstt_client.so',
     'noizdns': 'libnoizdns.so',
     'vaydns': 'libvaydns.so',
     'slipstream': 'libslipstream_client.so',
@@ -63,6 +70,11 @@ class TunnelProfile {
 
   /// آرگومان‌های باینری بر اساس نوع. (Dart سازندهٔ argv است تا اگر CLI
   /// upstream تغییر کرد، فقط اینجا patch شود.)
+  ///
+  /// dnstt-client مستقل: `dnstt-client [-udp|-dot|-doh] ... -pubkey HEX DOMAIN LOCALADDR`
+  /// این یک TCP forward شفاف می‌سازد، نه SOCKS. سرور dnstt باید به یک
+  /// SOCKS5 سمت سرور وصل باشد. برنامه Xray را با outbound=socks به
+  /// `127.0.0.1:<socksPort>` می‌چیند.
   List<String> buildArgs(int socksPort) {
     switch (kind) {
       case 'slipstream':
@@ -75,7 +87,15 @@ class TunnelProfile {
       case 'vaydns':
       case 'dnstt':
       default:
-        final parts = <String>['-udp', resolver];
+        final parts = <String>[];
+        // انتخاب transport: udp (پیش‌فرض) / dot / doh
+        if (transport == 'dot') {
+          parts.addAll(['-dot', resolver]);
+        } else if (transport == 'doh') {
+          parts.addAll(['-doh', resolver]);
+        } else {
+          parts.addAll(['-udp', resolver]);
+        }
         if (pubkey.isNotEmpty) {
           parts.addAll(['-pubkey', pubkey]);
         }
@@ -104,6 +124,7 @@ class TunnelProfile {
       'domain': domain,
       if (pubkey.isNotEmpty) 'pubkey': pubkey,
       if (resolver.isNotEmpty) 'resolver': resolver,
+      if (transport != 'udp') 'transport': transport,
       if (listenPort > 0) 'port': '$listenPort',
       if (name.isNotEmpty) 'name': name,
     };
@@ -128,6 +149,7 @@ class TunnelProfile {
       domain: (q['domain'] ?? '').trim(),
       pubkey: (q['pubkey'] ?? '').trim(),
       resolver: (q['resolver'] ?? '8.8.8.8:53').trim(),
+      transport: (q['transport'] ?? 'udp').trim(),
       listenPort: int.tryParse(q['port'] ?? '') ?? 0,
       name: (q['name'] ?? '').trim(),
     );
@@ -138,6 +160,7 @@ class TunnelProfile {
         'domain': domain,
         'pubkey': pubkey,
         'resolver': resolver,
+        'transport': transport,
         'listenPort': listenPort,
         'name': name,
       };
@@ -147,6 +170,7 @@ class TunnelProfile {
         domain: j['domain']?.toString() ?? '',
         pubkey: j['pubkey']?.toString() ?? '',
         resolver: j['resolver']?.toString() ?? '8.8.8.8:53',
+        transport: j['transport']?.toString() ?? 'udp',
         listenPort: (j['listenPort'] as num?)?.toInt() ?? 0,
         name: j['name']?.toString() ?? '',
       );

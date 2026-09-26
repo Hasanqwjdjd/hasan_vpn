@@ -50,6 +50,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
 
   // Tunnel DNS (DNSTT/NoizDNS/VayDNS/Slipstream)
   String _tunnelKind = 'dnstt';
+  String _tunnelTransport = 'udp'; // udp | dot | doh
   final TextEditingController _tunnelDomainController = TextEditingController();
   final TextEditingController _tunnelPubkeyController = TextEditingController();
   final TextEditingController _tunnelResolverController =
@@ -1324,6 +1325,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       resolver: _tunnelResolverController.text.trim().isEmpty
           ? '8.8.8.8:53'
           : _tunnelResolverController.text.trim(),
+      transport: _tunnelTransport,
       listenPort: int.tryParse(_tunnelListenPortController.text.trim()) ?? 0,
       name: _nameController.text.trim(),
     );
@@ -1413,6 +1415,47 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               onChanged: (v) {
                 if (v == null) return;
                 setState(() => _tunnelKind = v);
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          _t('نوع DNS', 'DNS transport'),
+          style: TextStyle(
+            color: AppColors.muted(context),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: AppColors.surface(context),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border(context)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _tunnelTransport,
+              isExpanded: true,
+              dropdownColor: AppColors.elevated(context),
+              style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+              items: const [
+                DropdownMenuItem(
+                    value: 'udp',
+                    child: Text('UDP DNS (ساده)')),
+                DropdownMenuItem(
+                    value: 'dot',
+                    child: Text('DoT (DNS over TLS)')),
+                DropdownMenuItem(
+                    value: 'doh',
+                    child: Text('DoH (DNS over HTTPS)')),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() => _tunnelTransport = v);
               },
             ),
           ),
