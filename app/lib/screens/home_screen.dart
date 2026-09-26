@@ -16,6 +16,7 @@ import '../services/server_tester.dart';
 import '../services/tor_session_service.dart';
 import '../services/telegram_source_service.dart';
 import '../services/connectivity_watcher.dart';
+import '../services/connection_log_service.dart';
 import '../services/tunnel_session_service.dart';
 import '../models/tunnel_profile.dart';
 import '../models/ssh_profile.dart';
@@ -1875,6 +1876,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _markDisconnected(String status) {
+    if (_active != null) {
+      // ignore: unawaited_futures
+      ConnectionLogService.logDisconnect(_active!.displayName);
+    }
     final wasConnected = _connected;
     _active = null;
     _livePing = null;
@@ -2065,6 +2070,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _connected = connected;
         _connecting = false;
         _active = connected ? selected : null;
+        // log
+        if (connected) {
+          // ignore: unawaited_futures
+          ConnectionLogService.logConnect(selected.displayName);
+        } else if (error != null && error.isNotEmpty) {
+          // ignore: unawaited_futures
+          ConnectionLogService.logError(selected.displayName, error);
+        }
+        
         if (connected) {
           _status = _t('متصل شد', 'Connected');
         } else if (_cancelConnect) {
@@ -2147,7 +2161,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       MaterialPageRoute(
         builder: (_) => AddConfigScreen(
           language: widget.language,
-          onServerAdded: (server) {
+          onServerAdded: (server) async {
             _customServers.insert(0, server);
             _manualOrder.insert(0, server.id);
             // اگر سابسکریپشن خاصی انتخاب شده، سرور را به آن tag بزن
@@ -2158,7 +2172,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _rebuildServerList();
             _saveCustomServers();
             _saveManualOrder();
-          },
+          }
+            // auto-ping: سرور جدید رو خودکار تست کن
+            // ignore: unawaited_futures
+            Future.delayed(const Duration(milliseconds: 400), () {
+              _testOne(server);
+            }),
         ),
       ),
     );
@@ -2726,6 +2745,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _selected = server;
             _status = _t('اتصال تونل DNS...', 'Connecting tunnel...');
           });
+          // ignore: unawaited_futures
+          ConnectionLogService.logConnect(server.displayName);
           await TunnelSessionService.instance.connect(server.id, prof);
           return;
         }

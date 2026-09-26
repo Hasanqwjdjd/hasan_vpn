@@ -348,8 +348,46 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                     icon: Icons.security),
                 _textField('realityPublicKey', 'Public key', 'Public key'),
                 _textField('realityShortId', 'Short ID', 'Short ID'),
-                _textField('realityFingerprint', 'Fingerprint (chrome/firefox/…)',
-                    'Fingerprint'),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    _t('Fingerprint', 'Fingerprint'),
+                    style: TextStyle(
+                        color: AppColors.muted(context),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final fp in const [
+                        'chrome', 'firefox', 'safari',
+                        'ios', 'android', 'edge', 'random', 'randomized',
+                      ])
+                        ChoiceChip(
+                          label: Text(fp),
+                          selected: _s['realityFingerprint'] == fp,
+                          onSelected: (_) => _set('realityFingerprint', fp),
+                          selectedColor:
+                              AppColors.accent.withOpacity(0.25),
+                          backgroundColor: AppColors.surface(context),
+                          labelStyle: TextStyle(
+                            color: _s['realityFingerprint'] == fp
+                                ? AppColors.accent
+                                : AppColors.fg(context),
+                            fontSize: 11,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                _textField('realityFingerprint', 'Fingerprint دستی',
+                    'Fingerprint (manual)'),
                 _textField('realityServerName', 'Server name (SNI)',
                     'Server name'),
                 _textField('realitySpiderX', 'Spider X path', 'Spider X'),
