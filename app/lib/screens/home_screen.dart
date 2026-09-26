@@ -1105,8 +1105,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             color: Colors.transparent,
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: () {
+              onTap: () async {
                 if (_selectionMode) return;
+                final wid = _pendingWidgetId;
+                if (wid != null && wid > 0) {
+                  try {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setString(
+                        'widget_server_$wid', 'tor|$bridgeType|Tor');
+                  } catch (_) {}
+                  await TorSessionService.instance.connect(server.id);
+                  if (!mounted) return;
+                  setState(() => _pendingWidgetId = null);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(_t(
+                        'این تور برای ویجت انتخاب شد',
+                        'Tor selected for widget',
+                      )),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                  return;
+                }
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => TorScreen(
@@ -1118,7 +1139,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               },
               child: Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -2251,22 +2272,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ],
             ),
           ),
-          for (final t in _torPresets())
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _buildTorTile(t),
-            ),
           Expanded(
             child: _twoColumnGrid
                 ? GridView.builder(
                     controller: _listScrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.only(
+                        left: 16, right: 16, bottom: 90),
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
                       mainAxisSpacing: 4,
                       crossAxisSpacing: 8,
-                      childAspectRatio: 1.6,
+                      mainAxisExtent: 58,
                     ),
                     itemCount: _servers.length,
                     itemBuilder: (context, index) =>
@@ -2274,7 +2291,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   )
                 : ReorderableListView.builder(
               scrollController: _listScrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.only(
+                  left: 16, right: 16, bottom: 90),
               itemCount: _servers.length,
               onReorder: _onReorder,
               buildDefaultDragHandles: false,
@@ -2380,31 +2398,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               style: TextStyle(color: AppColors.fg(context), fontSize: 12),
             ),
           ),
-          TextButton.icon(
-            onPressed: _openTorScreenForWidget,
-            icon: const Icon(Icons.security, size: 16, color: AppColors.accent),
-            label: Text(
-              _t('رفتن به قسمت تور', 'Go to Tor'),
-              style: const TextStyle(color: AppColors.accent, fontSize: 12),
-            ),
-          ),
         ],
       ),
     );
-  }
-
-  Future<void> _openTorScreenForWidget() async {
-    final wid = _pendingWidgetId;
-    if (wid == null) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => TorScreen(
-          language: widget.language,
-          pendingWidgetId: wid,
-        ),
-      ),
-    );
-    if (mounted) setState(() => _pendingWidgetId = null);
   }
 
   Future<void> _addSelectedToGroup() async {
@@ -2534,14 +2530,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     if (mode == null || !mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => TorScreen(
-          language: widget.language,
-          pendingWidgetId: widgetId,
-          initialBridgeType: mode,
-          autoConnect: true,
-        ),
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('widget_server_$widgetId', 'tor|$mode|Tor');
+    } catch (_) {}
+    final presetId = 'widget_tor_$widgetId';
+    await TorSessionService.instance.connectWithType(presetId, mode);
+    if (!mounted) return;
+    setState(() => _pendingWidgetId = null);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_t(
+          'این تور برای ویجت انتخاب شد',
+          'Tor selected for widget',
+        )),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -2722,16 +2725,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               _buildPatternihaBanner(),
             ],
             const SizedBox(height: 8),
-            _buildConnectButton(),
-            const SizedBox(height: 12),
+            for (final t in _torPresets())
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _buildTorTile(t),
+              ),
+            const SizedBox(height: 4),
             _buildServerList(),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openAddConfig,
-        backgroundColor: AppColors.accent,
-        child: const Icon(Icons.add, color: Colors.black),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'connect_fab',
+            onPressed: _connecting ? null : _toggleConnection,
+            backgroundColor: _connected
+                ? AppColors.accent
+                : AppColors.elevated(context),
+            child: _connecting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.accent,
+                    ),
+                  )
+                : Icon(
+                    _connected ? Icons.shield : Icons.power_settings_new,
+                    color:
+                        _connected ? Colors.black : AppColors.accent,
+                    size: 20,
+                  ),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton(
+            heroTag: 'add_fab',
+            onPressed: _openAddConfig,
+            backgroundColor: AppColors.accent,
+            child: const Icon(Icons.add, color: Colors.black),
+          ),
+        ],
       ),
     );
   }

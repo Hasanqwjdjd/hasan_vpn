@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'services/v2ray_engine.dart';
@@ -67,6 +68,36 @@ Future<void> widgetHeadlessMain() async {
             final pct = (st['bootstrapPercent'] as num?)?.toInt() ?? 0;
             if (pct >= 100) {
               ok = true;
+              try {
+                final port =
+                    (st['socksPort'] as num?)?.toInt() ?? 9050;
+                final cfg = _buildTorXrayConfigHeadless(port);
+                final fakeServer = VpnServer(
+                  id:
+                      'tor_widget_${DateTime.now().millisecondsSinceEpoch}',
+                  name: 'Tor',
+                  flag: '🧅',
+                  shareLink: 'xrayjson://tor',
+                  protocol: VpnProtocol.xrayJson,
+                  host: '127.0.0.1',
+                  port: port,
+                  isDeletable: false,
+                );
+                await V2RayEngine.init();
+                final routeOk = await V2RayEngine.startConfig(
+                  remark: 'Tor',
+                  config: cfg,
+                  server: fakeServer,
+                );
+                if (!routeOk) {
+                  ok = false;
+                  error =
+                      'VPN routing failed: ${V2RayEngine.lastError ?? "unknown"}';
+                }
+              } catch (e) {
+                ok = false;
+                error = 'routing error: $e';
+              }
               break;
             }
             if (st['running'] != true) {
@@ -146,6 +177,41 @@ Future<void> widgetHeadlessMain() async {
   try {
     await channel.invokeMethod('headlessDone', {'ok': ok, 'error': error});
   } catch (_) {}
+}
+
+String _buildTorXrayConfigHeadless(int socksPort) {
+  final cfg = <String, dynamic>{
+    'inbounds': [
+      {
+        'tag': 'socks-in',
+        'port': 10808,
+        'listen': '127.0.0.1',
+        'protocol': 'socks',
+        'settings': {'auth': 'noauth', 'udp': true},
+        'sniffing': {
+          'enabled': true,
+          'destOverride': ['http', 'tls', 'quic'],
+        },
+      },
+    ],
+    'outbounds': [
+      {
+        'tag': 'tor-out',
+        'protocol': 'socks',
+        'settings': {
+          'servers': [
+            {'address': '127.0.0.1', 'port': socksPort},
+          ],
+        },
+      },
+      {'tag': 'direct', 'protocol': 'freedom'},
+    ],
+    'routing': {
+      'domainStrategy': 'AsIs',
+      'rules': <Map<String, dynamic>>[],
+    },
+  };
+  return jsonEncode(cfg);
 }
 
 /// ساخت VpnServer از یک shareLink (vless://, vmess://, trojan://, ss://)

@@ -57,6 +57,7 @@ class TorSessionService {
   static const String presetWebtunnelId = 'tor_preset_webtunnel';
 
   final Map<String, ValueNotifier<TorSessionState>> _notifiers = {};
+  final Map<String, String> _bridgeTypes = {};
   String? _activeBridgeId;
   Timer? _pollTimer;
   bool _routing = false;
@@ -70,11 +71,16 @@ class TorSessionService {
   bool isPreset(String id) =>
       id == presetVanillaId || id == presetWebtunnelId;
 
-  Future<void> connect(String bridgeId) async {
+  Future<void> connect(String bridgeId) =>
+      connectWithType(bridgeId, bridgeTypeFor(bridgeId));
+
+  /// اتصال Tor با نوع پل صریح — برای پنل inline و ویجت.
+  Future<void> connectWithType(String bridgeId, String bridgeType) async {
     if (_activeBridgeId != null && _activeBridgeId != bridgeId) {
       await disconnect();
     }
     _activeBridgeId = bridgeId;
+    _bridgeTypes[bridgeId] = bridgeType;
     final n = notifierFor(bridgeId);
     n.value = n.value.copyWith(
       connecting: true,
@@ -82,7 +88,7 @@ class TorSessionService {
       bootstrap: 0,
       bootstrapMsg: 'Starting...',
     );
-    final r = await TorService.start(bridgeType: bridgeTypeFor(bridgeId));
+    final r = await TorService.start(bridgeType: bridgeType);
     if (r['ok'] != true) {
       n.value = n.value.copyWith(
         connecting: false,

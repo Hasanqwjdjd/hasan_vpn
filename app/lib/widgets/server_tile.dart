@@ -84,6 +84,16 @@ class ServerTile extends StatelessWidget {
     return AppColors.danger;
   }
 
+  /// نام تمیزشده: اگر displayName با flag شروع شود، flag تکراری حذف شود.
+  String _cleanName() {
+    final name = server.displayName;
+    final flag = server.flag;
+    if (flag.isNotEmpty && name.startsWith(flag)) {
+      return name.substring(flag.length).trimLeft();
+    }
+    return name;
+  }
+
   Widget _buildPing(BuildContext context) {
     final ping = server.ping;
 
@@ -205,7 +215,7 @@ class ServerTile extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              server.displayName,
+                              _cleanName(),
                               style: TextStyle(
                                 color: AppColors.fg(context),
                                 fontSize: 13,

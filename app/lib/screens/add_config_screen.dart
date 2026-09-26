@@ -10,7 +10,7 @@ import '../services/psiphon_service.dart';
 import '../services/tor_sni_presets.dart';
 import '../services/xray_json.dart';
 import 'qr_scan_screen.dart';
-import 'tor_screen.dart';
+import '../widgets/tor_quick_panel.dart';
 
 class AddConfigScreen extends StatefulWidget {
   final String language;
@@ -998,83 +998,13 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ---- شبکهٔ رسمی Tor (با پل‌های رایگان) ----
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppColors.surface(context),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.accent.withOpacity(0.5)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Text('🧅', style: TextStyle(fontSize: 20)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _t('شبکهٔ رسمی Tor', 'Official Tor Network'),
-                      style: TextStyle(
-                        color: AppColors.fg(context),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _t(
-                  'اتصال واقعی از طریق libtor با پل‌های رایگان '
-                  '(obfs4، snowflake، meek و …). سرورهای رایگان هر نوع نمایش داده می‌شوند.',
-                  'Real connection via libtor with free bridges '
-                  '(obfs4, snowflake, meek, …). Free bridges per type are shown.',
-                ),
-                style: TextStyle(
-                  color: AppColors.muted(context),
-                  fontSize: 12,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            TorScreen(language: widget.language),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.security, size: 18),
-                  label: Text(
-                    _t('باز کردن تنظیمات Tor و پل‌های رایگان',
-                        'Open Tor settings & free bridges'),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.accent,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+        TorQuickPanel(
+          language: widget.language,
+          panelId: 'add_config_tor',
         ),
       ],
     );
   }
-
-
 
   Widget _buildTypeCard({
     required String title,
