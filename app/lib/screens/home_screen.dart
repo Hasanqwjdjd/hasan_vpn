@@ -13,6 +13,7 @@ import '../services/aether_service.dart';
 import '../services/announcement_service.dart';
 import '../services/app_colors.dart';
 import '../services/server_tester.dart';
+import '../services/tor_session_service.dart';
 import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
 import '../services/exit_ip_service.dart';
@@ -1055,6 +1056,169 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // ------------------------------------------------------------- list
 
+  List<VpnServer> _torPresets() => [
+        VpnServer(
+          id: TorSessionService.presetVanillaId,
+          name: 'Tor \u0633\u0627\u062F\u0647',
+          flag: '\u{1F9C5}',
+          shareLink: 'tor://vanilla',
+          protocol: VpnProtocol.custom,
+          host: 'tor',
+          port: 9050,
+          isDeletable: false,
+          isPinned: true,
+        ),
+        VpnServer(
+          id: TorSessionService.presetWebtunnelId,
+          name: 'WebTunnel',
+          flag: '\u{1F9C5}',
+          shareLink: 'tor://webtunnel',
+          protocol: VpnProtocol.custom,
+          host: 'tor',
+          port: 9050,
+          isDeletable: false,
+          isPinned: true,
+        ),
+      ];
+
+  Widget _buildTorTile(VpnServer server) {
+    final isWebtunnel = server.id == TorSessionService.presetWebtunnelId;
+    final bridgeType = isWebtunnel ? 'webtunnel' : 'vanilla';
+    final notifier = TorSessionService.instance.notifierFor(server.id);
+    return ValueListenableBuilder<TorSessionState>(
+      valueListenable: notifier,
+      builder: (context, st, _) {
+        final connected = st.routingThroughVpn;
+        final busy = st.connecting ||
+            (st.running && st.bootstrap < 100 && st.bootstrap > 0);
+        return Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          decoration: BoxDecoration(
+            color: AppColors.surface(context),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: connected ? AppColors.accent : AppColors.border(context),
+              width: connected ? 1.5 : 1,
+            ),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                if (_selectionMode) return;
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => TorScreen(
+                      language: widget.language,
+                      initialBridgeType: bridgeType,
+                    ),
+                  ),
+                );
+              },
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(server.flag,
+                            style: const TextStyle(fontSize: 20)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                server.name,
+                                style: TextStyle(
+                                  color: connected
+                                      ? AppColors.accent
+                                      : AppColors.fg(context),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                connected
+                                    ? 'SOCKS: ${st.socksPort}'
+                                    : (busy
+                                        ? '${st.bootstrap}% \u00B7 ${st.bootstrapMsg}'
+                                        : (st.error ??
+                                            _t('\u0622\u0645\u0627\u062F\u0647',
+                                                'Ready'))),
+                                style: TextStyle(
+                                  color: st.error != null
+                                      ? AppColors.danger
+                                      : AppColors.muted2(context),
+                                  fontSize: 10,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.push_pin,
+                            size: 16, color: AppColors.accent),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          onPressed: () async {
+                            if (connected || st.running) {
+                              await TorSessionService.instance.disconnect();
+                            } else {
+                              await TorSessionService.instance
+                                  .connect(server.id);
+                            }
+                          },
+                          tooltip: connected
+                              ? _t('\u0642\u0637\u0639', 'Disconnect')
+                              : _t('\u0627\u062A\u0635\u0627\u0644',
+                                  'Connect'),
+                          icon: Icon(
+                            connected
+                                ? Icons.toggle_on
+                                : (busy ? Icons.sync : Icons.toggle_off),
+                            color: connected
+                                ? AppColors.accent
+                                : AppColors.muted(context),
+                            size: 32,
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                              minWidth: 40, minHeight: 40),
+                        ),
+                      ],
+                    ),
+                    if (busy)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                            top: 6, left: 28, right: 8),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(2),
+                          child: LinearProgressIndicator(
+                            value: st.bootstrap > 0
+                                ? st.bootstrap / 100
+                                : null,
+                            color: AppColors.accent,
+                            backgroundColor: AppColors.border(context),
+                            minHeight: 3,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _rebuildServerList() {
     if (!mounted) return;
 
@@ -2087,6 +2251,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ],
             ),
           ),
+          for (final t in _torPresets())
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _buildTorTile(t),
+            ),
           Expanded(
             child: _twoColumnGrid
                 ? GridView.builder(
