@@ -232,21 +232,26 @@ jobs:
           echo "===== ENV DUMP ====="
           env | grep -iE "^(CC|CXX|AR|TARGET_CC|CFLAGS|RUST_ANDROID)" | sort
           echo "===== cargo ndk build ====="
-          cargo ndk -t arm64-v8a -o ../out/jniLibs build --release -p slipstream-client
+          # NOTE: slipstream-client is a `[[bin]]`, not a cdylib, so we do NOT
+          # pass -o to cargo-ndk (it would complain "no usable artifacts").
+          # Build normally, then copy the binary from target/ ourselves.
+          cargo ndk -t arm64-v8a build --release -p slipstream-client
 
       - name: Rename to lib*.so (Android requirement)
         run: |
           set -euo pipefail
-          cd out/jniLibs/arm64-v8a
-          # The binary built is named `slipstream-client`; Android needs lib*.so
-          if [ -f slipstream-client ]; then
-            mv slipstream-client libslipstream_client.so
+          # Locate the built binary in the cargo target dir.
+          BIN="target/aarch64-linux-android/release/slipstream-client"
+          if [ ! -f "$BIN" ]; then
+            echo "ERROR: binary not found at $BIN"
+            find target -name 'slipstream-client*' -type f -exec ls -la {} \;
+            exit 1
           fi
-          chmod 755 libslipstream_client.so
-          mkdir -p ../../flat
-          cp libslipstream_client.so ../../flat/
-          cd ../../flat
+          mkdir -p ../out/flat
+          cp "$BIN" ../out/flat/libslipstream_client.so
+          chmod 755 ../out/flat/libslipstream_client.so
           echo "SO_FILE=libslipstream_client.so" >> "$GITHUB_ENV"
+          ls -la ../out/flat/
 
       - name: Verify output
         run: |
