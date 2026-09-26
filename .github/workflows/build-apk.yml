@@ -433,6 +433,11 @@ jobs:
                   android:enabled="true"
                   android:exported="false"
                   android:foregroundServiceType="specialUse" />
+              <service
+                  android:name="com.hasan.hasan_vpn.AetherService"
+                  android:enabled="true"
+                  android:exported="false"
+                  android:foregroundServiceType="specialUse" />
           """
               text = text.replace("</application>", svc + "</application>", 1)
 
