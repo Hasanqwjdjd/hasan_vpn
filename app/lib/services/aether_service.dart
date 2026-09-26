@@ -62,6 +62,12 @@ class AetherService {
 
   static Future<Map<String, dynamic>> nativeStatus() => _invoke('status');
 
+  /// آخرین لاگ پردازه Aether (۲۰ خط آخر) برای parse کردن outer/inner.
+  static Future<String> nativeLog() async {
+    final s = await nativeStatus();
+    return s['log']?.toString() ?? '';
+  }
+
   static Future<void> _stopNative() async {
     try {
       await _channel.invokeMethod<bool>('stop');

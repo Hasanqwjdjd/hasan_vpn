@@ -47,6 +47,14 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   bool _aetherWorking = false;
   String? _aetherLiveLog;
 
+  // Aether UI جدید
+  final TextEditingController _aetherOuterController = TextEditingController();
+  final TextEditingController _aetherInnerController = TextEditingController();
+  final TextEditingController _aetherListenPortController =
+      TextEditingController(text: '10819');
+  String _aetherTargetStrategy = 'AsIs';
+  bool _aetherAdvancedMore = false;
+
   // Zero Trust (Cloudflare Teams) — فقط وقتی تیم اسم دارد فعال می‌شود
   final TextEditingController _aetherTeamController = TextEditingController();
   final TextEditingController _aetherAccessEmailController =
@@ -415,6 +423,10 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       quickReconnect: _aetherQuickReconnect,
       blockQuic: _aetherBlockQuic,
       perf: _aetherPerf,
+      outer: _aetherOuterController.text.trim(),
+      inner: _aetherInnerController.text.trim(),
+      listenPort: int.tryParse(_aetherListenPortController.text.trim()) ?? 0,
+      targetStrategy: _aetherTargetStrategy,
       teamName: _aetherTeamController.text.trim(),
       accessEmail: _aetherZtAuthMode == 'email'
           ? _aetherAccessEmailController.text.trim()
@@ -520,6 +532,10 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       quickReconnect: _aetherQuickReconnect,
       blockQuic: _aetherBlockQuic,
       perf: _aetherPerf,
+      outer: _aetherOuterController.text.trim(),
+      inner: _aetherInnerController.text.trim(),
+      listenPort: int.tryParse(_aetherListenPortController.text.trim()) ?? 0,
+      targetStrategy: _aetherTargetStrategy,
       teamName: _aetherTeamController.text.trim(),
       accessEmail: _aetherZtAuthMode == 'email'
           ? _aetherAccessEmailController.text.trim()
@@ -551,7 +567,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     if (_aetherWorking) return;
     setState(() {
       _aetherWorking = true;
-      _aetherLiveLog = _t('در حال اسکن…', 'Scanning…');
+      _aetherLiveLog = _t('در حال اسکن برای یافتن سرور…',
+          'Scanning for a working endpoint…');
     });
 
     final ok = await AetherService.scanOnly(
@@ -563,17 +580,66 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
 
     if (!mounted) return;
+
+    // استخراج outer/inner از log پردازه (فارسی یا انگلیسی)
+    String outer = '';
+    String inner = '';
+    if (ok) {
+      try {
+        final log = await AetherService.nativeLog();
+        // مسیر بیرونی 188.114.96.132:878 و مسیر درونی 188.114.96.1:1701 پیدا شد
+        final faRe = RegExp(
+            r'مسیر بیرونی\s+(\S+)\s+و مسیر درونی\s+(\S+)\s+پیدا شد');
+        var m = faRe.firstMatch(log);
+        if (m != null) {
+          outer = m.group(1) ?? '';
+          inner = m.group(2) ?? '';
+        } else {
+          // using cloudflare edge X:Y (outer) and Z:W (inner)
+          final enRe = RegExp(
+              r'cloudflare edge\s+(\S+)\s+\(outer\)\s+and\s+(\S+)\s+\(inner\)');
+          m = enRe.firstMatch(log);
+          if (m != null) {
+            outer = m.group(1) ?? '';
+            inner = m.group(2) ?? '';
+          }
+        }
+      } catch (_) {}
+    }
+
     setState(() {
       _aetherWorking = false;
       _aetherLiveLog = ok
-          ? '${_aetherLiveLog ?? ''}\n${_t('✅ یک مسیر سالم پیدا شد', '✅ Found a working route')}'
+          ? '${_aetherLiveLog ?? ''}\n${_t('✅ مسیر سالم پیدا شد', '✅ Found a working route')}'
               .trim()
           : '${_aetherLiveLog ?? ''}\n❌ ${AetherService.lastError ?? _t('هیچ مسیر سالمی پیدا نشد', 'No working route found')}'
               .trim();
+      if (outer.isNotEmpty) {
+        _aetherOuterController.text = outer;
+      }
+      if (inner.isNotEmpty) {
+        _aetherInnerController.text = inner;
+      }
     });
-    _showMsg(ok
-        ? _t('مسیر سالم پیدا شد — «افزودن Aether» را بزن', 'Working route found — tap "Add Aether"')
-        : _t('هیچ مسیر سالمی پیدا نشد', 'No working route found'));
+
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFF2E7D32),
+          content: Text(
+            outer.isNotEmpty && inner.isNotEmpty
+                ? _t(
+                    'مسیر بیرونی $outer و مسیر درونی $inner پیدا شد',
+                    'outer $outer inner $inner',
+                  )
+                : _t('سرور پیدا شد', 'Endpoint found'),
+          ),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } else {
+      _showMsg(_t('هیچ مسیر سالمی پیدا نشد', 'No working route found'));
+    }
   }
 
   /// دریافت کلید WARP جدید: هویت WARP فعلی را پاک می‌کند تا اتصال بعدی یک
@@ -584,16 +650,51 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       _showMsg(_t('اول Aether را قطع کن', 'Disconnect Aether first'));
       return;
     }
-    setState(() => _aetherWorking = true);
-    // Aether خودش موقع اجرا حساب WARP می‌سازد؛ فقط هویت قبلی را پاک
-    // می‌کنیم تا از صفر شروع کند. (HTTP reg API کلید واقعی X25519
-    // می‌خواهد که بدون cryptography در Dart در دسترس نیست.)
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.elevated(ctx),
+        title: Text(
+          _t('دریافت کلید جدید WARP', 'Get new WARP key'),
+          style: TextStyle(color: AppColors.fg(ctx), fontSize: 15),
+        ),
+        content: Text(
+          _t(
+            'کلید فعلی WARP حذف و یک کلید جدید ثبت می‌شود. اگر ثبت ناموفق باشد، کلید فعلی حفظ می‌شود.',
+            'The current WARP key is removed and a new one is registered. If registration fails, the current key is kept.',
+          ),
+          style: TextStyle(
+              color: AppColors.muted2(ctx), fontSize: 12.5, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(_t('لغو', 'Cancel'),
+                style: TextStyle(color: AppColors.muted(ctx))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              _t('دریافت کلید جدید WARP', 'Get new WARP key'),
+              style: const TextStyle(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    setState(() {
+      _aetherWorking = true;
+      _aetherLiveLog =
+          _t('در حال حذف کلید قبلی WARP و ثبت کلید جدید…', 'Resetting WARP key…');
+    });
     final ok = await AetherService.resetIdentity();
     if (!mounted) return;
     setState(() => _aetherWorking = false);
     _showMsg(ok
-        ? _t('هویت پاک شد — اتصال بعدی حساب WARP تازه می‌سازد',
-            'Identity cleared — next connect creates a fresh WARP account')
+        ? _t('کلید جدید WARP آماده است — از اسکن بعدی استفاده می‌شود',
+            'New WARP key ready — used on next scan')
         : _t('پاک‌کردن هویت ناموفق', 'Could not reset identity'));
   }
 
@@ -643,6 +744,20 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _aetherField(
+            controller: _aetherOuterController,
+            label: _t('مسیر بیرونی', 'Outer endpoint'),
+            hint: '188.114.96.132:878',
+            color: color,
+          ),
+          const SizedBox(height: 10),
+          _aetherField(
+            controller: _aetherInnerController,
+            label: _t('مسیر درونی', 'Inner endpoint'),
+            hint: '188.114.96.1:1701',
+            color: color,
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -656,7 +771,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                               strokeWidth: 2, color: color))
                       : const Icon(Icons.wifi_find, size: 16, color: color),
                   label: Text(_t('اسکن برای یافتن سرور', 'Scan for server'),
-                      style: const TextStyle(color: color, fontSize: 12.5)),
+                      style: const TextStyle(color: color, fontSize: 12)),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: color),
                     padding: const EdgeInsets.symmetric(vertical: 10),
@@ -672,8 +787,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   onPressed: _aetherWorking ? null : _aetherGetNewKey,
                   icon: const Icon(Icons.vpn_key_outlined,
                       size: 16, color: color),
-                  label: Text(_t('کلید WARP جدید', 'New WARP key'),
-                      style: const TextStyle(color: color, fontSize: 12.5)),
+                  label: Text(_t('دریافت کلید جدید WARP', 'New WARP key'),
+                      style: const TextStyle(color: color, fontSize: 11.5),
+                      overflow: TextOverflow.ellipsis),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: color),
                     padding: const EdgeInsets.symmetric(vertical: 10),
@@ -685,8 +801,114 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               ),
             ],
           ),
-          if (_aetherLiveLog != null && _aetherLiveLog!.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          InkWell(
+            onTap: () =>
+                setState(() => _aetherAdvancedMore = !_aetherAdvancedMore),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    _aetherAdvancedMore
+                        ? Icons.expand_less
+                        : Icons.expand_more,
+                    color: color,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _t('تنظیمات پیشرفته', 'Advanced'),
+                    style: const TextStyle(
+                      color: color,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_aetherAdvancedMore) ...[
             const SizedBox(height: 10),
+            Text(
+              _t('targetStrategy', 'targetStrategy'),
+              style: TextStyle(
+                color: AppColors.muted(context),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: AppColors.bg(context),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: color.withOpacity(0.5)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _aetherTargetStrategy,
+                  isExpanded: true,
+                  dropdownColor: AppColors.elevated(context),
+                  style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+                  items: const [
+                    DropdownMenuItem(value: 'AsIs', child: Text('AsIs')),
+                    DropdownMenuItem(
+                        value: 'IPIfNonMatch', child: Text('IPIfNonMatch')),
+                    DropdownMenuItem(
+                        value: 'IPOnDemand', child: Text('IPOnDemand')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() => _aetherTargetStrategy = v);
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            _aetherField(
+              controller: _aetherListenPortController,
+              label: _t('پورت شنود', 'Listen port'),
+              hint: '10819',
+              color: color,
+              keyboard: TextInputType.number,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _t('فرمان Aether', 'Aether command'),
+              style: TextStyle(
+                color: AppColors.muted(context),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.bg(context),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.border(context)),
+              ),
+              child: Directionality(
+                textDirection: TextDirection.ltr,
+                child: SelectableText(
+                  _aetherPreviewCommand(),
+                  style: TextStyle(
+                    color: AppColors.fg(context),
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ),
+          ],
+          if (_aetherLiveLog != null && _aetherLiveLog!.isNotEmpty) ...[
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -704,7 +926,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.copy, size: 13, color: AppColors.muted(context)),
+                      Icon(Icons.copy,
+                          size: 13, color: AppColors.muted(context)),
                       const SizedBox(width: 4),
                       Text(_t('کپی', 'Copy'),
                           style: TextStyle(
@@ -717,20 +940,23 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             const SizedBox(height: 6),
             Container(
               width: double.infinity,
+              constraints: const BoxConstraints(maxHeight: 240),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: AppColors.bg(context),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: AppColors.border(context)),
               ),
-              child: Directionality(
-                textDirection: TextDirection.ltr,
-                child: Text(
-                  _aetherLiveLog!,
-                  style: TextStyle(
-                      color: AppColors.muted2(context),
-                      fontSize: 10.5,
-                      fontFamily: 'monospace'),
+              child: SingleChildScrollView(
+                child: Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Text(
+                    _aetherLiveLog!,
+                    style: TextStyle(
+                        color: AppColors.muted2(context),
+                        fontSize: 10.5,
+                        fontFamily: 'monospace'),
+                  ),
                 ),
               ),
             ),
@@ -740,7 +966,86 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
-      
+  String _aetherPreviewCommand() {
+    final port = _aetherListenPortController.text.trim().isEmpty
+        ? '10819'
+        : _aetherListenPortController.text.trim();
+    final parts = <String>['aether'];
+    parts.add('--bind 127.0.0.1:$port');
+    switch (_aetherProtocol) {
+      case 'gool':
+        parts.add('--protocol gool');
+        break;
+      case 'mim':
+        parts.add('--protocol mim');
+        break;
+      case 'wg':
+        parts.add('--protocol wg');
+        break;
+      case 'masque_h2':
+        parts.add('--protocol masque --masque-http2');
+        break;
+      case 'masque':
+        parts.add('--protocol masque');
+        break;
+      default:
+        parts.add('--protocol masque');
+    }
+    if (_aetherScan != 'smart') parts.add('--scan $_aetherScan');
+    if (_aetherIp == 'v6') {
+      parts.add('--ip v6');
+    } else if (_aetherIp == 'both') {
+      parts.add('--ip both');
+    } else {
+      parts.add('--ip v4');
+    }
+    if (_aetherOuterController.text.trim().isNotEmpty &&
+        _aetherInnerController.text.trim().isNotEmpty &&
+        (_aetherProtocol == 'gool' || _aetherProtocol == 'mim')) {
+      parts.add('--wiw-outer ${_aetherOuterController.text.trim()}');
+      parts.add('--wiw-inner ${_aetherInnerController.text.trim()}');
+    } else if (_aetherProtocol == 'gool' || _aetherProtocol == 'mim') {
+      parts.add('--wiw-scan');
+    }
+    if (_aetherQuickReconnect) parts.add('--quick-reconnect');
+    return parts.join(' ');
+  }
+
+  Widget _aetherField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required Color color,
+    TextInputType? keyboard,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboard,
+      style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+      onChanged: (_) => setState(() {}),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        labelStyle: TextStyle(color: AppColors.muted(context)),
+        hintStyle: TextStyle(color: AppColors.muted2(context), fontSize: 12),
+        filled: true,
+        fillColor: AppColors.surface(context),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: AppColors.border(context)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: AppColors.border(context)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: color, width: 1.5),
+        ),
+      ),
+    );
+  }
+
   void _addFreeEnginePack() {
     final stamp = DateTime.now().millisecondsSinceEpoch;
     final engines = <({String id, String name, String flag, AetherProfile profile})>[
@@ -1973,6 +2278,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _aetherTorBridgeController.dispose();
     _aetherRouteDirectController.dispose();
     _aetherRouteBlockController.dispose();
+    _aetherOuterController.dispose();
+    _aetherInnerController.dispose();
+    _aetherListenPortController.dispose();
     super.dispose();
   }
 }

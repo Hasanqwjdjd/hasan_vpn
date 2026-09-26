@@ -101,6 +101,12 @@ class AetherProfile {
   /// auto | low | medium | high  (AETHER_PERF_PROFILE؛ auto = تشخیص خودکار)
   final String perf;
 
+  /// پورت SOCKS محلی که Aether روش گوش می‌ده. 0 = پورت آزاد خودکار.
+  final int listenPort;
+
+  /// AsIs | IPIfNonMatch | IPOnDemand — استراتژی resolve دامنه در Xray.
+  final String targetStrategy;
+
   // ---------------------------------------------------------- Zero Trust
   // Cloudflare Zero Trust enrollment. Verified against CluvexStudio/Aether
   // Docs/DOCS.en.md + aether/src/cli.rs + release notes v1.5.0:
@@ -161,6 +167,8 @@ class AetherProfile {
     this.quickReconnect = true,
     this.blockQuic = true,
     this.perf = 'auto',
+    this.listenPort = 0,
+    this.targetStrategy = 'AsIs',
     this.teamName = '',
     this.accessEmail = '',
     this.accessId = '',
@@ -261,6 +269,10 @@ class AetherProfile {
       quickReconnect: query['qr'] != '0',
       blockQuic: query['quic'] != 'allow',
       perf: _pick(query['perf'], perfs, 'auto'),
+      listenPort: int.tryParse(query['port'] ?? '') ?? 0,
+      targetStrategy: (query['target'] ?? 'AsIs').trim().isEmpty
+          ? 'AsIs'
+          : (query['target'] ?? 'AsIs').trim(),
       teamName: (query['team'] ?? '').trim(),
       accessEmail: (query['access_email'] ?? '').trim(),
       accessId: (query['access_id'] ?? '').trim(),
@@ -316,6 +328,8 @@ class AetherProfile {
       if (!quickReconnect) 'qr': '0',
       if (!blockQuic) 'quic': 'allow',
       if (perf != 'auto') 'perf': perf,
+      if (listenPort > 0) 'port': '$listenPort',
+      if (targetStrategy != 'AsIs') 'target': targetStrategy,
       if (teamName.isNotEmpty) 'team': teamName,
       if (accessEmail.isNotEmpty) 'access_email': accessEmail,
       if (accessId.isNotEmpty) 'access_id': accessId,
