@@ -111,10 +111,30 @@ class MainActivity : FlutterActivity() {
                                         pkg
                                     }
                                     val isSystem = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                                    var iconB64: String? = null
+                                    try {
+                                        val drawable = pm.getApplicationIcon(appInfo)
+                                        val bmp = if (drawable is android.graphics.drawable.BitmapDrawable) {
+                                            drawable.bitmap
+                                        } else {
+                                            val w = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 48
+                                            val h = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 48
+                                            val b = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+                                            val c = android.graphics.Canvas(b)
+                                            drawable.setBounds(0, 0, c.width, c.height)
+                                            drawable.draw(c)
+                                            b
+                                        }
+                                        val scaled = android.graphics.Bitmap.createScaledBitmap(bmp, 48, 48, true)
+                                        val bos = java.io.ByteArrayOutputStream()
+                                        scaled.compress(android.graphics.Bitmap.CompressFormat.PNG, 80, bos)
+                                        iconB64 = android.util.Base64.encodeToString(bos.toByteArray(), android.util.Base64.NO_WRAP)
+                                    } catch (_: Exception) {}
                                     out.add(mapOf(
                                         "package" to pkg,
                                         "label" to label,
                                         "isSystem" to isSystem,
+                                        "icon" to iconB64,
                                     ))
                                 }
                                 out.sortBy { (it["label"] as? String)?.lowercase() ?: "" }

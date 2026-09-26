@@ -116,13 +116,29 @@ Future<void> widgetHeadlessMain() async {
       }
     } else if (type == 'tor' && action == 'disconnect') {
       try {
+        // اول Xray route رو قطع کن تا ترافیک دیگه از Tor رد نشه،
+        // بعد Tor رو stop کن. وگرنه Tor زنده می‌مونه و دوباره
+        // routing رو راه می‌ندازه (باگ: toggle برای یک لحظه قطع
+        // می‌شد و سریع برمی‌گشت).
+        try {
+          await V2RayEngine.init();
+          await V2RayEngine.disconnect();
+        } catch (_) {}
         await TorService.stop();
+        // یه بار دیگه disconnect بزن که مطمئن شیم VPN service خوابید
+        try {
+          await V2RayEngine.disconnect();
+        } catch (_) {}
         ok = true;
       } catch (e) {
         ok = false;
         error = e.toString();
       }
     } else if (action == 'disconnect') {
+      // اگه سروریه ولی Tor هم فعال بوده، هر دو رو قطع کن
+      try {
+        await TorService.stop();
+      } catch (_) {}
       await V2RayEngine.init();
       // FIX_DISCONNECT_V3:
       // مشکل V2 این بود که isolate بعد از 4 تلاش می‌مرد و native layer

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -156,7 +159,28 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
                             final pkg = a['package']?.toString() ?? '';
                             final label = a['label']?.toString() ?? pkg;
                             final on = _selected.contains(pkg);
+                            final iconB64 =
+                                a['icon']?.toString() ?? '';
+                            Uint8List? iconBytes;
+                            if (iconB64.isNotEmpty) {
+                              try {
+                                iconBytes = base64Decode(iconB64);
+                              } catch (_) {}
+                            }
                             return SwitchListTile(
+                              secondary: iconBytes != null
+                                  ? ClipRRect(
+                                      borderRadius:
+                                          BorderRadius.circular(6),
+                                      child: Image.memory(
+                                        iconBytes,
+                                        width: 32,
+                                        height: 32,
+                                        gaplessPlayback: true,
+                                      ),
+                                    )
+                                  : const Icon(Icons.android,
+                                      size: 28),
                               title: Text(label,
                                   style: TextStyle(
                                       color: AppColors.fg(context))),

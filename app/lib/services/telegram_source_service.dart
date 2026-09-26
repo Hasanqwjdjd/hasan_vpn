@@ -171,14 +171,30 @@ class TelegramSourceService {
     return i < 0 ? link : link.substring(0, i);
   }
 
+  static const String _ua =
+      'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120 Mobile';
+
+  /// fetch یه کانال با ۳ مسیر fallback:
+  ///   1) t.me مستقیم
+  ///   2) r.jina.ai (reader عمومی)
+  ///   3) api.allorigins.win (CORS proxy)
   static Future<List<String>> _fetchOne(String channel) async {
-    final uri = Uri.parse('https://t.me/s/$channel');
-    final r = await http.get(uri, headers: {
-      'User-Agent':
-          'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120 Mobile',
-    }).timeout(const Duration(seconds: 20));
-    if (r.statusCode != 200) return [];
-    return _extractLinks(r.body);
+    final paths = <String>[
+      'https://t.me/s/$channel',
+      'https://r.jina.ai/https://t.me/s/$channel',
+      'https://api.allorigins.win/raw?url=${Uri.encodeComponent('https://t.me/s/$channel')}',
+    ];
+    for (final p in paths) {
+      try {
+        final r = await http.get(Uri.parse(p),
+            headers: {'User-Agent': _ua}).timeout(
+            const Duration(seconds: 25));
+        if (r.statusCode != 200) continue;
+        final links = _extractLinks(r.body);
+        if (links.isNotEmpty) return links;
+      } catch (_) {}
+    }
+    return [];
   }
 
   static final RegExp _linkRe = RegExp(
@@ -196,7 +212,7 @@ class TelegramSourceService {
     for (final m in _linkRe.allMatches(decoded)) {
       var link = m.group(0)!;
       link = link.replaceAll(RegExp(r'[\\]+$'), '');
-      if (link.length > 20) out.add(link);
+      if (link.length > 12) out.add(link);
     }
     return out;
   }
