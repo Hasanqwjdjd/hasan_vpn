@@ -14,6 +14,7 @@ import '../services/announcement_service.dart';
 import '../services/app_colors.dart';
 import '../services/server_tester.dart';
 import '../services/tor_session_service.dart';
+import '../services/telegram_source_service.dart';
 import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
 import '../services/exit_ip_service.dart';
@@ -85,6 +86,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Set<String> _pinnedIds = <String>{};
   bool _showAllTab = true;
   bool _twoColumnGrid = false;
+
+  // ─── گروه «سرور رایگان» (تلگرام) ───
+  List<VpnServer> _freeServers = [];
+  bool _freeFetching = false;
+  int _freeFetchProgress = 0;
+  int _freeFetchTotal = 0;
   List<String> _manualOrder = <String>[];
 
   String? _selectedSubId;
@@ -161,6 +168,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _bootstrap();
+    // بارگذاری سرورهای رایگان + refresh خودکار هر ۷ ساعت
+    // ignore: unawaited_futures
+    _bootstrapFreeServers();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // ignore: unawaited_futures
       _readWidgetSelectionIntent();
@@ -1017,6 +1027,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
+      // چک کن اگه ۷ ساعت گذشته، سرورهای رایگان رو refresh کن
+      // ignore: unawaited_futures
+      _bootstrapFreeServers();
       _syncRealConnectionState();
       // ویجت ممکن است وقتی اپ در پس‌زمینه بوده extras نوشته باشد
       // ignore: unawaited_futures
@@ -1291,7 +1304,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     var list = allServers;
-    if (_selectedSubId != null) {
+    if (_selectedSubId == TelegramSourceService.groupId) {
+      // گروه «سرور رایگان» — فقط سرورهای fetch‌شده از تلگرام
+      list = List<VpnServer>.from(_freeServers);
+    } else if (_selectedSubId != null) {
       final sub = widget.subscriptions.firstWhere(
         (s) => s.id == _selectedSubId,
         orElse: () => Subscription(id: '', name: '', url: ''),
@@ -1339,6 +1355,56 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _servers = <VpnServer>[...pinned, ...unpinned];
     }
     setState(() {});
+  }
+
+  Future<void> _bootstrapFreeServers() async {
+    if (_freeFetching) return;
+    await _loadFreeServers();
+    if (await TelegramSourceService.shouldRefresh()) {
+      await _refreshFreeServers(silent: true);
+    }
+  }
+
+  Future<void> _loadFreeServers() async {
+    try {
+      final list = await TelegramSourceService.buildServers();
+      if (!mounted) return;
+      setState(() => _freeServers = list);
+    } catch (_) {}
+  }
+
+  Future<void> _refreshFreeServers({bool silent = false}) async {
+    if (_freeFetching) return;
+    setState(() {
+      _freeFetching = true;
+      _freeFetchProgress = 0;
+      _freeFetchTotal = 24;
+    });
+    try {
+      final n = await TelegramSourceService.refresh(
+        onProgress: (d, t) {
+          if (!mounted) return;
+          setState(() {
+            _freeFetchProgress = d;
+            _freeFetchTotal = t;
+          });
+        },
+      );
+      await _loadFreeServers();
+      if (!mounted) return;
+      if (!silent) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_t('$n سرور رایگان بروز شد',
+                '$n free servers updated')),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _freeFetching = false);
+    }
   }
 
   void _selectSubscription(String? subId) {
@@ -2011,6 +2077,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final tabs = <Widget>[];
     final showAll = _showAllTab;
     if (showAll) tabs.add(_subTab(null, _t('همه', 'All')));
+    tabs.add(_subTab(
+      TelegramSourceService.groupId,
+      TelegramSourceService.groupTitle(_isFa),
+      _freeServers.length,
+    ));
     for (final sub in widget.subscriptions) {
       tabs.add(_subTab(sub.id, sub.name, sub.serverCount));
     }
@@ -2308,7 +2379,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                if (_testing)
+                if (_selectedSubId == TelegramSourceService.groupId)
+                  _freeFetching
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Text(
+                            '$_freeFetchProgress / $_freeFetchTotal',
+                            style: TextStyle(
+                                color: AppColors.muted2(context),
+                                fontSize: 10),
+                          ),
+                        )
+                      : IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: const Icon(Icons.refresh,
+                              color: AppColors.accent, size: 18),
+                          tooltip: _t('بروزرسانی', 'Refresh'),
+                          onPressed: () => _refreshFreeServers(),
+                        )
+                else if (_testing)
                   Text(
                     '$_tested / $_total',
                     style: TextStyle(
@@ -2317,6 +2407,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ],
             ),
           ),
+          if (_selectedSubId == TelegramSourceService.groupId &&
+              _freeFetching)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
           Expanded(
             child: _twoColumnGrid
                 ? GridView.builder(

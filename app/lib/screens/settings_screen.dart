@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../services/app_colors.dart';
 import '../services/settings_service.dart';
+import '../services/telegram_source_service.dart';
 import '../services/update_service.dart';
 import 'announcements_screen.dart';
 import 'game_dns_screen.dart';
@@ -277,6 +278,167 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     setState(() => _autoConnectBoot = v);
                     await SettingsService.setAutoConnectBoot(v);
                   },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ------- منابع تلگرام -------
+          _sectionTitle(_t('منابع تلگرام (سرور رایگان)',
+              'Telegram sources (free servers)')),
+          _card(
+            context,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    _t(
+                      'کانال‌های پیش‌فرض قابل حذف نیستند. کانال‌های خودت رو هم می‌تونی اضافه کنی.',
+                      'Default channels can\'t be removed. Add your own channels too.',
+                    ),
+                    style: TextStyle(
+                        color: AppColors.muted2(context),
+                        fontSize: 11,
+                        height: 1.5),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                FutureBuilder<List<String>>(
+                  future: TelegramSourceService.loadChannels(),
+                  builder: (ctx, snap) {
+                    final channels = snap.data ?? [];
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final ch in channels)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  TelegramSourceService.isDefault(ch)
+                                      ? Icons.lock_outline
+                                      : Icons.person_outline,
+                                  size: 14,
+                                  color: AppColors.muted2(context),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    '@$ch',
+                                    style: TextStyle(
+                                      color: AppColors.fg(context),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                                if (!TelegramSourceService.isDefault(ch))
+                                  IconButton(
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    icon: const Icon(Icons.close,
+                                        size: 16,
+                                        color: AppColors.danger),
+                                    onPressed: () async {
+                                      await TelegramSourceService
+                                          .removeUserChannel(ch);
+                                      if (ctx.mounted) {
+                                        (ctx as Element).markNeedsBuild();
+                                      }
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          final ctrl = TextEditingController();
+                          final ok = await showDialog<bool>(
+                            context: context,
+                            builder: (dctx) => AlertDialog(
+                              backgroundColor:
+                                  AppColors.elevated(dctx),
+                              title: Text(
+                                _t('افزودن کانال', 'Add channel'),
+                                style: TextStyle(
+                                    color: AppColors.fg(dctx)),
+                              ),
+                              content: TextField(
+                                controller: ctrl,
+                                style: TextStyle(
+                                    color: AppColors.fg(dctx)),
+                                decoration: InputDecoration(
+                                  hintText: '@channel یا t.me/channel',
+                                  hintStyle: TextStyle(
+                                      color: AppColors.muted2(dctx)),
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(dctx, false),
+                                  child: Text(_t('لغو', 'Cancel')),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(dctx, true),
+                                  child: Text(_t('افزودن', 'Add'),
+                                      style: const TextStyle(
+                                          color: AppColors.accent)),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (ok == true && ctrl.text.trim().isNotEmpty) {
+                            await TelegramSourceService
+                                .addUserChannel(ctrl.text.trim());
+                            if (mounted) setState(() {});
+                          }
+                        },
+                        icon: const Icon(Icons.add,
+                            size: 16, color: AppColors.accent),
+                        label: Text(
+                          _t('افزودن کانال', 'Add channel'),
+                          style: const TextStyle(
+                              color: AppColors.accent, fontSize: 12),
+                        ),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () async {
+                        final n =
+                            await TelegramSourceService.refresh();
+                        if (mounted) {
+                          setState(() {});
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(_t(
+                                  '$n سرور fetch شد',
+                                  '$n servers fetched')),
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.refresh,
+                          size: 16, color: AppColors.accent),
+                      label: Text(
+                        _t('بروزرسانی الان', 'Refresh now'),
+                        style: const TextStyle(
+                            color: AppColors.accent, fontSize: 12),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
