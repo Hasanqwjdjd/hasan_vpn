@@ -38,6 +38,7 @@ class XraySettings {
     'dohUrl': 'https://cloudflare-dns.com/dns-query',
     'directDns': '1.1.1.1',
     'dnsHosts': '',
+    'dnsLeakProtection': true,
 
     // ---- Mux (A3) ----
     'muxEnable': false,
@@ -274,6 +275,54 @@ class XraySettings {
         };
       }
       dns['servers'] = servers;
+      // DNS leak prevention: هیچ DNS query‌ای نباید مستقیم بره.
+      // Xray DNS module خودش جواب می‌ده و query‌ها را از تونل می‌فرستد.
+      if (settings['dnsLeakProtection'] != false) {
+        final inbounds = List<Map<String, dynamic>>.from(
+          (map['inbounds'] as List? ?? const [])
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e)),
+        );
+        // مطمئن شو dns-out outbound هست.
+        final outs = List<Map<String, dynamic>>.from(
+          (map['outbounds'] as List? ?? const [])
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e)),
+        );
+        final hasDnsOut = outs.any((o) => o['tag'] == 'dns-out');
+        if (!hasDnsOut) {
+          outs.add({'tag': 'dns-out', 'protocol': 'dns'});
+        }
+        map['outbounds'] = outs;
+
+        // rule پورت 53 → dns-out (بالای همه rules)
+        final existing = map['routing'] is Map
+            ? Map<String, dynamic>.from(map['routing'] as Map)
+            : <String, dynamic>{};
+        final rules = List<Map<String, dynamic>>.from(
+          (existing['rules'] as List? ?? const [])
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e)),
+        );
+        // حذف rule تکراری قبلی اگر وجود داره
+        rules.removeWhere((r) =>
+            r['outboundTag'] == 'dns-out' &&
+            (r['port'] == 53 || r['port'] == '53'));
+        rules.insert(0, <String, dynamic>{
+          'type': 'field',
+          'port': 53,
+          'network': 'udp',
+          'outboundTag': 'dns-out',
+        });
+        rules.insert(1, <String, dynamic>{
+          'type': 'field',
+          'port': 53,
+          'network': 'tcp',
+          'outboundTag': 'dns-out',
+        });
+        existing['rules'] = rules;
+        map['routing'] = existing;
+      }
       if (settings['preferIpv6'] == true) {
         dns['queryStrategy'] = 'UseIPv6';
       } else if (settings['enableIpv6'] != true) {

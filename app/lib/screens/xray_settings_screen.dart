@@ -163,6 +163,61 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
     );
   }
 
+  /// ردیف preset های Fragment — با یک تپ همهٔ فیلدها را ست می‌کند.
+  Widget _fragmentPresets() {
+    final presets = <({String label, String packets, String length, String interval})>[
+      (label: 'پیش‌فرض', packets: 'tlshello', length: '100-200', interval: '10-20'),
+      (label: 'ایران', packets: 'tlshello', length: '1-3', interval: '1-2'),
+      (label: 'تهاجمی', packets: 'tlshello', length: '1-1', interval: '1-1'),
+      (label: 'محافظه‌کار', packets: 'tlshello', length: '5-10', interval: '5-10'),
+    ];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _t('پروفایل آماده', 'Preset'),
+            style: TextStyle(
+              color: AppColors.muted(context),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: presets.map((p) {
+              final active = _s['fragmentPackets'] == p.packets &&
+                  _s['fragmentLength'] == p.length &&
+                  _s['fragmentInterval'] == p.interval;
+              return ChoiceChip(
+                label: Text(p.label),
+                selected: active,
+                onSelected: (_) async {
+                  await _set('fragmentPackets', p.packets);
+                  await _set('fragmentLength', p.length);
+                  await _set('fragmentInterval', p.interval);
+                  await _set('fragmentMaxSplit', 0);
+                },
+                selectedColor: AppColors.accent.withOpacity(0.25),
+                backgroundColor: AppColors.surface(context),
+                labelStyle: TextStyle(
+                  color: active ? AppColors.accent : AppColors.fg(context),
+                  fontSize: 12.5,
+                ),
+                side: BorderSide(
+                  color: active ? AppColors.accent : AppColors.border(context),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -291,6 +346,7 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                 // ---- A4 Fragment ----
                 _section(_t('Fragment', 'Fragment'), icon: Icons.call_split),
                 _sw('fragmentEnable', 'فعال‌سازی Fragment', 'Enable Fragment'),
+                _fragmentPresets(),
                 _textField('fragmentPackets', 'محدوده پکت', 'Packet ranges',
                     hint: 'tlshello یا 1-3'),
                 _textField('fragmentLength', 'طول پکت (min-max)',
