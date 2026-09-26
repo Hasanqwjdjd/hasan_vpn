@@ -81,11 +81,9 @@ class SubscriptionService {
           isDefault: true,
         ),
         for (final e in ProtectedDefaults.entries)
-          // Aetris / GitVerse / Morning-Shape از پیش‌فرض‌ها حذف می‌شوند
+          // Aetris / GitVerse از پیش‌فرض‌ها حذف می‌شوند
           if (!e[1].toLowerCase().contains('aetris') &&
-              !e[1].toLowerCase().contains('gitverse') &&
-              !e[1].toLowerCase().contains('morning') &&
-              !e[0].toLowerCase().contains('morning'))
+              !e[1].toLowerCase().contains('gitverse'))
             Subscription(id: e[0], name: e[1], url: '', isDefault: true),
       ];
 
@@ -170,9 +168,6 @@ class SubscriptionService {
           .whereType<Map>()
           .map((item) => Subscription.fromJson(Map<String, dynamic>.from(item)))
           .toList();
-
-      // حذف Morning-Shape از ذخیره‌ی موجود (حتی اگر قبلاً ذخیره شده بود)
-      subscriptions.removeWhere((s) => _isMorningShape(s));
 
       final removed = await _loadRemovedDefaults(prefs);
       for (final defaultSub in defaultSubscriptions) {
