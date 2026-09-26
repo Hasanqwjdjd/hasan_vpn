@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../services/app_colors.dart';
 import '../services/settings_service.dart';
+import 'security_test_screen.dart';
 import '../services/telegram_source_service.dart';
 import '../services/update_service.dart';
 import 'announcements_screen.dart';
@@ -490,6 +491,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Icon(Icons.chevron_left,
                       color: AppColors.muted2(context), size: 20),
                 ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ------- تست و امنیت -------
+          _sectionTitle(_t('تست و امنیت', 'Test & Security')),
+          _card(
+            context,
+            InkWell(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        SecurityTestScreen(language: _lang),
+                  ),
+                );
+              },
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.security,
+                    color: AppColors.accent),
+                title: Text(
+                  _t('IP / سرعت / نشت DNS',
+                      'IP / Speed / DNS leak'),
+                  style: TextStyle(color: AppColors.fg(context)),
+                ),
+                subtitle: Text(
+                  _t(
+                    'تست IP خروجی، سرعت دانلود و بررسی نشت DNS',
+                    'Check exit IP, download speed, and DNS leak',
+                  ),
+                  style: TextStyle(
+                      color: AppColors.muted2(context), fontSize: 11),
+                ),
+                trailing: Icon(Icons.chevron_left,
+                    color: AppColors.muted(context)),
               ),
             ),
           ),
