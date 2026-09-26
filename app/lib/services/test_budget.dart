@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'xray_settings.dart';
+
 /// حالت تست پینگ:
 ///   turbo    → فقط TCP connect (بدون Xray). برای ۱۰۰۰+ سرور در چند ثانیه.
 ///   balanced → TCP برای همه + real HTTP فقط برای چند سرور برتر (پیش‌فرض).
@@ -81,6 +83,19 @@ class TestBudget {
 
   static Future<TestBudget> load() async {
     try {
+      // اول xray_settings.concurrentDelayTests را چک کن (PattNG-style)
+      try {
+        final xs = await XraySettings.load();
+        final c = (xs['concurrentDelayTests'] as num?)?.toInt();
+        if (c != null && c >= 1 && c <= 64) {
+          final prefs0 = await SharedPreferences.getInstance();
+          final raw0 = prefs0.getString(storageKey);
+          if (raw0 == null) {
+            return TestBudget(direct: c);
+          }
+        }
+      } catch (_) {}
+
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(storageKey);
       if (raw == null) return const TestBudget();

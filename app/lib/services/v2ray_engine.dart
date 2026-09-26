@@ -93,6 +93,14 @@ class V2RayEngine {
 
   static Future<void> loadDelayUrl() async {
     try {
+      // اول xray_settings (تنظیمات هسته)
+      final xs = await XraySettings.load();
+      final xu = xs['delayTestUrl']?.toString();
+      if (xu != null && xu.isNotEmpty) {
+        delayUrl = xu;
+        return;
+      }
+      // سپس test_settings_v1 (تنظیمات تست)
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString('test_settings_v1');
       if (raw == null) return;
