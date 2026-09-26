@@ -172,6 +172,26 @@ jobs:
           make install_sw
           ls -la /tmp/openssl-out/lib/
 
+      - name: Build Brotli for Android arm64 (needed by picoquic)
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v1.1.0 https://github.com/google/brotli.git /tmp/brotli
+          cd /tmp/brotli
+          mkdir -p build && cd build
+          cmake .. \
+            -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-${ANDROID_API} \
+            -DCMAKE_INSTALL_PREFIX=/tmp/brotli-out \
+            -DBROTLI_DISABLE_TESTS=ON \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+          make -j"$(nproc)"
+          make install
+          ls -la /tmp/brotli-out/lib/ /tmp/brotli-out/include/
+
       - name: Build (arm64-v8a)
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
@@ -185,8 +205,8 @@ jobs:
           OPENSSL_CRYPTO_LIBRARY: /tmp/openssl-out/lib/libcrypto.a
           OPENSSL_SSL_LIBRARY: /tmp/openssl-out/lib/libssl.a
           OPENSSL_USE_STATIC_LIBS: "TRUE"
-          CMAKE_PREFIX_PATH: /tmp/openssl-out
-          PKG_CONFIG_PATH: /tmp/openssl-out/lib/pkgconfig
+          CMAKE_PREFIX_PATH: /tmp/openssl-out;/tmp/brotli-out
+          PKG_CONFIG_PATH: /tmp/openssl-out/lib/pkgconfig:/tmp/brotli-out/lib/pkgconfig
           PKG_CONFIG_ALLOW_CROSS: "1"
           CC_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
           AR_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
