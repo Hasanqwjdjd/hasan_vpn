@@ -100,6 +100,59 @@ class _BackupScreenState extends State<BackupScreen> {
     }
   }
 
+  Future<void> _importFromFile() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final files = dir
+          .listSync()
+          .where((e) =>
+              e is File && e.path.endsWith('.json') &&
+              e.path.contains('hasan_backup_'))
+          .cast<File>()
+          .toList()
+        ..sort((a, b) => b.path.compareTo(a.path));
+      if (files.isEmpty) {
+        setState(() => _status =
+            _t('هیچ فایل پشتیبانی پیدا نشد', 'No backup files found'));
+        return;
+      }
+      if (!mounted) return;
+      final picked = await showDialog<File>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.elevated(ctx),
+          title: Text(_t('انتخاب فایل', 'Pick file'),
+              style: TextStyle(color: AppColors.fg(ctx))),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children: files.map((f) {
+                final name = f.path.split('/').last;
+                return ListTile(
+                  title: Text(name,
+                      style: TextStyle(
+                          color: AppColors.fg(ctx), fontSize: 12)),
+                  onTap: () => Navigator.pop(ctx, f),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      );
+      if (picked == null) return;
+      final content = await picked.readAsString();
+      _importCtrl.text = content;
+      if (!mounted) return;
+      setState(() => _status =
+          _t('فایل بارگذاری شد — دکمه بازیابی را بزن',
+              'File loaded — tap Restore'));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _status = 'Error: $e');
+    }
+  }
+
   Future<void> _restore() async {
     final text = _importCtrl.text.trim();
     if (text.isEmpty) {
@@ -268,17 +321,26 @@ class _BackupScreenState extends State<BackupScreen> {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _busy ? null : _restore,
-                          icon: const Icon(Icons.restore, size: 16),
-                          label: Text(_t('بازیابی', 'Restore')),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.accent,
-                            foregroundColor: Colors.black,
-                          ),
+                        child: OutlinedButton.icon(
+                          onPressed: _busy ? null : _importFromFile,
+                          icon: const Icon(Icons.folder_open, size: 16),
+                          label: Text(_t('از فایل', 'From file')),
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _busy ? null : _restore,
+                      icon: const Icon(Icons.restore, size: 16),
+                      label: Text(_t('بازیابی', 'Restore')),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        foregroundColor: Colors.black,
+                      ),
+                    ),
                   ),
                 ],
               ),

@@ -413,6 +413,7 @@ class SettingsService {
   // --------------------------------------------------------- Auto-connect on boot (A8)
   static const String _autoConnectBootKey = 'settings_auto_connect_boot_v1';
   static const String _fontScaleKey = 'settings_font_scale_v1';
+  static const String _autoTestIntervalKey = 'settings_auto_test_min_v1';
   static Future<bool> getAutoConnectBoot() async {
     try {
       final p = await SharedPreferences.getInstance();
@@ -438,5 +439,16 @@ class SettingsService {
   static Future<void> setFontScale(double v) async {
     final p = await SharedPreferences.getInstance();
     await p.setDouble(_fontScaleKey, v);
+  }
+
+  // ------- Auto-test interval -------
+  static Future<int> getAutoTestIntervalMin() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getInt(_autoTestIntervalKey) ?? 0; // 0 = خاموش
+  }
+
+  static Future<void> setAutoTestIntervalMin(int v) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setInt(_autoTestIntervalKey, v);
   }
 }

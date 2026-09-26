@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'qr_scan_screen.dart';
 import '../models/subscription.dart';
 import '../services/subscription_service.dart'
     show SubscriptionService, SubscriptionFetchException, SubFetchErrorKind;

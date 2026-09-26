@@ -797,6 +797,67 @@ class _TorScreenState extends State<TorScreen> {
     } catch (_) {}
   }
 
+  /// تشخیص خودکار بهترین پل: همه‌ی پل‌های رایگان رو TCP-ping می‌کنه و
+  /// سریع‌ترین رو انتخاب می‌کنه.
+  Future<void> _autoDetectBestBridge() async {
+    if (_settingsLocked) {
+      _snack(_t('اول اتصال را قطع کنید', 'Disconnect first'));
+      return;
+    }
+    final candidates = <String>{};
+    // همه‌ی انواع پل رو جمع کن
+    for (final bt in const ['obfs4', 'webtunnel', 'snowflake', 'meek_lite']) {
+      candidates.addAll(TorBridges.forType(bt, sni: _selectedSni));
+    }
+    if (candidates.isEmpty) {
+      _snack(_t('پلی برای تست نیست', 'No bridges to test'));
+      return;
+    }
+    setState(() {
+      _pingingBridges = true;
+      _bridgePings.clear();
+    });
+    final scored = <({String bridge, int ms})>[];
+    for (final line in candidates) {
+      final ep = TorBridges.parseEndpoint(line);
+      if (ep == null) continue;
+      try {
+        final r = await NetworkProber.probeTcp(
+          ep.host,
+          port: ep.port,
+          samples: 1,
+          timeout: const Duration(seconds: 2),
+        );
+        if (r.avgMs != null) {
+          scored.add((bridge: line, ms: r.avgMs!));
+          if (mounted) {
+            setState(() => _bridgePings[line] = r.avgMs);
+          }
+        }
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() => _pingingBridges = false);
+    if (scored.isEmpty) {
+      _snack(_t('هیچ پلی پاسخ نداد', 'No bridge responded'));
+      return;
+    }
+    scored.sort((a, b) => a.ms.compareTo(b.ms));
+    final best = scored.first;
+    final t = best.bridge.split(RegExp(r'\s+')).first.toLowerCase();
+    setState(() {
+      _bridgeType = t;
+      if (!_customBridges.contains(best.bridge)) {
+        _customBridges.insert(0, best.bridge);
+      }
+    });
+    await _savePrefs();
+    _snack(_t(
+      'بهترین پل: $t (${best.ms}ms)',
+      'Best bridge: $t (${best.ms}ms)',
+    ));
+  }
+
   Future<void> _toggle() async {
     if (_connecting) return;
     if (_running) {
@@ -1558,13 +1619,21 @@ class _TorScreenState extends State<TorScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                     )
-                  else
+                  else ...[
                     IconButton(
                       tooltip: _t('پینگ پل‌ها', 'Ping bridges'),
                       onPressed: _pingAllBridges,
                       icon: const Icon(Icons.speed,
                           color: AppColors.accent, size: 20),
                     ),
+                    IconButton(
+                      tooltip: _t('انتخاب خودکار بهترین پل',
+                          'Auto-pick best bridge'),
+                      onPressed: _autoDetectBestBridge,
+                      icon: const Icon(Icons.auto_awesome,
+                          color: AppColors.accent, size: 20),
+                    ),
+                  ]
                   TextButton(
                     onPressed: () {
                       final pool = TorBridges.extraPool(_bridgeType);
