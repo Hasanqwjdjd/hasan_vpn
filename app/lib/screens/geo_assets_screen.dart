@@ -51,6 +51,51 @@ class _GeoAssetsScreenState extends State<GeoAssetsScreen> {
     await GeoAssetsService.delete(name);
     await _load();
   }
+  Future<void> _pickSource() async {
+    final src = await showModalBottomSheet<Map<String, String>>(
+      context: context,
+      backgroundColor: AppColors.surface(context),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                _t('منبع فایل‌های Geo', 'Geo source'),
+                style: TextStyle(
+                  color: AppColors.fg(ctx),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            for (final src in GeoAssetsService.sources)
+              ListTile(
+                title: Text(src['name'] ?? '',
+                    style: TextStyle(color: AppColors.fg(ctx))),
+                onTap: () => Navigator.pop(ctx, src),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (src == null) return;
+    setState(() => _busy.add('__source__'));
+    final ok = await GeoAssetsService.downloadFromSource(src['id'] ?? '');
+    setState(() => _busy.remove('__source__'));
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok
+            ? _t('دانلود شد', 'Downloaded')
+            : _t('خطا در دانلود', 'Download failed')),
+      ),
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
