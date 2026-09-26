@@ -2088,7 +2088,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
           Expanded(
-            child: ReorderableListView.builder(
+            child: _twoColumnGrid
+                ? GridView.builder(
+                    controller: _listScrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 4,
+                      crossAxisSpacing: 8,
+                      childAspectRatio: 1.6,
+                    ),
+                    itemCount: _servers.length,
+                    itemBuilder: (context, index) =>
+                        _buildServerTile(_servers[index]),
+                  )
+                : ReorderableListView.builder(
               scrollController: _listScrollController,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: _servers.length,

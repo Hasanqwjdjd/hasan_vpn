@@ -158,6 +158,7 @@ class XraySettings {
         socksPort = 20000 + (DateTime.now().microsecondsSinceEpoch % 20000);
       }
       final allowLan = settings['shareProxyLan'] == true ||
+          settings['shareVpnLan'] == true ||
           settings['allowLan'] == true;
       final listen = allowLan ? '0.0.0.0' : '127.0.0.1';
       final sniffingOn = settings['sniffing'] != false;
