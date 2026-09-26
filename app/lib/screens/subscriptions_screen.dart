@@ -370,6 +370,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   /// Edit group: rename + list/add/remove configs (Task D).
   Future<void> _editGroup(Subscription sub) async {
     final nameCtrl = TextEditingController(text: sub.name);
+    final uaCtrl = TextEditingController(text: sub.customUserAgent);
     final links = List<String>.from(sub.cachedLinks);
     final addedCtrl = TextEditingController();
 
@@ -400,6 +401,30 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                         style: TextStyle(
                             color: AppColors.fg(ctx), fontSize: 13),
                         decoration: InputDecoration(
+                          enabledBorder: OutlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: AppColors.border(ctx))),
+                          border: OutlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: AppColors.border(ctx))),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        _t('User-Agent سفارشی (اختیاری)',
+                            'Custom User-Agent (optional)'),
+                        style: TextStyle(
+                            color: AppColors.muted(ctx), fontSize: 12),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: uaCtrl,
+                        style: TextStyle(
+                            color: AppColors.fg(ctx), fontSize: 12),
+                        decoration: InputDecoration(
+                          hintText: 'Mozilla/5.0 ...',
+                          hintStyle: TextStyle(
+                              color: AppColors.muted2(ctx), fontSize: 11),
                           enabledBorder: OutlineInputBorder(
                               borderSide:
                                   BorderSide(color: AppColors.border(ctx))),
@@ -517,6 +542,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     if (ok != true) return;
     final newName = nameCtrl.text.trim();
     if (newName.isNotEmpty) sub.name = newName;
+    sub.customUserAgent = uaCtrl.text.trim();
     sub.cachedLinks = links;
     sub.serverCount = links.length;
     sub.lastUpdated = DateTime.now();
