@@ -206,18 +206,9 @@ jobs:
           AR_AARCH64_LINUX_ANDROID: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
           CFLAGS_AARCH64_LINUX_ANDROID: ""
           CXXFLAGS_AARCH64_LINUX_ANDROID: ""
-          # lowercase with dash
-          CC_aarch64-linux-android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
-          CXX_aarch64-linux-android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang++
-          AR_aarch64-linux-android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
-          # lowercase with underscore
-          CC_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
-          CXX_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang++
-          AR_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
-          # bindgen needs the sysroot for the target too
-          BINDGEN_EXTRA_CLANG_ARGS_AARCH64_LINUX_ANDROID: --sysroot=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot
-          BINDGEN_EXTRA_CLANG_ARGS_aarch64-linux-android: --sysroot=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot
-          BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android: --sysroot=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+          # NOTE: GitHub Actions normalizes env var names case-insensitively
+          # and treats `_` and `-` as equivalent, so we can only use ONE
+          # spelling. cc-rs's canonical lookup is CC_<TARGET_UPPER_UNDERSCORE>.
           BINDGEN_EXTRA_CLANG_ARGS: --sysroot=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot
           # SlipNet/slipstream-ffi build script fallbacks (see rerun-if-changed)
           RUST_ANDROID_GRADLE_CC: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
