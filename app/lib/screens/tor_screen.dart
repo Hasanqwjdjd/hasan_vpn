@@ -25,6 +25,10 @@ class TorScreen extends StatefulWidget {
   /// پس از انتخاب پل، binding در FlutterSharedPreferences نوشته شود.
   final int? pendingWidgetId;
 
+  /// اگر true باشد، بدون Scaffold/AppBar رندر می‌شود تا
+  /// بتواند inline در صفحهٔ دیگری استفاده شود.
+  final bool embedded;
+
   const TorScreen({
     super.key,
     this.language = 'fa',
@@ -32,6 +36,7 @@ class TorScreen extends StatefulWidget {
     this.initialBridgeType,
     this.autoConnect = false,
     this.pendingWidgetId,
+    this.embedded = false,
   });
 
   @override
@@ -1209,18 +1214,12 @@ class _TorScreenState extends State<TorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bg(context),
-      appBar: AppBar(
-        backgroundColor: AppColors.bg(context),
-        elevation: 0,
-        iconTheme: IconThemeData(color: AppColors.fg(context)),
-        title: Text(_t('Tor', 'Tor'),
-            style: TextStyle(color: AppColors.fg(context))),
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
+    final listView = ListView(
+      shrinkWrap: widget.embedded,
+      physics: widget.embedded
+          ? const NeverScrollableScrollPhysics()
+          : null,
+      padding: const EdgeInsets.all(16),
           children: [
             Container(
               padding: const EdgeInsets.all(12),
@@ -1904,8 +1903,18 @@ class _TorScreenState extends State<TorScreen> {
                 ),
               ),
           ],
-        ),
+    );
+    if (widget.embedded) return listView;
+    return Scaffold(
+      backgroundColor: AppColors.bg(context),
+      appBar: AppBar(
+        backgroundColor: AppColors.bg(context),
+        elevation: 0,
+        iconTheme: IconThemeData(color: AppColors.fg(context)),
+        title: Text(_t('Tor', 'Tor'),
+            style: TextStyle(color: AppColors.fg(context))),
       ),
+      body: SafeArea(child: listView),
     );
   }
 }

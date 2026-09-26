@@ -1107,8 +1107,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               borderRadius: BorderRadius.circular(12),
               onTap: () async {
                 if (_selectionMode) return;
+                final already = st.routingThroughVpn || st.running;
                 final wid = _pendingWidgetId;
-                if (wid != null && wid > 0) {
+                if (wid != null && wid > 0 && !already) {
                   try {
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.setString(
@@ -1128,14 +1129,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   );
                   return;
                 }
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => TorScreen(
-                      language: widget.language,
-                      initialBridgeType: bridgeType,
-                    ),
-                  ),
-                );
+                if (already) {
+                  await TorSessionService.instance.disconnect();
+                  return;
+                }
+                // اگه VPN سرور وصله، اول قطعش کن تا Tor تنها بمونه
+                if (_connected) {
+                  try {
+                    await _disconnectAll();
+                  } catch (_) {}
+                  _markDisconnected(_t('آماده', 'Ready'));
+                }
+                await TorSessionService.instance.connect(server.id);
               },
               child: Padding(
                 padding:
@@ -1188,9 +1193,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         const SizedBox(width: 4),
                         IconButton(
                           onPressed: () async {
+                            final wid = _pendingWidgetId;
+                            if (wid != null &&
+                                wid > 0 &&
+                                !connected &&
+                                !st.running) {
+                              try {
+                                final prefs =
+                                    await SharedPreferences.getInstance();
+                                await prefs.setString(
+                                    'widget_server_$wid',
+                                    'tor|$bridgeType|Tor');
+                              } catch (_) {}
+                              await TorSessionService.instance
+                                  .connect(server.id);
+                              if (!mounted) return;
+                              setState(() => _pendingWidgetId = null);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(_t(
+                                    'این تور برای ویجت انتخاب شد',
+                                    'Tor selected for widget',
+                                  )),
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                              return;
+                            }
                             if (connected || st.running) {
                               await TorSessionService.instance.disconnect();
                             } else {
+                              if (_connected) {
+                                try {
+                                  await _disconnectAll();
+                                } catch (_) {}
+                                _markDisconnected(_t('آماده', 'Ready'));
+                              }
                               await TorSessionService.instance
                                   .connect(server.id);
                             }
@@ -1725,6 +1763,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     _cancelConnect = false;
+    // اگه Tor داره ترافیک رو روت می‌کنه، اول قطعش کن تا هم‌زمان با سرور
+    // وصل نباشه (باگ: قبلاً Tor و سرور با هم وصل می‌شدن).
+    if (TorSessionService.instance.anyRouting) {
+      try {
+        await TorSessionService.instance.disconnect();
+      } catch (_) {}
+    }
     setState(() {
       _connecting = true;
       _livePing = null;

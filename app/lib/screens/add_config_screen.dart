@@ -10,7 +10,7 @@ import '../services/psiphon_service.dart';
 import '../services/tor_sni_presets.dart';
 import '../services/xray_json.dart';
 import 'qr_scan_screen.dart';
-import '../widgets/tor_quick_panel.dart';
+import 'tor_screen.dart';
 
 class AddConfigScreen extends StatefulWidget {
   final String language;
@@ -995,14 +995,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   }
 
   Widget _buildTorForm() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        TorQuickPanel(
-          language: widget.language,
-          panelId: 'add_config_tor',
-        ),
-      ],
+    return TorScreen(
+      language: widget.language,
+      embedded: true,
     );
   }
 

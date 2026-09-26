@@ -65,6 +65,14 @@ class TorSessionService {
   ValueNotifier<TorSessionState> notifierFor(String bridgeId) => _notifiers
       .putIfAbsent(bridgeId, () => ValueNotifier(const TorSessionState()));
 
+  /// آیا هر Tor ای در حال روت ترافیک از طریق VPN است؟
+  bool get anyRouting {
+    for (final n in _notifiers.values) {
+      if (n.value.routingThroughVpn) return true;
+    }
+    return false;
+  }
+
   String bridgeTypeFor(String bridgeId) =>
       bridgeId == presetWebtunnelId ? 'webtunnel' : 'vanilla';
 
