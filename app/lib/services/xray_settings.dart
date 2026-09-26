@@ -64,6 +64,21 @@ class XraySettings {
     // ---- Routing domainStrategy ----
     'domainStrategy': 'AsIs',
 
+    // ---- Delay / connection info test URLs ----
+    'delayTestUrl': 'https://www.gstatic.com/generate_204',
+    'connInfoUrl': 'https://api.ip.sb/geoip',
+    'concurrentDelayTests': 16,
+
+    // ---- SOCKS5 UDP ----
+    'socks5Udp': true,
+
+    // ---- UI / behavior ----
+    'rootMode': false,
+    'shareVpnLan': false,
+    'showSpeedNotif': false,
+    'confirmDelete': true,
+    'twoColumnGrid': false,
+
     // ---- Legacy / existing ----
     'logLevel': 'warning',
     'allowLan': false,
@@ -144,6 +159,7 @@ class XraySettings {
               if (routeOnly) 'routeOnly': true,
             }
           : <String, dynamic>{'enabled': false};
+      final socks5Udp = settings['socks5Udp'] != false;
 
       final inbounds = <Map<String, dynamic>>[
         {
@@ -151,7 +167,7 @@ class XraySettings {
           'port': socksPort,
           'listen': listen,
           'protocol': 'socks',
-          'settings': {'auth': 'noauth', 'udp': true},
+          'settings': {'auth': 'noauth', 'udp': socks5Udp},
           'sniffing': sniffingBlock,
         },
       ];
