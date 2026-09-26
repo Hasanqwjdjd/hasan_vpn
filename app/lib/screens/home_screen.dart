@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/gestures.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -24,6 +25,23 @@ import 'announcements_screen.dart';
 import 'tor_screen.dart';
 import 'qr_share_screen.dart';
 import '../widgets/traffic_sparkline.dart';
+
+class _TwoSecondDragStartListener extends ReorderableDragStartListener {
+  const _TwoSecondDragStartListener({
+    super.key,
+    required super.index,
+    required super.child,
+    super.enabled = true,
+  });
+
+  @override
+  MultiDragGestureRecognizer createRecognizer() {
+    return DelayedMultiDragGestureRecognizer(
+      delay: const Duration(seconds: 2),
+      debugOwner: this,
+    );
+  }
+}
 
 class HomeScreen extends StatefulWidget {
   final List<VpnServer> extraServers;
@@ -1019,22 +1037,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // ------------------------------------------------------------- list
 
-  static const String _builtinAetherId = 'builtin_aether';
   static const String _builtinPsiphonId = 'builtin_psiphon';
 
-  /// دو سرور پیشنهادی که همیشه بالای لیست هستند و پاک نمی‌شوند.
+  /// سرور پیشنهادی که همیشه بالای لیست است و پاک نمی‌شود.
   List<VpnServer> _builtinPresets() {
     return <VpnServer>[
-      VpnServer(
-        id: _builtinAetherId,
-        name: 'Aether (WARP)',
-        flag: '🟣',
-        shareLink: 'aether://auto',
-        protocol: VpnProtocol.aether,
-        host: 'auto-discover',
-        port: 0,
-        isDeletable: false,
-      ),
       VpnServer(
         id: _builtinPsiphonId,
         name: 'Psiphon (Auto)',
@@ -1058,7 +1065,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     ];
 
     for (final server in allServers) {
-      if (server.id == _builtinAetherId || server.id == _builtinPsiphonId) {
+      if (server.id == _builtinPsiphonId) {
         server.isPinned = true;
       } else {
         server.isPinned = _pinnedIds.contains(server.id);
@@ -2075,7 +2082,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 final server = _servers[index];
                 final tileKey =
                     _tileKeys.putIfAbsent(server.id, () => GlobalKey());
-                return ReorderableDelayedDragStartListener(
+                return _TwoSecondDragStartListener(
                   key: ValueKey('reorder_${server.id}'),
                   index: index,
                   child: Padding(
@@ -2413,11 +2420,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           _selectedIds.clear();
                         });
                       },
-                    ),
-                    _compactIconButton(
-                      icon: Icons.swap_vert,
-                      tooltip: _t('جابه‌جایی', 'Reorder'),
-                      onPressed: _openReorderSelectedSheet,
                     ),
                     _compactIconButton(
                       icon: Icons.folder_special,

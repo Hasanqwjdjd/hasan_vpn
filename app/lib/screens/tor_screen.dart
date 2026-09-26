@@ -45,7 +45,6 @@ class _TorScreenState extends State<TorScreen> {
     {'id': 'snowflake', 'fa': 'Snowflake (P2P)', 'en': 'Snowflake (P2P)'},
     {'id': 'meek_lite', 'fa': 'Meek / Azure front', 'en': 'Meek / Azure front'},
     {'id': 'obfs4', 'fa': 'obfs4', 'en': 'obfs4'},
-    {'id': 'conjure', 'fa': 'Conjure (refraction)', 'en': 'Conjure (refraction)'},
     {'id': 'dnstt', 'fa': 'DNSTT', 'en': 'DNSTT'},
   ];
 

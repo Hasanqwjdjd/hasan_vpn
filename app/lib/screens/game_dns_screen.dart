@@ -34,8 +34,8 @@ enum _SortMode { ping, name, country, provider, jitter }
 
 enum _Category { all, pinned, recommended, adBlocking, family, dnssec, ipv6, myCountry, hidden }
 
-class _ThreeSecondDragStartListener extends ReorderableDragStartListener {
-  const _ThreeSecondDragStartListener({
+class _TwoSecondDragStartListener extends ReorderableDragStartListener {
+  const _TwoSecondDragStartListener({
     super.key,
     required super.index,
     required super.child,
@@ -45,7 +45,7 @@ class _ThreeSecondDragStartListener extends ReorderableDragStartListener {
   @override
   MultiDragGestureRecognizer createRecognizer() {
     return DelayedMultiDragGestureRecognizer(
-      delay: const Duration(seconds: 3),
+      delay: const Duration(seconds: 2),
       debugOwner: this,
     );
   }
@@ -523,7 +523,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                       ids.insert(newIndex, moved);
                       _saveManualOrder(ids);
                     },
-                    itemBuilder: (context, i) => _ThreeSecondDragStartListener(
+                    itemBuilder: (context, i) => _TwoSecondDragStartListener(
                       key: ValueKey(visible[i].id),
                       index: i,
                       child: _buildTile(visible[i]),
@@ -804,7 +804,6 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     return ListTile(
       key: ValueKey(e.id),
       onTap: () => _setActive(e),
-      onLongPress: () => _openActionSheet(e),
       leading: Container(
         width: 10,
         height: 10,
