@@ -55,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
-          cd src/client
+          cd src/dnstt-client
           CC="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android${ANDROID_API}-clang" \
           GOOS=android GOARCH=arm64 CGO_ENABLED=1 \
           go build -tags=netcgo -o ../../out/libdnstt.so .
@@ -136,6 +136,11 @@ jobs:
         with:
           ndk-version: ${{ env.NDK_VERSION }}
 
+      - name: Export ANDROID_NDK_ROOT so cargo-ndk uses the pinned NDK
+        run: |
+          echo "ANDROID_NDK_ROOT=${{ steps.ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
+
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
 
@@ -147,9 +152,33 @@ jobs:
           git checkout "${PIN_SHA}"
           echo "RESOLVED_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
+      - name: Build OpenSSL for Android arm64 (needed by slipstream via native-tls)
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          # Build a minimal OpenSSL sysroot for aarch64-linux-android.
+          # slipstream's native-tls dep needs libssl/libcrypto for the target.
+          git clone --depth 1 --branch openssl-3.0.15 https://github.com/openssl/openssl.git /tmp/openssl
+          cd /tmp/openssl
+          export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
+          export PATH="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          ./Configure android-arm64 -D__ANDROID_API__=${ANDROID_API} \
+            --prefix=/tmp/openssl-out --openssldir=/tmp/openssl-out \
+            no-tests no-docs no-shared
+          make -j"$(nproc)" build_libs
+          make install_sw
+          ls -la /tmp/openssl-out/lib/
+
       - name: Build (arm64-v8a)
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          OPENSSL_DIR: /tmp/openssl-out
+          OPENSSL_STATIC: "1"
+          OPENSSL_NO_VENDOR: "1"
+          PKG_CONFIG_ALLOW_CROSS: "1"
+          CC_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
+          AR_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
         run: |
           set -euo pipefail
           mkdir -p out
