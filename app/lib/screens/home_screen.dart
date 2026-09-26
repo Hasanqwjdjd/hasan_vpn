@@ -102,6 +102,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // ─── auto fastest interval + reconnect ───
   Timer? _autoFastestTimer;
+  Timer? _autoTestTimer;
   bool _autoReconnectRunning = false;
   List<String> _manualOrder = <String>[];
 
@@ -219,6 +220,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _poll());
     _startAutoFastestInterval();
+    _startAutoTestTimer();
     // ویجت صفحهٔ اصلی: درخواست معلق اتصال
     WidgetConnectHandler.listen(
       (req) {
@@ -1403,6 +1405,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     try {
       await _toggleConnection();
+    } catch (_) {}
+  }
+
+  Future<void> _startAutoTestTimer() async {
+    _autoTestTimer?.cancel();
+    try {
+      final min = await SettingsService.getAutoTestIntervalMin();
+      if (min <= 0) return;
+      _autoTestTimer = Timer.periodic(
+        Duration(minutes: min),
+        (_) => _runAutoTestAll(),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _runAutoTestAll() async {
+    if (!mounted) return;
+    if (_testing) return;
+    try {
+      await _testAll();
     } catch (_) {}
   }
 

@@ -58,6 +58,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _loadConnectFastest();
     _theme = widget.themeMode;
+    // ignore: unawaited_futures
+    SettingsService.getAutoTestIntervalMin().then((v) {
+      if (mounted) setState(() => _autoTestMin = v);
+    });
     _lang = widget.language;
     SettingsService.getVpnMode().then((m) {
       if (mounted) setState(() => _vpnMode = m);
@@ -793,6 +797,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _langChip(context, 'en', '🇬🇧 English'),
                     ],
                   ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ------- تست خودکار -------
+          _sectionTitle(_t('تست خودکار دوره‌ای', 'Periodic auto-test')),
+          _card(
+            context,
+            Column(
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.timer,
+                        color: AppColors.muted(context), size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _t('هر بار بهترین سرور را پیدا کن',
+                            'Find fastest server periodically'),
+                        style: TextStyle(
+                            color: AppColors.fg(context), fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final min in const [0, 15, 30, 60, 120, 240])
+                      ChoiceChip(
+                        label: Text(min == 0
+                            ? _t('خاموش', 'Off')
+                            : (min < 60
+                                ? '$min ${_t('دقیقه', 'min')}'
+                                : '${min ~/ 60} ${_t('ساعت', 'h')}')),
+                        selected: _autoTestMin == min,
+                        onSelected: (_) async {
+                          setState(() => _autoTestMin = min);
+                          await SettingsService
+                              .setAutoTestIntervalMin(min);
+                        },
+                        selectedColor:
+                            AppColors.accent.withOpacity(0.25),
+                        backgroundColor: AppColors.surface(context),
+                        labelStyle: TextStyle(
+                          color: _autoTestMin == min
+                              ? AppColors.accent
+                              : AppColors.fg(context),
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),

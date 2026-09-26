@@ -36,6 +36,23 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     _subs = List.from(widget.subscriptions);
   }
 
+  Future<void> _addSubFromRaw(String raw) async {
+    if (raw.trim().isEmpty) return;
+    final name = 'QR ${DateTime.now().millisecondsSinceEpoch % 10000}';
+    final sub = Subscription(
+      id: 'qr_${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      url: raw,
+      isDefault: false,
+      autoUpdate: false,
+      intervalHours: 12,
+    );
+    setState(() => _subs.add(sub));
+    await SubscriptionService.save(_subs);
+    widget.onChanged(_subs);
+    _showMsg(_t('اشتراک اضافه شد', 'Subscription added'));
+  }
+
   Future<void> _addSub() async {
     final choice = await showModalBottomSheet<String>(
       context: context,
@@ -766,6 +783,22 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             style: TextStyle(color: AppColors.fg(context))),
         centerTitle: true,
         actions: [
+          IconButton(
+              tooltip: _t('اسکن QR', 'Scan QR'),
+              onPressed: () async {
+                final result = await Navigator.push<String>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => QrScanScreen(
+                      language: widget.language,
+                    ),
+                  ),
+                );
+                if (result != null && result.isNotEmpty) {
+                  await _addSubFromRaw(result);
+                }
+              },
+              icon: Icon(Icons.qr_code_scanner, color: AppColors.fg(context))),
           IconButton(
               onPressed: _subs.isEmpty ? null : _refreshAll,
               icon: Icon(Icons.refresh, color: AppColors.fg(context))),
