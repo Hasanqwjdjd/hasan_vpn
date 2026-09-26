@@ -1037,50 +1037,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // ------------------------------------------------------------- list
 
-  static const String _builtinAetherId = 'builtin_aether';
-  static const String _builtinPsiphonId = 'builtin_psiphon';
-
-  /// دو سرور پیشنهادی که همیشه بالای لیست هستند و پاک نمی‌شوند.
-  List<VpnServer> _builtinPresets() {
-    return <VpnServer>[
-      VpnServer(
-        id: _builtinAetherId,
-        name: 'Aether · Auto',
-        flag: '🟣',
-        shareLink: 'aether://config?protocol=gool&scan=smart&noize=gfw&ip=v4',
-        protocol: VpnProtocol.aether,
-        host: 'auto-discover',
-        port: 0,
-        isDeletable: false,
-      ),
-      VpnServer(
-        id: _builtinPsiphonId,
-        name: 'Psiphon · Auto',
-        flag: '💧',
-        shareLink: 'psiphon://?auto=1',
-        protocol: VpnProtocol.psiphon,
-        host: 'auto-discover',
-        port: 0,
-        isDeletable: false,
-      ),
-    ];
-  }
-
   void _rebuildServerList() {
     if (!mounted) return;
 
     final allServers = <VpnServer>[
-      ..._builtinPresets().where((server) => !_deletedIds.contains(server.id)),
       ..._customServers.where((server) => !_deletedIds.contains(server.id)),
       ...widget.extraServers.where((server) => !_deletedIds.contains(server.id)),
     ];
 
     for (final server in allServers) {
-      if (server.id == _builtinAetherId || server.id == _builtinPsiphonId) {
-        server.isPinned = true;
-      } else {
-        server.isPinned = _pinnedIds.contains(server.id);
-      }
+      server.isPinned = _pinnedIds.contains(server.id);
     }
 
     var list = allServers;
@@ -1833,7 +1799,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: Column(
                   children: [
                     Text(
-                      _isFa ? 'حسن' : 'Hasan',
+                      'Hasan VPN',
                       style: TextStyle(
                         color: AppColors.fg(context),
                         fontSize: 20,
@@ -1875,20 +1841,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         color: AppColors.accent, size: 22),
                 onPressed: _testing ? _cancelTesting : _testAll,
                 tooltip: _t('تست همه', 'Test All'),
-              ),
-              IconButton(
-                icon: Icon(Icons.notifications_none,
-                    color: AppColors.muted(context), size: 22),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          AnnouncementsScreen(language: widget.language),
-                    ),
-                  );
-                },
-                tooltip: _t('اعلان‌ها', 'Announcements'),
               ),
               IconButton(
                 icon: Icon(
@@ -2432,10 +2384,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       onPressed: () {
                         final selected = _servers
                             .where((s) => _selectedIds.contains(s.id))
-                            .map((s) => s.shareLink)
-                            .join('\n');
-                        Clipboard.setData(ClipboardData(text: selected));
-                        _showMsg(_t('کپی شد', 'Copied'));
+                            .toList();
+                        final copyable = <VpnServer>[];
+                        var blockedCount = 0;
+                        for (final s in selected) {
+                          final isCustom =
+                              _customServers.any((c) => c.id == s.id);
+                          if (isCustom || s.isAether || s.isPsiphon) {
+                            copyable.add(s);
+                          } else {
+                            blockedCount++;
+                          }
+                        }
+                        if (blockedCount > 0) {
+                          _showMsg(_t(
+                              'سرور های داخل برنامه قابل کپی برداری نمی باشد',
+                              'Built-in servers cannot be copied'));
+                        }
+                        if (copyable.isNotEmpty) {
+                          Clipboard.setData(ClipboardData(
+                              text: copyable
+                                  .map((s) => s.shareLink)
+                                  .join('\n')));
+                          if (blockedCount == 0) {
+                            _showMsg(_t('کپی شد', 'Copied'));
+                          }
+                        }
                         setState(() {
                           _selectionMode = false;
                           _selectedIds.clear();

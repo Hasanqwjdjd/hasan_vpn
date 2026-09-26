@@ -1798,24 +1798,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: const Color(0xFFEF5350),
             ),
 
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _addFreeEnginePack,
-                icon: const Icon(Icons.flash_on, size: 18),
-                label: Text(_t(
-                  'افزودن هر ۲ موتور رایگان (پیشنهادی)',
-                  'Add all 2 free engines (recommended)',
-                )),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.accent,
-                  side: const BorderSide(color: AppColors.accent),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-            ),
-
             const SizedBox(height: 20),
 
             if (_selectedType == 'manual') ...[
