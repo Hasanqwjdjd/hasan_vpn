@@ -422,6 +422,12 @@ class V2RayEngine {
           return false;
         }
         config = _ensureLocalInbound(raw);
+      } else if (server.protocol == VpnProtocol.socks5) {
+        config = _buildSocks5Config(server);
+        if (config.isEmpty) {
+          lastError = 'invalid socks5 config';
+          return false;
+        }
       } else {
         final FlutterVlessURL parser = FlutterVless.parse(server.shareLink);
         config = parser.getFullConfiguration();
@@ -474,6 +480,88 @@ class V2RayEngine {
       _connected = false;
       _current = null;
       return false;
+    }
+  }
+
+  /// ساخت Xray config برای یه پروکسی SOCKS5 از راه دور.
+  /// از shareLink فرمت `socks5://config?host=...&port=...&user=...&pass=...`
+  /// یا فرمت استاندارد `socks5://user:pass@host:port` پشتیبانی می‌کند.
+  static String _buildSocks5Config(VpnServer server) {
+    try {
+      String host = server.host;
+      int port = server.port;
+      String user = '';
+      String pass = '';
+
+      final link = server.shareLink;
+      if (link.startsWith('socks5://config?')) {
+        final q = Uri.parse(link).queryParameters;
+        host = q['host'] ?? host;
+        port = int.tryParse(q['port'] ?? '') ?? port;
+        user = q['user'] ?? '';
+        pass = q['pass'] ?? '';
+      } else if (link.startsWith('socks5://')) {
+        final uri = Uri.parse(link);
+        host = uri.host.isNotEmpty ? uri.host : host;
+        port = uri.hasPort ? uri.port : port;
+        if (uri.userInfo.contains(':')) {
+          final parts = uri.userInfo.split(':');
+          user = parts[0];
+          pass = parts.sublist(1).join(':');
+        } else if (uri.userInfo.isNotEmpty) {
+          user = uri.userInfo;
+        }
+      }
+
+      if (host.isEmpty || port <= 0) return '';
+
+      final serverEntry = <String, dynamic>{
+        'address': host,
+        'port': port,
+      };
+      if (user.isNotEmpty) {
+        serverEntry['users'] = [
+          {'user': user, 'pass': pass},
+        ];
+      }
+
+      final cfg = <String, dynamic>{
+        'log': {'loglevel': 'warning'},
+        'inbounds': [
+          {
+            'tag': 'socks-in',
+            'port': 10808,
+            'listen': '127.0.0.1',
+            'protocol': 'socks',
+            'settings': {'auth': 'noauth', 'udp': true},
+            'sniffing': {
+              'enabled': true,
+              'destOverride': ['http', 'tls', 'quic'],
+            },
+          },
+        ],
+        'outbounds': [
+          {
+            'tag': 'proxy',
+            'protocol': 'socks',
+            'settings': {
+              'servers': [serverEntry],
+            },
+          },
+          {'tag': 'direct', 'protocol': 'freedom'},
+          {
+            'tag': 'block',
+            'protocol': 'blackhole',
+            'settings': {
+              'response': {'type': 'http'},
+            },
+          },
+        ],
+      };
+      return jsonEncode(cfg);
+    } catch (e) {
+      debugPrint('buildSocks5Config error: $e');
+      return '';
     }
   }
 

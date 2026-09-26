@@ -14,6 +14,8 @@ enum VpnProtocol {
   tunnel,
   /// SSH tunnel — dartssh2 + forwardLocal به SOCKS5 روی سرور SSH
   ssh,
+  /// پروکسی SOCKS5 از راه دور (بدون رمزنگاری اضافی)
+  socks5,
 }
 
 /// idle: تست نشده | testing: در حال تست | online: سالم | offline: از کار افتاده

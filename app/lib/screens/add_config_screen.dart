@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/aether_profile.dart';
 import '../models/tunnel_profile.dart';
 import '../models/ssh_profile.dart';
+import '../models/socks5_profile.dart';
 import '../models/server.dart';
 import '../services/aether_service.dart';
 import '../services/app_colors.dart';
@@ -64,6 +65,13 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _sshSocksPortController =
       TextEditingController(text: '1080');
   bool _sshUseKey = false;
+
+  // SOCKS5
+  final TextEditingController _socks5HostController = TextEditingController();
+  final TextEditingController _socks5PortController =
+      TextEditingController(text: '1080');
+  final TextEditingController _socks5UserController = TextEditingController();
+  final TextEditingController _socks5PassController = TextEditingController();
   final TextEditingController _tunnelDomainController = TextEditingController();
   final TextEditingController _tunnelPubkeyController = TextEditingController();
   final TextEditingController _tunnelResolverController =
@@ -1323,6 +1331,135 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
+  // ------------------------------------------------------------ SOCKS5
+
+  void _addSocks5Server() {
+    final host = _socks5HostController.text.trim();
+    final port = int.tryParse(_socks5PortController.text.trim()) ?? 1080;
+    if (host.isEmpty || port <= 0) {
+      _showMsg(_t('هاست و پورت الزامی است', 'Host and port required'));
+      return;
+    }
+    final profile = Socks5Profile(
+      host: host,
+      port: port,
+      username: _socks5UserController.text.trim(),
+      password: _socks5PassController.text,
+      name: _nameController.text.trim(),
+    );
+    final name = _nameController.text.trim().isNotEmpty
+        ? _nameController.text.trim()
+        : profile.summary;
+    final server = VpnServer(
+      id: 'socks5_${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      flag: '🔌',
+      shareLink: profile.toLink(),
+      protocol: VpnProtocol.socks5,
+      host: host,
+      port: port,
+      isDeletable: true,
+    );
+    widget.onServerAdded(server);
+    Navigator.pop(context);
+    _showMsg(_t('پروکسی SOCKS5 اضافه شد', 'SOCKS5 proxy added'));
+  }
+
+  Widget _buildSocks5Form() {
+    const color = Color(0xFFAB47BC);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.dns, color: color, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _t(
+                    'ترافیک را از یک SOCKS5 از راه دور عبور می‌دهد. بدون رمزنگاری — فقط به سرورهای معتمد وصل شوید.',
+                    'Routes traffic through a remote SOCKS5. No extra encryption — only connect to trusted servers.',
+                  ),
+                  style: TextStyle(
+                    color: AppColors.muted(context),
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: _tunnelField(
+                controller: _socks5HostController,
+                label: _t('هاست', 'Host'),
+                hint: 'proxy.example.com',
+                color: color,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _tunnelField(
+                controller: _socks5PortController,
+                label: _t('پورت', 'Port'),
+                hint: '1080',
+                color: color,
+                keyboard: TextInputType.number,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _socks5UserController,
+          label: _t('نام کاربری (اختیاری)', 'Username (optional)'),
+          hint: '',
+          color: color,
+        ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _socks5PassController,
+          label: _t('رمز (اختیاری)', 'Password (optional)'),
+          hint: '',
+          color: color,
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton(
+            onPressed: _addSocks5Server,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: Text(
+              _t('افزودن SOCKS5', 'Add SOCKS5'),
+              style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   // ------------------------------------------------------------ SSH
 
   void _addSshServer() {
@@ -2474,6 +2611,16 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: const Color(0xFFEF5350),
             ),
             _buildTypeCard(
+              title: 'SOCKS5',
+              subtitle: _t(
+                'پروکسی SOCKS5 از راه دور',
+                'Remote SOCKS5 proxy',
+              ),
+              icon: Icons.dns,
+              type: 'socks5',
+              color: const Color(0xFFAB47BC),
+            ),
+            _buildTypeCard(
               title: 'SSH',
               subtitle: _t(
                 'اتصال به سرور SSH + SOCKS5 روی سرور',
@@ -2721,6 +2868,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               _buildTunnelForm(),
             ] else if (_selectedType == 'ssh') ...[
               _buildSshForm(),
+            ] else if (_selectedType == 'socks5') ...[
+              _buildSocks5Form(),
             ],
           ],
         ),
@@ -2762,6 +2911,10 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _sshKeyController.dispose();
     _sshKeyPassController.dispose();
     _sshSocksPortController.dispose();
+    _socks5HostController.dispose();
+    _socks5PortController.dispose();
+    _socks5UserController.dispose();
+    _socks5PassController.dispose();
     super.dispose();
   }
 }
