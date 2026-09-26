@@ -1,6 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'xray_settings.dart';
+
 /// Live speed / status notification (Dart side).
 ///
 /// Uses a SINGLE Android notification ID (TelemetryNotifier.NOTIFICATION_ID
@@ -23,7 +25,15 @@ class TelemetryService {
   static Future<void> load() async {
     try {
       final p = await SharedPreferences.getInstance();
-      enabled = p.getBool(_key) ?? false;
+      // اولویت ۱: telemetry_live_v1
+      if (p.containsKey(_key)) {
+        enabled = p.getBool(_key) ?? false;
+        return;
+      }
+      // اولویت ۲: xray_settings.showSpeedNotif
+      final xs = await XraySettings.load();
+      enabled = xs['showSpeedNotif'] == true;
+      await p.setBool(_key, enabled);
     } catch (_) {}
   }
 
@@ -32,6 +42,7 @@ class TelemetryService {
     try {
       final p = await SharedPreferences.getInstance();
       await p.setBool(_key, v);
+      await XraySettings.set('showSpeedNotif', v);
     } catch (_) {}
     if (v) {
       await _call('notifPermission');

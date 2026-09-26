@@ -73,7 +73,6 @@ class XraySettings {
     'socks5Udp': true,
 
     // ---- UI / behavior ----
-    'rootMode': false,
     'shareVpnLan': false,
     'showSpeedNotif': false,
     'confirmDelete': true,
