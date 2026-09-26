@@ -171,6 +171,9 @@ class SubscriptionService {
           .map((item) => Subscription.fromJson(Map<String, dynamic>.from(item)))
           .toList();
 
+      // حذف Morning-Shape از ذخیره‌ی موجود (حتی اگر قبلاً ذخیره شده بود)
+      subscriptions.removeWhere((s) => _isMorningShape(s));
+
       final removed = await _loadRemovedDefaults(prefs);
       for (final defaultSub in defaultSubscriptions) {
         if (removed.contains(defaultSub.id) &&

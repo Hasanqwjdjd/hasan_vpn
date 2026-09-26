@@ -41,13 +41,37 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
     await XraySettings.set(key, value);
   }
 
-  Widget _section(String title) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 18, 4, 6),
-        child: Text(title,
-            style: TextStyle(
-                color: AppColors.accent,
-                fontSize: 13,
-                fontWeight: FontWeight.w700)),
+  Widget _section(String title, {IconData? icon}) => Container(
+        margin: const EdgeInsets.fromLTRB(12, 18, 12, 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppColors.accent.withOpacity(0.20),
+              AppColors.accent.withOpacity(0.05),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.accent.withOpacity(0.35)),
+        ),
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(icon, color: AppColors.accent, size: 18),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  color: AppColors.accent,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
       );
 
   Widget _sw(String key, String fa, String en, {String? subFa, String? subEn}) {
@@ -146,15 +170,61 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.bg(context),
         elevation: 0,
-        title: Text(_t('تنظیمات هسته / VPN', 'Core / VPN Settings')),
+        scrolledUnderElevation: 0,
+        title: Text(
+          _t('تنظیمات هسته / VPN', 'Core / VPN Settings'),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        actions: [
+          IconButton(
+            tooltip: _t('بازنشانی به پیش‌فرض', 'Reset to defaults'),
+            icon: const Icon(Icons.restart_alt, size: 20),
+            onPressed: () async {
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: AppColors.surface(ctx),
+                  title: Text(_t('بازنشانی؟', 'Reset?'),
+                      style: TextStyle(color: AppColors.fg(ctx))),
+                  content: Text(
+                    _t('همهٔ تنظیمات هسته به حالت پیش‌فرض برمی‌گردد.',
+                        'All core settings will reset to defaults.'),
+                    style: TextStyle(color: AppColors.fg(ctx), fontSize: 13),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: Text(_t('انصراف', 'Cancel')),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: Text(_t('بازنشانی', 'Reset'),
+                          style: const TextStyle(color: Colors.redAccent)),
+                    ),
+                  ],
+                ),
+              );
+              if (ok != true || !mounted) return;
+              final fresh = Map<String, dynamic>.from(XraySettings.defaults);
+              for (final entry in fresh.entries) {
+                await XraySettings.set(entry.key, entry.value);
+              }
+              if (!mounted) return;
+              setState(() => _s = fresh);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(_t('بازنشانی شد', 'Reset done'))),
+              );
+            },
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.only(bottom: 32),
+              padding: const EdgeInsets.only(bottom: 40, top: 4),
               children: [
                 // ---- A1 VPN ----
-                _section(_t('تنظیمات VPN', 'VPN Settings')),
+                _section(_t('تنظیمات VPN', 'VPN Settings'), icon: Icons.vpn_lock),
                 _sw('enableIpv6', 'فعال‌سازی IPv6', 'Enable IPv6',
                     subFa: 'افزودن مسیر IPv6 به تونل',
                     subEn: 'Add IPv6 route to VPN'),
@@ -173,7 +243,7 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                     hint: '2606:4700:4700::1111'),
 
                 // ---- A2 Advanced ----
-                _section(_t('پیشرفته', 'Advanced')),
+                _section(_t('پیشرفته', 'Advanced'), icon: Icons.tune),
                 _numField('mtu', 'MTU', 'VPN MTU', min: 1280, max: 9000),
                 _sw('useHevTun', 'استفاده از Hev TUN', 'Use Hev TUN',
                     subFa: 'hev-socks5-tunnel به‌جای xray TUN',
@@ -208,7 +278,7 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                     'DNS hosts (domain:ip,...)'),
 
                 // ---- A3 Mux ----
-                _section(_t('Mux', 'Mux')),
+                _section(_t('Mux', 'Mux'), icon: Icons.layers),
                 _sw('muxEnable', 'فعال‌سازی Mux', 'Enable Mux'),
                 _numField('muxConcurrency', 'هم‌زمانی TCP', 'TCP concurrency',
                     min: 1, max: 1024),
@@ -219,7 +289,7 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                     ['reject', 'allow', 'skip']),
 
                 // ---- A4 Fragment ----
-                _section(_t('Fragment', 'Fragment')),
+                _section(_t('Fragment', 'Fragment'), icon: Icons.call_split),
                 _sw('fragmentEnable', 'فعال‌سازی Fragment', 'Enable Fragment'),
                 _textField('fragmentPackets', 'محدوده پکت', 'Packet ranges',
                     hint: 'tlshello یا 1-3'),
@@ -255,7 +325,7 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                     'Max failed attempts',
                     min: 1, max: 20),
 
-                _section(_t('سایر', 'Other')),
+                _section(_t('سایر', 'Other'), icon: Icons.more_horiz),
                 _dropdown('domainStrategy', 'استراتژی دامنه', 'Domain strategy',
                     ['AsIs', 'IPIfNonMatch', 'IPOnDemand']),
                 _dropdown('logLevel', 'سطح لاگ', 'Log level',

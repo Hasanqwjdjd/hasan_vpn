@@ -40,11 +40,12 @@ class TorScreen extends StatefulWidget {
 
 class _TorScreenState extends State<TorScreen> {
   static const List<Map<String, String>> _bridgeTypes = [
+    {'id': 'vanilla', 'fa': 'Tor ساده (بدون پل — سریع)', 'en': 'Vanilla (no bridge — fast)'},
     {'id': 'webtunnel', 'fa': 'WebTunnel (شبیه HTTPS — موبایل)', 'en': 'WebTunnel (HTTPS-like — mobile)'},
     {'id': 'snowflake', 'fa': 'Snowflake (P2P)', 'en': 'Snowflake (P2P)'},
     {'id': 'meek_lite', 'fa': 'Meek / Azure front', 'en': 'Meek / Azure front'},
     {'id': 'obfs4', 'fa': 'obfs4', 'en': 'obfs4'},
-    {'id': 'vanilla', 'fa': 'Tor ساده (بدون پل)', 'en': 'Vanilla (no bridge)'},
+    {'id': 'conjure', 'fa': 'Conjure (refraction)', 'en': 'Conjure (refraction)'},
     {'id': 'dnstt', 'fa': 'DNSTT', 'en': 'DNSTT'},
   ];
 
