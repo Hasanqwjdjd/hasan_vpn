@@ -254,13 +254,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 SwitchListTile(
-                  title: Text(_t('اتصال خودکار هنگام روشن شدن', 'Auto-connect on boot')),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    _t('اتصال خودکار هنگام روشن شدن',
+                        'Auto-connect on boot'),
+                    style: TextStyle(
+                        color: AppColors.fg(context), fontSize: 14),
+                  ),
                   subtitle: Text(
                     _t(
                       'بدون نیاز به تعامل کاربر پس از BOOT_COMPLETED',
                       'No user interaction required after BOOT_COMPLETED',
                     ),
-                    style: TextStyle(color: AppColors.muted(context), fontSize: 11),
+                    style: TextStyle(
+                        color: AppColors.muted2(context),
+                        fontSize: 11,
+                        height: 1.5),
                   ),
                   value: _autoConnectBoot,
                   activeColor: AppColors.accent,

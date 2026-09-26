@@ -2784,7 +2784,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          FloatingActionButton.small(
+          FloatingActionButton(
             heroTag: 'connect_fab',
             onPressed: _connecting ? null : _toggleConnection,
             backgroundColor: _connected
@@ -2792,10 +2792,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 : AppColors.elevated(context),
             child: _connecting
                 ? const SizedBox(
-                    width: 18,
-                    height: 18,
+                    width: 24,
+                    height: 24,
                     child: CircularProgressIndicator(
-                      strokeWidth: 2,
+                      strokeWidth: 2.5,
                       color: AppColors.accent,
                     ),
                   )
@@ -2803,7 +2803,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _connected ? Icons.shield : Icons.power_settings_new,
                     color:
                         _connected ? Colors.black : AppColors.accent,
-                    size: 20,
+                    size: 24,
                   ),
           ),
           const SizedBox(height: 10),
