@@ -28,6 +28,46 @@ class GeoAssetsService {
     },
   ];
 
+  /// منابع پیش‌فرض نام‌گذاری‌شده برای فایل‌های Geo.
+  static const List<Map<String, String>> sources = [
+    {
+      'id': 'chocolate4u-iran',
+      'name': 'Chocolate4U/Iran-v2ray-rules',
+      'geoip':
+          'https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geoip.dat',
+      'geosite':
+          'https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat',
+    },
+    {
+      'id': 'loyalsoldier',
+      'name': 'Loyalsoldier/v2ray-rules-dat',
+      'geoip':
+          'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat',
+      'geosite':
+          'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat',
+    },
+    {
+      'id': 'runetfreedom-russia',
+      'name': 'runetfreedom/russia-v2ray-rules-dat',
+      'geoip':
+          'https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat',
+      'geosite':
+          'https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat',
+    },
+  ];
+
+  /// دانلود فایل‌های geoip+geosite از یک source مشخص.
+  static Future<bool> downloadFromSource(String sourceId) async {
+    final src = sources.firstWhere(
+      (e) => e['id'] == sourceId,
+      orElse: () => const <String, String>{},
+    );
+    if (src.isEmpty) return false;
+    final geoipOk = await download('geoip.dat', src['geoip'] ?? '');
+    final geositeOk = await download('geosite.dat', src['geosite'] ?? '');
+    return geoipOk && geositeOk;
+  }
+
   static Future<Directory> _dir() async {
     final base = await getApplicationDocumentsDirectory();
     final d = Directory('${base.path}/assets');

@@ -12,6 +12,17 @@ class RoutingService {
 
   static List<Map<String, dynamic>> get defaultRules => [
         {
+          'id': 'block-udp443',
+          'enabled': false,
+          'outboundTag': 'block',
+          'domain': <String>[],
+          'ip': <String>[],
+          'port': '443',
+          'protocol': <String>[],
+          'network': 'udp',
+          'remark': 'Block UDP 443 (QUIC)',
+        },
+        {
           'id': 'proxy-google',
           'enabled': false,
           'outboundTag': 'proxy',
@@ -136,9 +147,11 @@ class RoutingService {
       final ips = (r['ip'] as List?)?.cast<String>() ?? [];
       final protocols = (r['protocol'] as List?)?.cast<String>() ?? [];
       final port = r['port']?.toString() ?? '';
+      final network = r['network']?.toString() ?? '';
       if (domains.isNotEmpty) rule['domain'] = domains;
       if (ips.isNotEmpty) rule['ip'] = ips;
       if (protocols.isNotEmpty) rule['protocol'] = protocols;
+      if (network.isNotEmpty) rule['network'] = network;
       if (port.isNotEmpty) rule['port'] = port;
       out.add(rule);
     }
