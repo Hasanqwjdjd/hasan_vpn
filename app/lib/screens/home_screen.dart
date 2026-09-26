@@ -1019,16 +1019,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // ------------------------------------------------------------- list
 
+  static const String _builtinAetherId = 'builtin_aether';
+  static const String _builtinPsiphonId = 'builtin_psiphon';
+
+  /// دو سرور پیشنهادی که همیشه بالای لیست هستند و پاک نمی‌شوند.
+  List<VpnServer> _builtinPresets() {
+    return <VpnServer>[
+      VpnServer(
+        id: _builtinAetherId,
+        name: 'Aether (WARP)',
+        flag: '🟣',
+        shareLink: 'aether://auto',
+        protocol: VpnProtocol.aether,
+        host: 'auto-discover',
+        port: 0,
+        isDeletable: false,
+      ),
+      VpnServer(
+        id: _builtinPsiphonId,
+        name: 'Psiphon (Auto)',
+        flag: '💧',
+        shareLink: 'psiphon://auto',
+        protocol: VpnProtocol.psiphon,
+        host: 'auto-discover',
+        port: 0,
+        isDeletable: false,
+      ),
+    ];
+  }
+
   void _rebuildServerList() {
     if (!mounted) return;
 
     final allServers = <VpnServer>[
+      ..._builtinPresets().where((server) => !_deletedIds.contains(server.id)),
       ..._customServers.where((server) => !_deletedIds.contains(server.id)),
       ...widget.extraServers.where((server) => !_deletedIds.contains(server.id)),
     ];
 
     for (final server in allServers) {
-      server.isPinned = _pinnedIds.contains(server.id);
+      if (server.id == _builtinAetherId || server.id == _builtinPsiphonId) {
+        server.isPinned = true;
+      } else {
+        server.isPinned = _pinnedIds.contains(server.id);
+      }
     }
 
     var list = allServers;
