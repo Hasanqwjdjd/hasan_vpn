@@ -17,6 +17,8 @@ import '../services/tor_session_service.dart';
 import '../services/telegram_source_service.dart';
 import '../services/tunnel_session_service.dart';
 import '../models/tunnel_profile.dart';
+import '../models/ssh_profile.dart';
+import '../services/ssh_session_service.dart';
 import '../services/geo_assets_service.dart';
 import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
@@ -191,6 +193,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     TorSessionService.instance.routingCount.addListener(_onTorRoutingChanged);
     TunnelSessionService.instance.routingCount
         .addListener(_onTunnelRoutingChanged);
+    SshSessionService.instance.routingCount
+        .addListener(_onSshRoutingChanged);
 
     await _loadDeletedAndPinned();
     await _loadUiSettings();
@@ -1371,6 +1375,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {});
   }
 
+  void _onSshRoutingChanged() {
+    if (!mounted) return;
+    if (SshSessionService.instance.anyRouting && _connected) {
+      setState(() {
+        _connected = false;
+        _active = null;
+        _status = _t('اتصال از طریق SSH', 'Routing via SSH');
+      });
+    }
+  }
+
   void _onTunnelRoutingChanged() {
     if (!mounted) return;
     if (TunnelSessionService.instance.anyRouting && _connected) {
@@ -1936,6 +1951,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (TunnelSessionService.instance.anyRouting) {
       try {
         await TunnelSessionService.instance.disconnect();
+      } catch (_) {}
+    }
+    if (SshSessionService.instance.anyRouting) {
+      try {
+        await SshSessionService.instance.disconnect();
       } catch (_) {}
     }
     setState(() {
@@ -2591,6 +2611,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           await _handleWidgetServerSelection(server);
           return;
         }
+        // SSH: routing از SshSessionService انجام می‌شود
+        if (server.protocol == VpnProtocol.ssh) {
+          final n = SshSessionService.instance.notifierFor(server.id);
+          final isOn = n.value.routingThroughVpn || n.value.running;
+          if (isOn) {
+            await SshSessionService.instance.disconnect();
+            return;
+          }
+          if (_connected) {
+            try {
+              await _disconnectAll();
+            } catch (_) {}
+            _markDisconnected(_t('آماده', 'Ready'));
+          }
+          if (TorSessionService.instance.anyRouting) {
+            try {
+              await TorSessionService.instance.disconnect();
+            } catch (_) {}
+          }
+          if (TunnelSessionService.instance.anyRouting) {
+            try {
+              await TunnelSessionService.instance.disconnect();
+            } catch (_) {}
+          }
+          final prof = SshProfile.fromLink(server.shareLink);
+          setState(() {
+            _selected = server;
+            _status = _t('اتصال SSH...', 'Connecting SSH...');
+          });
+          await SshSessionService.instance.connect(server.id, prof);
+          return;
+        }
         // تونل DNS: routing از TunnelSessionService انجام می‌شود
         if (server.protocol == VpnProtocol.tunnel) {
           final n = TunnelSessionService.instance.notifierFor(server.id);
@@ -3052,6 +3104,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       TunnelSessionService.instance.routingCount
           .removeListener(_onTunnelRoutingChanged);
+    } catch (_) {}
+    try {
+      SshSessionService.instance.routingCount
+          .removeListener(_onSshRoutingChanged);
     } catch (_) {}
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();

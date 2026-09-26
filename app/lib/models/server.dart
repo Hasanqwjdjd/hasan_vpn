@@ -12,6 +12,8 @@ enum VpnProtocol {
   psiphon,
   /// تونل DNS (DNSTT / NoizDNS / VayDNS) — باینری native + SOCKS محلی
   tunnel,
+  /// SSH tunnel — dartssh2 + forwardLocal به SOCKS5 روی سرور SSH
+  ssh,
 }
 
 /// idle: تست نشده | testing: در حال تست | online: سالم | offline: از کار افتاده

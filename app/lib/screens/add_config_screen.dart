@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/aether_profile.dart';
 import '../models/tunnel_profile.dart';
+import '../models/ssh_profile.dart';
 import '../models/server.dart';
 import '../services/aether_service.dart';
 import '../services/app_colors.dart';
@@ -51,6 +52,18 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   // Tunnel DNS (DNSTT/NoizDNS/VayDNS/Slipstream)
   String _tunnelKind = 'dnstt';
   String _tunnelTransport = 'udp'; // udp | dot | doh
+
+  // SSH
+  final TextEditingController _sshHostController = TextEditingController();
+  final TextEditingController _sshPortController =
+      TextEditingController(text: '22');
+  final TextEditingController _sshUserController = TextEditingController();
+  final TextEditingController _sshPassController = TextEditingController();
+  final TextEditingController _sshKeyController = TextEditingController();
+  final TextEditingController _sshKeyPassController = TextEditingController();
+  final TextEditingController _sshSocksPortController =
+      TextEditingController(text: '1080');
+  bool _sshUseKey = false;
   final TextEditingController _tunnelDomainController = TextEditingController();
   final TextEditingController _tunnelPubkeyController = TextEditingController();
   final TextEditingController _tunnelResolverController =
@@ -1310,6 +1323,190 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
+  // ------------------------------------------------------------ SSH
+
+  void _addSshServer() {
+    final host = _sshHostController.text.trim();
+    final user = _sshUserController.text.trim();
+    if (host.isEmpty || user.isEmpty) {
+      _showMsg(_t('هاست و نام کاربری الزامی است',
+          'Host and username are required'));
+      return;
+    }
+    final hasKey = _sshUseKey && _sshKeyController.text.trim().isNotEmpty;
+    final hasPass = !_sshUseKey && _sshPassController.text.isNotEmpty;
+    if (!hasKey && !hasPass) {
+      _showMsg(_t('رمز یا کلید خصوصی لازم است',
+          'Password or private key required'));
+      return;
+    }
+    final profile = SshProfile(
+      host: host,
+      port: int.tryParse(_sshPortController.text.trim()) ?? 22,
+      username: user,
+      password: hasPass ? _sshPassController.text : '',
+      privateKey: hasKey ? _sshKeyController.text.trim() : '',
+      passphrase: _sshKeyPassController.text,
+      remoteSocksPort:
+          int.tryParse(_sshSocksPortController.text.trim()) ?? 1080,
+      name: _nameController.text.trim(),
+    );
+    final name = _nameController.text.trim().isNotEmpty
+        ? _nameController.text.trim()
+        : profile.summary;
+    final server = VpnServer(
+      id: 'ssh_${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      flag: '🖥️',
+      shareLink: profile.toLink(),
+      protocol: VpnProtocol.ssh,
+      host: host,
+      port: profile.port,
+      isDeletable: true,
+    );
+    widget.onServerAdded(server);
+    Navigator.pop(context);
+    _showMsg(_t('سرور SSH اضافه شد', 'SSH server added'));
+  }
+
+  Widget _buildSshForm() {
+    const color = Color(0xFF66BB6A);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.terminal, color: color, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _t(
+                    'به سرور SSH وصل می‌شود و ترافیک را از SOCKS5 روی همان سرور رد می‌کند. روی سرور باید SOCKS5 فعال باشد (مثلاً microsocks روی 127.0.0.1:1080).',
+                    'Connects to an SSH server and routes traffic through a SOCKS5 on that server (e.g. microsocks on 127.0.0.1:1080).',
+                  ),
+                  style: TextStyle(
+                    color: AppColors.muted(context),
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: _tunnelField(
+                controller: _sshHostController,
+                label: _t('هاست', 'Host'),
+                hint: 'ssh.example.com',
+                color: color,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _tunnelField(
+                controller: _sshPortController,
+                label: _t('پورت', 'Port'),
+                hint: '22',
+                color: color,
+                keyboard: TextInputType.number,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _sshUserController,
+          label: _t('نام کاربری', 'Username'),
+          hint: 'root',
+          color: color,
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.surface(context),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border(context)),
+          ),
+          child: SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            activeColor: color,
+            title: Text(
+              _t('استفاده از کلید خصوصی', 'Use private key'),
+              style: TextStyle(
+                  color: AppColors.fg(context), fontSize: 13),
+            ),
+            value: _sshUseKey,
+            onChanged: (v) => setState(() => _sshUseKey = v),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (_sshUseKey) ...[
+          _tunnelField(
+            controller: _sshKeyController,
+            label: _t('کلید خصوصی (PEM)', 'Private key (PEM)'),
+            hint: '-----BEGIN OPENSSH PRIVATE KEY-----',
+            color: color,
+          ),
+          const SizedBox(height: 12),
+          _tunnelField(
+            controller: _sshKeyPassController,
+            label: _t('رمز کلید (اختیاری)', 'Key passphrase (optional)'),
+            hint: '',
+            color: color,
+          ),
+        ] else
+          _tunnelField(
+            controller: _sshPassController,
+            label: _t('رمز عبور', 'Password'),
+            hint: '',
+            color: color,
+          ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _sshSocksPortController,
+          label: _t('پورت SOCKS5 روی سرور', 'Remote SOCKS5 port'),
+          hint: '1080',
+          color: color,
+          keyboard: TextInputType.number,
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton(
+            onPressed: _addSshServer,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: Text(
+              _t('افزودن SSH', 'Add SSH'),
+              style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   // ------------------------------------------------------------ Tunnel DNS
 
   void _addTunnelServer() {
@@ -2277,6 +2474,16 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: const Color(0xFFEF5350),
             ),
             _buildTypeCard(
+              title: 'SSH',
+              subtitle: _t(
+                'اتصال به سرور SSH + SOCKS5 روی سرور',
+                'Connect to SSH server + remote SOCKS5',
+              ),
+              icon: Icons.terminal,
+              type: 'ssh',
+              color: const Color(0xFF66BB6A),
+            ),
+            _buildTypeCard(
               title: _t('تونل DNS', 'DNS Tunnel'),
               subtitle: _t(
                 'DNSTT / Slipstream — عبور ترافیک از روی DNS',
@@ -2512,6 +2719,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               _buildTorForm(),
             ] else if (_selectedType == 'tunnel') ...[
               _buildTunnelForm(),
+            ] else if (_selectedType == 'ssh') ...[
+              _buildSshForm(),
             ],
           ],
         ),
@@ -2546,6 +2755,13 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _tunnelPubkeyController.dispose();
     _tunnelResolverController.dispose();
     _tunnelListenPortController.dispose();
+    _sshHostController.dispose();
+    _sshPortController.dispose();
+    _sshUserController.dispose();
+    _sshPassController.dispose();
+    _sshKeyController.dispose();
+    _sshKeyPassController.dispose();
+    _sshSocksPortController.dispose();
     super.dispose();
   }
 }
