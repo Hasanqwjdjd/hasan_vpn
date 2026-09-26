@@ -13,6 +13,7 @@ import '../services/aether_service.dart';
 import '../services/announcement_service.dart';
 import '../services/app_colors.dart';
 import '../services/server_tester.dart';
+import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
 import '../services/exit_ip_service.dart';
 import '../services/psiphon_service.dart';
@@ -21,7 +22,7 @@ import '../services/home_widget_service.dart';
 import '../services/widget_connect_handler.dart';
 import '../widgets/server_tile.dart';
 import 'add_config_screen.dart';
-import 'announcements_screen.dart';
+
 import 'tor_screen.dart';
 import 'qr_share_screen.dart';
 import '../widgets/traffic_sparkline.dart';
@@ -81,6 +82,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Map<String, String> _customSubTags = <String, String>{};
   Set<String> _deletedIds = <String>{};
   Set<String> _pinnedIds = <String>{};
+  bool _showAllTab = true;
+  bool _twoColumnGrid = false;
   List<String> _manualOrder = <String>[];
 
   String? _selectedSubId;
@@ -165,6 +168,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _bootstrap() async {
     await _loadDeletedAndPinned();
+    await _loadUiSettings();
     await _loadCustomServers();
     await _loadCustomSubTags();
     await _loadServerNameOverrides();
@@ -1300,7 +1304,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {});
   }
 
-  void _deleteServer(VpnServer server) {
+  Future<void> _deleteServer(VpnServer server) async {
+    final s = await XraySettings.load();
+    if (s['confirmDelete'] != false) {
+      if (!mounted) return;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface(ctx),
+          title: Text(_t('حذف سرور؟', 'Delete server?'),
+              style: TextStyle(color: AppColors.fg(ctx))),
+          content: Text(server.displayName,
+              style: TextStyle(color: AppColors.fg(ctx), fontSize: 13)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(_t('انصراف', 'Cancel')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(_t('حذف', 'Delete'),
+                  style: const TextStyle(color: Colors.redAccent)),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
     _deletedIds.add(server.id);
     _customServers.removeWhere((item) => item.id == server.id);
     _customSubTags.remove(server.id);
@@ -1734,11 +1764,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _buildSubTabs() {
     if (widget.subscriptions.isEmpty) return const SizedBox.shrink();
 
-    final tabs = <Widget>[
-      _subTab(null, _t('همه', 'All')),
-      for (final sub in widget.subscriptions)
-        _subTab(sub.id, sub.name, sub.serverCount),
-    ];
+    final tabs = <Widget>[];
+    final showAll = _showAllTab;
+    if (showAll) tabs.add(_subTab(null, _t('همه', 'All')));
+    for (final sub in widget.subscriptions) {
+      tabs.add(_subTab(sub.id, sub.name, sub.serverCount));
+    }
 
     return SizedBox(
       height: 40,
