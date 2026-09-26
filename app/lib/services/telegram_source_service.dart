@@ -1,10 +1,13 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import 'link_parser.dart';
+import 'tor_service.dart';
+import 'v2ray_engine.dart';
 
 /// سرویس fetch کانفیگ‌های رایگان از کانال‌های تلگرام
 /// از طریق preview عمومی (https://t.me/s/<channel>) بدون API key.
@@ -69,6 +72,56 @@ class TelegramSourceService {
     await prefs.setStringList(channelsKey, user);
   }
 
+  static const MethodChannel _native =
+      MethodChannel('com.hasan.hasan_vpn/device');
+
+  static Future<String?> _nativeFetch(String url, int socksPort) async {
+    try {
+      return await _native.invokeMethod<String>('fetchViaSocks', {
+        'url': url,
+        'port': socksPort,
+      });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// پورت SOCKS فعال (9050=Tor، 10808=Xray) یا 0.
+  static Future<int> _detectSocksPort() async {
+    try {
+      final st = await TorService.status();
+      if (st['running'] == true) {
+        final p = (st['socksPort'] as num?)?.toInt() ?? 9050;
+        if (p > 0) return p;
+      }
+    } catch (_) {}
+    try {
+      if (V2RayEngine.isConnected) return 10808;
+    } catch (_) {}
+    return 0;
+  }
+
+  /// اگه هیچ مسیر فعالی نبود، Tor ساده رو خودکار بالا بیار.
+  static Future<int> _ensureSocks() async {
+    var port = await _detectSocksPort();
+    if (port > 0) return port;
+    try {
+      final r = await TorService.start(bridgeType: 'vanilla');
+      if (r['ok'] != true) return 0;
+      final deadline = DateTime.now().add(const Duration(seconds: 90));
+      while (DateTime.now().isBefore(deadline)) {
+        await Future.delayed(const Duration(milliseconds: 900));
+        final st = await TorService.status();
+        final pct = (st['bootstrapPercent'] as num?)?.toInt() ?? 0;
+        if (pct >= 100) {
+          return (st['socksPort'] as num?)?.toInt() ?? 9050;
+        }
+        if (st['running'] != true) return 0;
+      }
+    } catch (_) {}
+    return 0;
+  }
+
   static String _clean(String raw) {
     var s = raw.trim();
     if (s.startsWith('https://t.me/')) {
@@ -126,15 +179,23 @@ class TelegramSourceService {
     int done = 0;
     final total = channels.length;
 
+    // پیدا کردن مسیر SOCKS فعال. اگه هیچ VPN/Tor فعال نبود،
+    // خودکار Tor ساده رو بالا میاریم (تا fetch از تونل رد شه).
+    int socksPort = await _detectSocksPort();
+    if (socksPort == 0) {
+      onProgress?.call(0, total);
+      socksPort = await _ensureSocks();
+    }
+
     for (final ch in channels) {
       try {
-        final links = await _fetchOne(ch);
+        final links = await _fetchOne(ch, socksPort);
         if (links.isNotEmpty) perChannel[ch] = links;
       } catch (_) {}
       done++;
       onProgress?.call(done, total);
       // rate-limit بین کانال‌ها
-      await Future.delayed(const Duration(milliseconds: 400));
+      await Future.delayed(const Duration(milliseconds: 300));
     }
 
     // round-robin انتخاب بین کانال‌ها
@@ -174,15 +235,38 @@ class TelegramSourceService {
   static const String _ua =
       'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120 Mobile';
 
-  /// fetch یه کانال با ۳ مسیر fallback:
-  ///   1) t.me مستقیم
-  ///   2) r.jina.ai (reader عمومی)
-  ///   3) api.allorigins.win (CORS proxy)
-  static Future<List<String>> _fetchOne(String channel) async {
+  /// fetch یه کانال با ۴ مسیر fallback:
+  ///   1) از طریق SOCKS محلی (Tor 9050 یا Xray 10808) — مطمئن‌ترین
+  ///   2) t.me مستقیم (کار می‌کنه اگه VPN فعال باشه)
+  ///   3) r.jina.ai (reader عمومی)
+  ///   4) api.allorigins.win (CORS proxy)
+  static Future<List<String>> _fetchOne(String channel, int socksPort) async {
+    final url = 'https://t.me/s/$channel';
+
+    // 1) SOCKS محلی
+    if (socksPort > 0) {
+      final html = await _nativeFetch(url, socksPort);
+      if (html != null) {
+        final l = _extractLinks(html);
+        if (l.isNotEmpty) return l;
+      }
+    }
+
+    // 2) direct
+    try {
+      final r = await http.get(Uri.parse(url),
+          headers: {'User-Agent': _ua}).timeout(
+          const Duration(seconds: 15));
+      if (r.statusCode == 200) {
+        final l = _extractLinks(r.body);
+        if (l.isNotEmpty) return l;
+      }
+    } catch (_) {}
+
+    // 3+4) public proxies
     final paths = <String>[
-      'https://t.me/s/$channel',
-      'https://r.jina.ai/https://t.me/s/$channel',
-      'https://api.allorigins.win/raw?url=${Uri.encodeComponent('https://t.me/s/$channel')}',
+      'https://r.jina.ai/$url',
+      'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}',
     ];
     for (final p in paths) {
       try {
@@ -190,8 +274,8 @@ class TelegramSourceService {
             headers: {'User-Agent': _ua}).timeout(
             const Duration(seconds: 25));
         if (r.statusCode != 200) continue;
-        final links = _extractLinks(r.body);
-        if (links.isNotEmpty) return links;
+        final l = _extractLinks(r.body);
+        if (l.isNotEmpty) return l;
       } catch (_) {}
     }
     return [];

@@ -144,6 +144,54 @@ class MainActivity : FlutterActivity() {
                             }
                         }.start()
                     }
+                    // Fetch یه URL از طریق SOCKS محلی (Tor 9050 یا Xray 10808).
+                    // برای مواقعی که تلگرام در ایران فیلتره و http مستقیم
+                    // Dart کار نمی‌کنه — این مسیر از داخل تونل رد می‌شه.
+                    "fetchViaSocks" -> {
+                        val urlStr = call.argument<String>("url")
+                        val port = call.argument<Int>("port") ?: 9050
+                        if (urlStr.isNullOrBlank()) {
+                            result.error("fetchViaSocks", "missing url", null)
+                        } else {
+                            Thread {
+                                try {
+                                    val proxy = java.net.Proxy(
+                                        java.net.Proxy.Type.SOCKS,
+                                        java.net.InetSocketAddress("127.0.0.1", port),
+                                    )
+                                    val conn = java.net.URL(urlStr)
+                                        .openConnection(proxy) as java.net.HttpURLConnection
+                                    conn.connectTimeout = 20000
+                                    conn.readTimeout = 30000
+                                    conn.instanceFollowRedirects = true
+                                    conn.setRequestProperty(
+                                        "User-Agent",
+                                        "Mozilla/5.0 (Linux; Android 12) " +
+                                            "AppleWebKit/537.36 Chrome/120 Mobile",
+                                    )
+                                    conn.requestMethod = "GET"
+                                    val code = conn.responseCode
+                                    if (code in 200..299) {
+                                        val body = conn.inputStream
+                                            .bufferedReader().use { it.readText() }
+                                        runOnUiThread { result.success(body) }
+                                    } else {
+                                        runOnUiThread {
+                                            result.error("fetchViaSocks", "HTTP $code", null)
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    runOnUiThread {
+                                        result.error(
+                                            "fetchViaSocks",
+                                            e.message ?: "err",
+                                            null,
+                                        )
+                                    }
+                                }
+                            }.start()
+                        }
+                    }
                     // BLOCKER 2 — MTU / IPv6 / DNS for VpnService.Builder
                     "setVpnTunParams" -> {
                         val mtu = call.argument<Int>("mtu")
