@@ -190,19 +190,38 @@ jobs:
           # never picks up host x86_64 brotli/openssl .pc files.
           PKG_CONFIG_LIBDIR: /tmp/openssl-out/lib/pkgconfig
           PKG_CONFIG_ALLOW_CROSS: "1"
-          # --- Force cc-rs / bindgen to use the NDK aarch64 toolchain. ---
-          # slipstream-ffi's build.rs compiles .c files with the `cc` crate;
-          # we must set every variant it may look up. Dash + underscore, plus
-          # TARGET_CC/AR fallbacks, plus the TARGET_* prefixed versions.
+          # --- Force cc-rs / bindgen / pkg-config to use NDK aarch64. ---
+          # We hit an "incompatible with aarch64linux" link error because
+          # slipstream-ffi's build.rs compiled some C sources with the HOST
+          # compiler. cc-rs reads env vars in multiple spellings; set them all.
+          NDK_BIN: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin
+          NDK_SYSROOT: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+          # TARGET_* (cc-rs fallback when <target>_CC missing)
           TARGET_CC: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
-          TARGET_AR: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
           TARGET_CXX: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang++
+          TARGET_AR: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+          # cc-rs canonical: CC_<target-uppercase-underscored>
+          CC_AARCH64_LINUX_ANDROID: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
+          CXX_AARCH64_LINUX_ANDROID: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang++
+          AR_AARCH64_LINUX_ANDROID: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+          CFLAGS_AARCH64_LINUX_ANDROID: ""
+          CXXFLAGS_AARCH64_LINUX_ANDROID: ""
+          # lowercase with dash
           CC_aarch64-linux-android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
-          AR_aarch64-linux-android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
           CXX_aarch64-linux-android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang++
+          AR_aarch64-linux-android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+          # lowercase with underscore
           CC_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
-          AR_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
           CXX_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang++
+          AR_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+          # bindgen needs the sysroot for the target too
+          BINDGEN_EXTRA_CLANG_ARGS_AARCH64_LINUX_ANDROID: --sysroot=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+          BINDGEN_EXTRA_CLANG_ARGS_aarch64-linux-android: --sysroot=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+          BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android: --sysroot=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+          BINDGEN_EXTRA_CLANG_ARGS: --sysroot=${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+          # SlipNet/slipstream-ffi build script fallbacks (see rerun-if-changed)
+          RUST_ANDROID_GRADLE_CC: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
+          RUST_ANDROID_GRADLE_AR: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
           CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
           CARGO_TARGET_AARCH64_LINUX_ANDROID_AR: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
         run: |
@@ -218,6 +237,10 @@ jobs:
           # via the host toolchain when cached).
           cargo clean || true
           rm -rf .picoquic-build
+          # Diagnostic: print CC env vars so we can see what cc-rs picks up
+          echo "===== ENV DUMP ====="
+          env | grep -iE "^(CC|CXX|AR|TARGET_CC|CFLAGS|RUST_ANDROID)" | sort
+          echo "===== cargo ndk build ====="
           cargo ndk -t arm64-v8a -o ../out/jniLibs build --release -p slipstream-client
 
       - name: Rename to lib*.so (Android requirement)
