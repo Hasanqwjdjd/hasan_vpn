@@ -9,6 +9,9 @@ class Subscription {
   int serverCount;
   List<String> cachedLinks;
 
+  /// User-Agent سفارشی برای fetch. خالی = UA پیش‌فرض مرورگر.
+  String customUserAgent;
+
   /// آخرین خطای دریافت (اگر آخرین تلاش شکست خورد). روی دیسک ذخیره نمی‌شود؛
   /// فقط برای نمایش نوار خطا در همین اجرای برنامه است.
   String? lastError;
@@ -24,6 +27,7 @@ class Subscription {
     this.lastUpdated,
     this.serverCount = 0,
     List<String>? cachedLinks,
+    this.customUserAgent = '',
     this.lastError,
     this.lastErrorCode,
   }) : cachedLinks = cachedLinks ?? [];
@@ -38,6 +42,7 @@ class Subscription {
         'lastUpdated': lastUpdated?.toIso8601String(),
         'serverCount': serverCount,
         'cachedLinks': cachedLinks,
+        if (customUserAgent.isNotEmpty) 'customUserAgent': customUserAgent,
       };
 
   factory Subscription.fromJson(Map<String, dynamic> json) => Subscription(
@@ -54,6 +59,7 @@ class Subscription {
         cachedLinks: (json['cachedLinks'] as List?)
             ?.map((e) => e.toString())
             .toList(),
+        customUserAgent: json['customUserAgent'] as String? ?? '',
       );
 
   bool needsUpdate() {

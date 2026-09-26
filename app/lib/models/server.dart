@@ -16,6 +16,8 @@ enum VpnProtocol {
   ssh,
   /// پروکسی SOCKS5 از راه دور (بدون رمزنگاری اضافی)
   socks5,
+  /// زنجیره دو سرور (multi-hop) — link با فرمت chain://
+  chain,
 }
 
 /// idle: تست نشده | testing: در حال تست | online: سالم | offline: از کار افتاده

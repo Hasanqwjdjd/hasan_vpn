@@ -265,11 +265,14 @@ class SubscriptionService {
   static Future<List<VpnServer>> _fetchOnce(Subscription subscription) async {
     final http.Response response;
     try {
+      final ua = subscription.customUserAgent.trim().isNotEmpty
+          ? subscription.customUserAgent.trim()
+          : _browserUserAgent;
       response = await http
           .get(
             Uri.parse(urlFor(subscription)),
-            headers: const {
-              'User-Agent': _browserUserAgent,
+            headers: <String, String>{
+              'User-Agent': ua,
               'Accept': '*/*',
               'Accept-Language': 'en-US,en;q=0.9,fa;q=0.8',
               'Accept-Encoding': 'gzip, deflate',

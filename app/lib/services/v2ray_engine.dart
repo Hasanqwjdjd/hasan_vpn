@@ -422,6 +422,12 @@ class V2RayEngine {
           return false;
         }
         config = _ensureLocalInbound(raw);
+      } else if (server.protocol == VpnProtocol.chain) {
+        config = _buildChainConfig(server);
+        if (config.isEmpty) {
+          lastError = 'invalid chain config';
+          return false;
+        }
       } else if (server.protocol == VpnProtocol.socks5) {
         config = _buildSocks5Config(server);
         if (config.isEmpty) {
@@ -486,6 +492,80 @@ class V2RayEngine {
   /// ساخت Xray config برای یه پروکسی SOCKS5 از راه دور.
   /// از shareLink فرمت `socks5://config?host=...&port=...&user=...&pass=...`
   /// یا فرمت استاندارد `socks5://user:pass@host:port` پشتیبانی می‌کند.
+  /// ساخت Xray config برای زنجیره دو سرور (multi-hop).
+  ///
+  /// ساختار:
+  ///   inbounds: socks-in
+  ///   outbounds:
+  ///     - proxy (server2) با dialerProxy=relay
+  ///     - relay (server1)
+  ///     - direct, block
+  static String _buildChainConfig(VpnServer server) {
+    try {
+      final link = server.shareLink;
+      if (!link.startsWith('chain://')) return '';
+      final q = Uri.parse(link).queryParameters;
+      final first = q['first'] ?? '';
+      final second = q['second'] ?? '';
+      if (first.isEmpty || second.isEmpty) return '';
+
+      final p1 = FlutterVless.parse(first);
+      final p2 = FlutterVless.parse(second);
+      final cfg1 = jsonDecode(p1.getFullConfiguration());
+      final cfg2 = jsonDecode(p2.getFullConfiguration());
+      if (cfg1 is! Map || cfg2 is! Map) return '';
+
+      final ob1 = ((cfg1['outbounds'] as List?)?.first ?? {}) as Map;
+      final ob2 = ((cfg2['outbounds'] as List?)?.first ?? {}) as Map;
+
+      final relay = Map<String, dynamic>.from(ob1);
+      relay['tag'] = 'relay';
+      final proxy = Map<String, dynamic>.from(ob2);
+      proxy['tag'] = 'proxy';
+
+      final stream = Map<String, dynamic>.from(
+          proxy['streamSettings'] as Map? ?? {});
+      final sockopt = Map<String, dynamic>.from(
+          stream['sockopt'] as Map? ?? {});
+      sockopt['dialerProxy'] = 'relay';
+      stream['sockopt'] = sockopt;
+      proxy['streamSettings'] = stream;
+
+      final cfg = <String, dynamic>{
+        'log': {'loglevel': 'warning'},
+        'inbounds': [
+          {
+            'tag': 'socks-in',
+            'port': 10808,
+            'listen': '127.0.0.1',
+            'protocol': 'socks',
+            'settings': {'auth': 'noauth', 'udp': true},
+            'sniffing': {
+              'enabled': true,
+              'destOverride': ['http', 'tls', 'quic'],
+            },
+          },
+        ],
+        'outbounds': [
+          proxy,
+          relay,
+          {'tag': 'direct', 'protocol': 'freedom'},
+          {
+            'tag': 'block',
+            'protocol': 'blackhole',
+            'settings': {
+              'response': {'type': 'http'},
+            },
+          },
+        ],
+      };
+      return jsonEncode(cfg);
+    } catch (e) {
+      debugPrint('buildChainConfig error: $e');
+      return '';
+    }
+  }
+
   static String _buildSocks5Config(VpnServer server) {
     try {
       String host = server.host;

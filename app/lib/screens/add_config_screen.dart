@@ -4,6 +4,7 @@ import '../models/aether_profile.dart';
 import '../models/tunnel_profile.dart';
 import '../models/ssh_profile.dart';
 import '../models/socks5_profile.dart';
+import '../models/chain_profile.dart';
 import '../models/server.dart';
 import '../services/aether_service.dart';
 import '../services/app_colors.dart';
@@ -72,6 +73,10 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       TextEditingController(text: '1080');
   final TextEditingController _socks5UserController = TextEditingController();
   final TextEditingController _socks5PassController = TextEditingController();
+
+  // Chain (multi-hop)
+  final TextEditingController _chainFirstController = TextEditingController();
+  final TextEditingController _chainSecondController = TextEditingController();
   final TextEditingController _tunnelDomainController = TextEditingController();
   final TextEditingController _tunnelPubkeyController = TextEditingController();
   final TextEditingController _tunnelResolverController =
@@ -1324,6 +1329,117 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   ? _t('افزودن سایفون خودکار', 'Add automatic Psiphon')
                   : _t('افزودن سایفون دستی', 'Add manual Psiphon'),
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ------------------------------------------------------------ Chain
+
+  void _addChainServer() {
+    final first = _chainFirstController.text.trim();
+    final second = _chainSecondController.text.trim();
+    if (first.isEmpty || second.isEmpty) {
+      _showMsg(_t('هر دو لینک الزامی است', 'Both links are required'));
+      return;
+    }
+    const validPrefixes = ['vless://', 'vmess://', 'trojan://'];
+    final okF = validPrefixes.any(first.startsWith);
+    final okS = validPrefixes.any(second.startsWith);
+    if (!okF || !okS) {
+      _showMsg(_t('لینک‌ها باید vless/vmess/trojan باشند',
+          'Links must be vless/vmess/trojan'));
+      return;
+    }
+    final profile = ChainProfile(
+      firstLink: first,
+      secondLink: second,
+      name: _nameController.text.trim(),
+    );
+    final name = _nameController.text.trim().isNotEmpty
+        ? _nameController.text.trim()
+        : 'Chain';
+    final server = VpnServer(
+      id: 'chain_${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      flag: '🔗',
+      shareLink: profile.toLink(),
+      protocol: VpnProtocol.chain,
+      host: 'chain',
+      port: 0,
+      isDeletable: true,
+    );
+    widget.onServerAdded(server);
+    Navigator.pop(context);
+    _showMsg(_t('زنجیره اضافه شد', 'Chain added'));
+  }
+
+  Widget _buildChainForm() {
+    const color = Color(0xFF00ACC1);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.link, color: color, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _t(
+                    'ترافیک اول از سرور relay (اول) می‌رود و بعد از سرور proxy (دوم) به اینترنت می‌رسد. هر دو باید vless/vmess/trojan باشند.',
+                    'Traffic goes through relay (first) then proxy (second) to the internet. Both must be vless/vmess/trojan.',
+                  ),
+                  style: TextStyle(
+                    color: AppColors.muted(context),
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _tunnelField(
+          controller: _chainFirstController,
+          label: _t('لینک سرور اول (relay)', 'First link (relay)'),
+          hint: 'vless://...',
+          color: color,
+        ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _chainSecondController,
+          label: _t('لینک سرور دوم (proxy)', 'Second link (proxy)'),
+          hint: 'vless://...',
+          color: color,
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton(
+            onPressed: _addChainServer,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: Text(
+              _t('افزودن زنجیره', 'Add chain'),
+              style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
         ),
@@ -2611,6 +2727,16 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: const Color(0xFFEF5350),
             ),
             _buildTypeCard(
+              title: 'Chain (2-hop)',
+              subtitle: _t(
+                'زنجیره دو سرور — اول relay، بعد proxy',
+                'Chain two servers — relay then proxy',
+              ),
+              icon: Icons.link,
+              type: 'chain',
+              color: const Color(0xFF00ACC1),
+            ),
+            _buildTypeCard(
               title: 'SOCKS5',
               subtitle: _t(
                 'پروکسی SOCKS5 از راه دور',
@@ -2860,6 +2986,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               _buildSshForm(),
             ] else if (_selectedType == 'socks5') ...[
               _buildSocks5Form(),
+            ] else if (_selectedType == 'chain') ...[
+              _buildChainForm(),
             ],
           ],
         ),
@@ -2905,6 +3033,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _socks5PortController.dispose();
     _socks5UserController.dispose();
     _socks5PassController.dispose();
+    _chainFirstController.dispose();
+    _chainSecondController.dispose();
     super.dispose();
   }
 }

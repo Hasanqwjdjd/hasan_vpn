@@ -7,6 +7,7 @@ import 'dart:convert';
 import '../services/app_colors.dart';
 import '../services/settings_service.dart';
 import 'security_test_screen.dart';
+import 'backup_screen.dart';
 import '../services/telegram_source_service.dart';
 import '../services/update_service.dart';
 import 'announcements_screen.dart';
@@ -840,6 +841,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
+
+          // ------- پشتیبان‌گیری -------
+          _sectionTitle(_t('پشتیبان‌گیری', 'Backup')),
+          _card(
+            context,
+            InkWell(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BackupScreen(language: _lang),
+                  ),
+                );
+              },
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.backup_outlined,
+                    color: AppColors.accent),
+                title: Text(
+                  _t('خروجی/بازیابی تنظیمات',
+                      'Export/Restore settings'),
+                  style: TextStyle(color: AppColors.fg(context)),
+                ),
+                subtitle: Text(
+                  _t(
+                    'همه‌ی داده‌ها را در یک فایل JSON ذخیره کن یا برگردان',
+                    'Save all data in one JSON file or restore it',
+                  ),
+                  style: TextStyle(
+                      color: AppColors.muted2(context), fontSize: 11),
+                ),
+                trailing: Icon(Icons.chevron_left,
+                    color: AppColors.muted(context)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
 
           // ------- بروزرسانی -------
           _sectionTitle(_t('بروزرسانی', 'Update')),
