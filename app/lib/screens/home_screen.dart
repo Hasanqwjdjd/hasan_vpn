@@ -2119,8 +2119,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               },
               itemBuilder: (context, index) {
                 final server = _servers[index];
-                final tileKey =
-                    _tileKeys.putIfAbsent(server.id, () => GlobalKey());
                 return _TwoSecondDragStartListener(
                   key: ValueKey('reorder_${server.id}'),
                   index: index,
@@ -2128,41 +2126,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     padding: const EdgeInsets.only(bottom: 4),
                     child: SizedBox(
                       height: 74,
-                      child: ServerTile(
-                        key: tileKey,
-                        server: server,
-                        selected: _selected?.id == server.id,
-                        active: _connected && _active?.id == server.id,
-                        onTap: () async {
-                          if (_selectionMode) {
-                            setState(() {
-                              if (_selectedIds.contains(server.id)) {
-                                _selectedIds.remove(server.id);
-                                if (_selectedIds.isEmpty) _selectionMode = false;
-                              } else {
-                                _selectedIds.add(server.id);
-                              }
-                            });
-                            return;
-                          }
-                          // اگر در حالت انتخاب سرور برای ویجت هستیم، bind کن
-                          if (_pendingWidgetId != null) {
-                            await _handleWidgetServerSelection(server);
-                            return;
-                          }
-                          setState(() => _selected = server);
-                          await SettingsService.setLastServer(server.id);
-                        },
-                        onDelete: _customServers.any((s) => s.id == server.id)
-                            ? () => _deleteServer(server)
-                            : null,
-                        onPin: () => _togglePin(server),
-                        onShare: _customServers.any((s) => s.id == server.id)
-                            ? () => _shareServer(server)
-                            : null,
-                        onEdit: () => _editServerName(server),
-                        onTest: () => _testOne(server),
-                      ),
+                      child: _buildServerTile(server),
                     ),
                   ),
                 );
@@ -2171,6 +2135,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildServerTile(VpnServer server) {
+    final tileKey = _tileKeys.putIfAbsent(server.id, () => GlobalKey());
+    return ServerTile(
+      key: tileKey,
+      server: server,
+      selected: _selected?.id == server.id,
+      active: _connected && _active?.id == server.id,
+      onTap: () async {
+        if (_selectionMode) {
+          setState(() {
+            if (_selectedIds.contains(server.id)) {
+              _selectedIds.remove(server.id);
+              if (_selectedIds.isEmpty) _selectionMode = false;
+            } else {
+              _selectedIds.add(server.id);
+            }
+          });
+          return;
+        }
+        if (_pendingWidgetId != null) {
+          await _handleWidgetServerSelection(server);
+          return;
+        }
+        setState(() => _selected = server);
+        await SettingsService.setLastServer(server.id);
+      },
+      onDelete: _customServers.any((s) => s.id == server.id)
+          ? () => _deleteServer(server)
+          : null,
+      onPin: () => _togglePin(server),
+      onShare: _customServers.any((s) => s.id == server.id)
+          ? () => _shareServer(server)
+          : null,
+      onEdit: () => _editServerName(server),
+      onTest: () => _testOne(server),
     );
   }
 
