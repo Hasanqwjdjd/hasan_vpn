@@ -175,9 +175,18 @@ jobs:
       - name: Build (arm64-v8a)
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          # openssl-sys (Rust crate) — for native-tls
           OPENSSL_DIR: /tmp/openssl-out
           OPENSSL_STATIC: "1"
           OPENSSL_NO_VENDOR: "1"
+          # CMake (picoquic auto-build) — needs these to find cross-OpenSSL
+          OPENSSL_ROOT_DIR: /tmp/openssl-out
+          OPENSSL_INCLUDE_DIR: /tmp/openssl-out/include
+          OPENSSL_CRYPTO_LIBRARY: /tmp/openssl-out/lib/libcrypto.a
+          OPENSSL_SSL_LIBRARY: /tmp/openssl-out/lib/libssl.a
+          OPENSSL_USE_STATIC_LIBS: "TRUE"
+          CMAKE_PREFIX_PATH: /tmp/openssl-out
+          PKG_CONFIG_PATH: /tmp/openssl-out/lib/pkgconfig
           PKG_CONFIG_ALLOW_CROSS: "1"
           CC_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
           AR_aarch64_linux_android: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
