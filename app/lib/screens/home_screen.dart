@@ -923,13 +923,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         pos[_manualOrder[i]] = i;
       }
       _servers.sort((a, b) {
+        if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
         final ai = pos[a.id] ?? 9999999;
         final bi = pos[b.id] ?? 9999999;
-        if (ai != bi) return ai.compareTo(bi);
-        return 0;
+        return ai.compareTo(bi);
       });
     } else {
       _sortCurrentServers();
+      final pinned = _servers.where((s) => s.isPinned).toList();
+      final unpinned = _servers.where((s) => !s.isPinned).toList();
+      _servers = <VpnServer>[...pinned, ...unpinned];
     }
     setState(() {});
   }
@@ -1462,6 +1465,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           language: widget.language,
           onServerAdded: (server) {
             _customServers.insert(0, server);
+            _manualOrder.insert(0, server.id);
             // اگر سابسکریپشن خاصی انتخاب شده، سرور را به آن tag بزن
             if (_selectedSubId != null) {
               _customSubTags[server.id] = _selectedSubId!;
@@ -1469,6 +1473,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             }
             _rebuildServerList();
             _saveCustomServers();
+            _saveManualOrder();
           },
         ),
       ),
@@ -2249,13 +2254,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       icon: const Icon(Icons.push_pin, size: 20),
                       tooltip: _t('پین', 'Pin'),
                       onPressed: () {
-                        setState(() {
-                          for (final s in _servers) {
-                            if (_selectedIds.contains(s.id)) s.isPinned = true;
+                        for (final s in _servers) {
+                          if (_selectedIds.contains(s.id)) {
+                            _pinnedIds.add(s.id);
                           }
+                        }
+                        setState(() {
                           _selectionMode = false;
                           _selectedIds.clear();
                         });
+                        _rebuildServerList();
+                        _savePinned();
                       },
                     ),
                     IconButton(

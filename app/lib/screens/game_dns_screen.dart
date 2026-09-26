@@ -19,6 +19,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 
 import '../models/dns_entry.dart';
 import '../services/app_colors.dart';
@@ -32,6 +33,23 @@ import 'qr_scan_screen.dart';
 enum _SortMode { ping, name, country, provider, jitter }
 
 enum _Category { all, pinned, recommended, adBlocking, family, dnssec, ipv6, myCountry, hidden }
+
+class _ThreeSecondDragStartListener extends ReorderableDragStartListener {
+  const _ThreeSecondDragStartListener({
+    super.key,
+    required super.index,
+    required super.child,
+    super.enabled = true,
+  });
+
+  @override
+  MultiDragGestureRecognizer createRecognizer() {
+    return DelayedMultiDragGestureRecognizer(
+      delay: const Duration(seconds: 3),
+      debugOwner: this,
+    );
+  }
+}
 
 class GameDnsScreen extends StatefulWidget {
   final String language;
@@ -505,7 +523,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
                       ids.insert(newIndex, moved);
                       _saveManualOrder(ids);
                     },
-                    itemBuilder: (context, i) => ReorderableDragStartListener(
+                    itemBuilder: (context, i) => _ThreeSecondDragStartListener(
                       key: ValueKey(visible[i].id),
                       index: i,
                       child: _buildTile(visible[i]),
