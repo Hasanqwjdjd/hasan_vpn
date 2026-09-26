@@ -2095,10 +2095,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // log
         if (connected) {
           // ignore: unawaited_futures
-          ConnectionLogService.logConnect(selected.displayName);
+          ConnectionLogService.logConnect(selected!.displayName);
         } else if (error != null && error.isNotEmpty) {
           // ignore: unawaited_futures
-          ConnectionLogService.logError(selected.displayName, error);
+          ConnectionLogService.logError(selected!.displayName, error);
         }
         
         if (connected) {
@@ -2194,12 +2194,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _rebuildServerList();
             _saveCustomServers();
             _saveManualOrder();
-          }
             // auto-ping: سرور جدید رو خودکار تست کن
             // ignore: unawaited_futures
             Future.delayed(const Duration(milliseconds: 400), () {
               _testOne(server);
-            }),
+            });
+          },
         ),
       ),
     );

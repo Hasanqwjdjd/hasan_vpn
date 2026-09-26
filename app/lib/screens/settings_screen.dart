@@ -52,6 +52,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _connectFastest = false;
   bool _autoConnectBoot = false;
   bool _checkingUpdate = false;
+  int _autoTestMin = 0;
 
   @override
   void initState() {

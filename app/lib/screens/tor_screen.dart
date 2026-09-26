@@ -1633,7 +1633,7 @@ class _TorScreenState extends State<TorScreen> {
                       icon: const Icon(Icons.auto_awesome,
                           color: AppColors.accent, size: 20),
                     ),
-                  ]
+                  ],
                   TextButton(
                     onPressed: () {
                       final pool = TorBridges.extraPool(_bridgeType);
