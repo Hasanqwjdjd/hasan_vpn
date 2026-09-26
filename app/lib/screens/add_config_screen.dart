@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/aether_profile.dart';
+import '../models/tunnel_profile.dart';
 import '../models/server.dart';
 import '../services/aether_service.dart';
 import '../services/app_colors.dart';
@@ -46,6 +47,15 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   // پنل اسکن / کلید WARP جدید / لاگ (فرم Aether)
   bool _aetherWorking = false;
   String? _aetherLiveLog;
+
+  // Tunnel DNS (DNSTT/NoizDNS/VayDNS/Slipstream)
+  String _tunnelKind = 'dnstt';
+  final TextEditingController _tunnelDomainController = TextEditingController();
+  final TextEditingController _tunnelPubkeyController = TextEditingController();
+  final TextEditingController _tunnelResolverController =
+      TextEditingController(text: '8.8.8.8:53');
+  final TextEditingController _tunnelListenPortController =
+      TextEditingController(text: '0');
 
   // Aether UI جدید
   final TextEditingController _aetherOuterController = TextEditingController();
@@ -1299,6 +1309,202 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
+  // ------------------------------------------------------------ Tunnel DNS
+
+  void _addTunnelServer() {
+    final domain = _tunnelDomainController.text.trim();
+    if (domain.isEmpty) {
+      _showMsg(_t('دامنه الزامی است', 'Domain is required'));
+      return;
+    }
+    final profile = TunnelProfile(
+      kind: _tunnelKind,
+      domain: domain,
+      pubkey: _tunnelPubkeyController.text.trim(),
+      resolver: _tunnelResolverController.text.trim().isEmpty
+          ? '8.8.8.8:53'
+          : _tunnelResolverController.text.trim(),
+      listenPort: int.tryParse(_tunnelListenPortController.text.trim()) ?? 0,
+      name: _nameController.text.trim(),
+    );
+    final name = _nameController.text.trim().isNotEmpty
+        ? _nameController.text.trim()
+        : profile.summary;
+    final server = VpnServer(
+      id: 'tunnel_${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      flag: '🛰️',
+      shareLink: profile.toLink(),
+      protocol: VpnProtocol.tunnel,
+      host: domain,
+      port: 53,
+      isDeletable: true,
+    );
+    widget.onServerAdded(server);
+    Navigator.pop(context);
+    _showMsg(_t('تونل DNS اضافه شد', 'DNS tunnel added'));
+  }
+
+  Widget _buildTunnelForm() {
+    const color = Color(0xFF42A5F5);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.dns_outlined, color: color, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _t(
+                    'ترافیک TCP را از روی DNS عبور می‌دهد. به یک سرور DNSTT/Slipstream روی VPS نیاز دارید.',
+                    'Tunnels TCP traffic over DNS. Needs a DNSTT/Slipstream server on your VPS.',
+                  ),
+                  style: TextStyle(
+                    color: AppColors.muted(context),
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          _t('نوع تونل', 'Tunnel kind'),
+          style: TextStyle(
+            color: AppColors.muted(context),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: AppColors.surface(context),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border(context)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _tunnelKind,
+              isExpanded: true,
+              dropdownColor: AppColors.elevated(context),
+              style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+              items: [
+                for (final k in TunnelProfile.kinds)
+                  DropdownMenuItem(
+                    value: k,
+                    child: Text(
+                      TunnelProfile.kindLabels[k] ?? k,
+                    ),
+                  ),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() => _tunnelKind = v);
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        _tunnelField(
+          controller: _tunnelDomainController,
+          label: _t('دامنهٔ تونل', 'Tunnel domain'),
+          hint: 't.example.com',
+          color: color,
+        ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _tunnelPubkeyController,
+          label: _t('Public key (hex)', 'Public key (hex)'),
+          hint: 'abcd0123...',
+          color: color,
+        ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _tunnelResolverController,
+          label: _t('Resolver DNS', 'DNS resolver'),
+          hint: '8.8.8.8:53',
+          color: color,
+        ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _tunnelListenPortController,
+          label: _t('پورت SOCKS محلی (0=خودکار)',
+              'Local SOCKS port (0=auto)'),
+          hint: '0',
+          color: color,
+          keyboard: TextInputType.number,
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton(
+            onPressed: _addTunnelServer,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: Text(
+              _t('افزودن تونل', 'Add tunnel'),
+              style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _tunnelField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required Color color,
+    TextInputType? keyboard,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboard,
+      style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        labelStyle: TextStyle(color: AppColors.muted(context)),
+        hintStyle: TextStyle(color: AppColors.muted2(context), fontSize: 12),
+        filled: true,
+        fillColor: AppColors.surface(context),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: AppColors.border(context)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: AppColors.border(context)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: color, width: 1.5),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTorForm() {
     return TorScreen(
       language: widget.language,
@@ -2027,6 +2233,16 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               type: 'tor',
               color: const Color(0xFFEF5350),
             ),
+            _buildTypeCard(
+              title: _t('تونل DNS', 'DNS Tunnel'),
+              subtitle: _t(
+                'DNSTT / Slipstream — عبور ترافیک از روی DNS',
+                'DNSTT / Slipstream — tunnel traffic over DNS',
+              ),
+              icon: Icons.dns_outlined,
+              type: 'tunnel',
+              color: const Color(0xFF42A5F5),
+            ),
 
             const SizedBox(height: 20),
 
@@ -2251,6 +2467,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               _buildSiphonForm(),
             ] else if (_selectedType == 'tor') ...[
               _buildTorForm(),
+            ] else if (_selectedType == 'tunnel') ...[
+              _buildTunnelForm(),
             ],
           ],
         ),
@@ -2281,6 +2499,10 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _aetherOuterController.dispose();
     _aetherInnerController.dispose();
     _aetherListenPortController.dispose();
+    _tunnelDomainController.dispose();
+    _tunnelPubkeyController.dispose();
+    _tunnelResolverController.dispose();
+    _tunnelListenPortController.dispose();
     super.dispose();
   }
 }
