@@ -59,6 +59,13 @@ class _GeoAssetsScreenState extends State<GeoAssetsScreen> {
       appBar: AppBar(
         title: Text(_t('فایل‌های Geo', 'Geo asset files')),
         backgroundColor: AppColors.bg(context),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download),
+            tooltip: _t('منابع پیش‌فرض', 'Default sources'),
+            onPressed: _pickSource,
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

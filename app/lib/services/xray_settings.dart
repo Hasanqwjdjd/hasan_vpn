@@ -78,6 +78,14 @@ class XraySettings {
     'showSpeedNotif': false,
     'confirmDelete': true,
     'twoColumnGrid': false,
+    'showAllTab': true,
+
+    // ---- VPN extras ----
+    'vpnInterface': '',
+    'bypassLan': false,
+    'addHttpProxyToVpn': false,
+    'alwaysOnVpn': false,
+    'autoConnectBoot': false,
 
     // ---- Legacy / existing ----
     'logLevel': 'warning',
