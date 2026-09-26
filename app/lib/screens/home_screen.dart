@@ -15,6 +15,8 @@ import '../services/app_colors.dart';
 import '../services/server_tester.dart';
 import '../services/tor_session_service.dart';
 import '../services/telegram_source_service.dart';
+import '../services/tunnel_session_service.dart';
+import '../models/tunnel_profile.dart';
 import '../services/geo_assets_service.dart';
 import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
@@ -187,6 +189,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _autoDownloadGeoIran();
     // ─── listener برای قطع خودکار سرور وقتی Tor روت می‌کنه ───
     TorSessionService.instance.routingCount.addListener(_onTorRoutingChanged);
+    TunnelSessionService.instance.routingCount
+        .addListener(_onTunnelRoutingChanged);
 
     await _loadDeletedAndPinned();
     await _loadUiSettings();
@@ -1367,6 +1371,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {});
   }
 
+  void _onTunnelRoutingChanged() {
+    if (!mounted) return;
+    if (TunnelSessionService.instance.anyRouting && _connected) {
+      setState(() {
+        _connected = false;
+        _active = null;
+        _status = _t('اتصال از طریق تونل DNS', 'Routing via DNS tunnel');
+      });
+    }
+  }
+
   void _onTorRoutingChanged() {
     if (!mounted) return;
     if (TorSessionService.instance.anyRouting && _connected) {
@@ -1916,6 +1931,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (TorSessionService.instance.anyRouting) {
       try {
         await TorSessionService.instance.disconnect();
+      } catch (_) {}
+    }
+    if (TunnelSessionService.instance.anyRouting) {
+      try {
+        await TunnelSessionService.instance.disconnect();
       } catch (_) {}
     }
     setState(() {
@@ -2571,6 +2591,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           await _handleWidgetServerSelection(server);
           return;
         }
+        // تونل DNS: routing از TunnelSessionService انجام می‌شود
+        if (server.protocol == VpnProtocol.tunnel) {
+          final n = TunnelSessionService.instance.notifierFor(server.id);
+          final isOn = n.value.routingThroughVpn || n.value.running;
+          if (isOn) {
+            await TunnelSessionService.instance.disconnect();
+            return;
+          }
+          if (_connected) {
+            try {
+              await _disconnectAll();
+            } catch (_) {}
+            _markDisconnected(_t('آماده', 'Ready'));
+          }
+          if (TorSessionService.instance.anyRouting) {
+            try {
+              await TorSessionService.instance.disconnect();
+            } catch (_) {}
+          }
+          final prof = TunnelProfile.fromLink(server.shareLink);
+          setState(() {
+            _selected = server;
+            _status = _t('اتصال تونل DNS...', 'Connecting tunnel...');
+          });
+          await TunnelSessionService.instance.connect(server.id, prof);
+          return;
+        }
         setState(() => _selected = server);
         await SettingsService.setLastServer(server.id);
       },
@@ -3001,6 +3048,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       TorSessionService.instance.routingCount
           .removeListener(_onTorRoutingChanged);
+    } catch (_) {}
+    try {
+      TunnelSessionService.instance.routingCount
+          .removeListener(_onTunnelRoutingChanged);
     } catch (_) {}
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
