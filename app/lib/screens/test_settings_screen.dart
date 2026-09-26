@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/app_colors.dart';
 import '../services/test_budget.dart';
+import '../services/xray_settings.dart';
 
 class _ModeOption {
   final TestMode mode;
@@ -33,9 +34,11 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
   bool _tcp = true;
   TestMode _mode = TestMode.balanced;
   String _delayUrl = 'http://www.gstatic.com/generate_204';
+  String _connInfoUrl = 'https://api.ip.sb/geoip';
   bool _loading = true;
 
   late final TextEditingController _urlController;
+  late final TextEditingController _connUrlController;
 
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
@@ -44,12 +47,14 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
   void initState() {
     super.initState();
     _urlController = TextEditingController(text: _delayUrl);
+    _connUrlController = TextEditingController(text: _connInfoUrl);
     _load();
   }
 
   @override
   void dispose() {
     _urlController.dispose();
+    _connUrlController.dispose();
     super.dispose();
   }
 
@@ -68,6 +73,19 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
         if (m is Map && m['delayUrl'] != null) {
           _delayUrl = m['delayUrl'].toString();
         }
+      }
+    } catch (_) {}
+    try {
+      final xs = await XraySettings.load();
+      final cu = xs['connInfoUrl']?.toString() ?? '';
+      if (cu.isNotEmpty) {
+        _connInfoUrl = cu;
+        _connUrlController.text = cu;
+      }
+      final du = xs['delayTestUrl']?.toString() ?? '';
+      if (du.isNotEmpty) {
+        _delayUrl = du;
+        _urlController.text = du;
       }
     } catch (_) {}
     _urlController.text = _delayUrl;
@@ -98,6 +116,20 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
     }
     setState(() => _delayUrl = t);
     await _save();
+    await XraySettings.set('delayTestUrl', t);
+    if (!mounted) return;
+    _showMsg(_t('آدرس ذخیره شد', 'URL saved'));
+  }
+
+  Future<void> _saveConnUrl() async {
+    final t = _connUrlController.text.trim();
+    if (!t.startsWith('http://') && !t.startsWith('https://')) {
+      _showMsg(_t('آدرس باید با http:// یا https:// شروع بشه',
+          'URL must start with http:// or https://'));
+      return;
+    }
+    setState(() => _connInfoUrl = t);
+    await XraySettings.set('connInfoUrl', t);
     if (!mounted) return;
     _showMsg(_t('آدرس ذخیره شد', 'URL saved'));
   }
@@ -332,6 +364,36 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: _saveUrl,
+                    icon: const Icon(Icons.save, size: 18),
+                    label: Text(_t('ذخیره آدرس', 'Save URL')),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                _title(_t('آدرس اطلاعات اتصال فعلی', 'Connection info URL')),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _connUrlController,
+                  style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'https://api.ip.sb/geoip',
+                    hintStyle: TextStyle(color: AppColors.muted2(context)),
+                    filled: true,
+                    fillColor: AppColors.surface(context),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: AppColors.border(context)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _saveConnUrl,
                     icon: const Icon(Icons.save, size: 18),
                     label: Text(_t('ذخیره آدرس', 'Save URL')),
                     style: ElevatedButton.styleFrom(

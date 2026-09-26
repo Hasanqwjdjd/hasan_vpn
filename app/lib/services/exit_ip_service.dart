@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import 'socks_probe.dart';
 import 'v2ray_engine.dart';
+import 'xray_settings.dart';
 
 /// اطلاعات IP خروجی از داخل تونل (الهام از ZedSecure).
 class ExitIpInfo {
@@ -67,6 +68,22 @@ class ExitIpService {
     return null;
   }
 
+  static Future<(String, int, String)> _connInfoTarget() async {
+    try {
+      final xs = await XraySettings.load();
+      final raw = xs['connInfoUrl']?.toString() ?? '';
+      if (raw.isNotEmpty) {
+        final uri = Uri.tryParse(raw);
+        if (uri != null && uri.host.isNotEmpty) {
+          final p = uri.hasPort ? uri.port : (uri.scheme == 'https' ? 443 : 80);
+          final path = uri.path.isEmpty ? '/' : uri.path;
+          return (uri.host, p, path);
+        }
+      }
+    } catch (_) {}
+    return ('api.ipify.org', 80, '/?format=json');
+  }
+
   static Future<ExitIpInfo?> _viaSocks(int port, Duration timeout) async {
     // از SocksProbe برای اطمینان از بالا بودن تونل استفاده می‌کنیم
     final probe = await SocksProbe.measure(port: port, samples: 1)
@@ -86,15 +103,16 @@ class ExitIpService {
       final h = await _read(socket, 2, timeout);
       if (h[0] != 0x05 || h[1] != 0x00) return null;
 
-      // CONNECT to api.ip.sb:443 — actually use plain HTTP to ip API over SOCKS
-      // Target: api.ipify.org:80
-      final host = 'api.ipify.org';
+      // CONNECT to connInfoUrl host:port over SOCKS
+      final target = await _connInfoTarget();
+      final host = target.$1;
+      final tport = target.$2;
       final hostBytes = utf8.encode(host);
       final req = <int>[
         0x05, 0x01, 0x00, 0x03,
         hostBytes.length,
         ...hostBytes,
-        0x00, 0x50, // port 80
+        (tport >> 8) & 0xff, tport & 0xff,
       ];
       socket.add(req);
       await socket.flush();
@@ -111,7 +129,7 @@ class ExitIpService {
       }
 
       final http =
-          'GET /?format=json HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n';
+          'GET ${target.$3} HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n';
       socket.write(http);
       await socket.flush();
 
