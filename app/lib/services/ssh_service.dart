@@ -12,7 +12,7 @@ class SshService {
 
   static SSHClient? _client;
   static SSHSocket? _socket;
-  static SSHForward? _forward;
+  static SSHForwardChannel? _forward;
   static int _localPort = 0;
   static String? _lastError;
 
@@ -65,7 +65,7 @@ class SshService {
         profile.remoteSocksPort,
       );
       _forward = forward;
-      _localPort = forward.port;
+      _localPort = forward.localPort;
 
       return _localPort;
     } catch (e) {
@@ -95,11 +95,28 @@ class SshService {
   static Future<bool> ping() async {
     if (_client == null) return false;
     try {
+      // dartssh2 2.11: session.stdout یک Stream<List<int>> است و مستقیم
+      // await نمی‌شه؛ با listen جمعش می‌کنیم.
       final session = await _client!.run('echo ok');
-      final out = await session.stdout
-          .cast<List<int>>()
-          .transform(const SystemEncoding().decoder)
-          .join();
+      final chunks = <int>[];
+      final completer = Completer<void>();
+      final sub = session.stdout.listen(
+        (data) => chunks.addAll(data),
+        onDone: () {
+          if (!completer.isCompleted) completer.complete();
+        },
+        onError: (_) {
+          if (!completer.isCompleted) completer.complete();
+        },
+      );
+      await completer.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          sub.cancel();
+        },
+      );
+      await sub.cancel();
+      final out = String.fromCharCodes(chunks);
       return out.trim().contains('ok');
     } catch (_) {
       return false;
