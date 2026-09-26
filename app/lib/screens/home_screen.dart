@@ -1037,14 +1037,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // ------------------------------------------------------------- list
 
+  static const String _builtinAetherId = 'builtin_aether';
   static const String _builtinPsiphonId = 'builtin_psiphon';
 
-  /// سرور پیشنهادی که همیشه بالای لیست است و پاک نمی‌شود.
+  /// دو سرور پیشنهادی که همیشه بالای لیست هستند و پاک نمی‌شوند.
   List<VpnServer> _builtinPresets() {
     return <VpnServer>[
       VpnServer(
+        id: _builtinAetherId,
+        name: 'Aether · Auto',
+        flag: '🟣',
+        shareLink: 'aether://config?protocol=auto&scan=smart',
+        protocol: VpnProtocol.aether,
+        host: 'auto-discover',
+        port: 0,
+        isDeletable: false,
+      ),
+      VpnServer(
         id: _builtinPsiphonId,
-        name: 'Psiphon (Auto)',
+        name: 'Psiphon · Auto',
         flag: '💧',
         shareLink: 'psiphon://auto',
         protocol: VpnProtocol.psiphon,
@@ -1065,7 +1076,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     ];
 
     for (final server in allServers) {
-      if (server.id == _builtinPsiphonId) {
+      if (server.id == _builtinAetherId || server.id == _builtinPsiphonId) {
         server.isPinned = true;
       } else {
         server.isPinned = _pinnedIds.contains(server.id);
