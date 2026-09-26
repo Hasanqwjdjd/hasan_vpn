@@ -153,7 +153,10 @@ class XraySettings {
       final level = settings['logLevel']?.toString() ?? 'warning';
       map['log'] = {'loglevel': level == 'none' ? 'none' : level};
 
-      final socksPort = (settings['socksPort'] as num?)?.toInt() ?? 10808;
+      int socksPort = (settings['socksPort'] as num?)?.toInt() ?? 10808;
+      if (settings['randomPort'] == true) {
+        socksPort = 20000 + (DateTime.now().microsecondsSinceEpoch % 20000);
+      }
       final allowLan = settings['shareProxyLan'] == true ||
           settings['allowLan'] == true;
       final listen = allowLan ? '0.0.0.0' : '127.0.0.1';
@@ -250,6 +253,13 @@ class XraySettings {
         servers.add({'address': doh});
       } else {
         servers.addAll(vpnDns);
+      }
+      final directDns = settings['directDns']?.toString() ?? '';
+      if (directDns.isNotEmpty) {
+        for (final d in directDns.split(',')) {
+          final t = d.trim();
+          if (t.isNotEmpty) servers.add(t);
+        }
       }
       if (settings['localDns'] == true) {
         servers.insert(0, 'localhost');
@@ -357,6 +367,8 @@ class XraySettings {
             'httpMethod':
                 settings['leastLoadMethod']?.toString() ?? 'HEAD',
           },
+          'maxFailedAttempts':
+              (settings['maxFailedAttempts'] as num?)?.toInt() ?? 3,
         };
       }
 
