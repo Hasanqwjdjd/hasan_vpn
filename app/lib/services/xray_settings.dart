@@ -46,7 +46,9 @@ class XraySettings {
     'muxXudpQuic': 'reject',
 
     // ---- Fragment (A4) ----
-    'fragmentEnable': false,
+    // پیش‌فرض روشن — روی ایران SNI خوانده می‌شود و بدون Fragment
+    // VLESS/VMess/Trojan بلاک می‌شوند.
+    'fragmentEnable': true,
     'fragmentPackets': 'tlshello',
     'fragmentLength': '100-200',
     'fragmentInterval': '10-20',
