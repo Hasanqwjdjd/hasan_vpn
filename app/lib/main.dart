@@ -330,6 +330,7 @@ class _HasanAppState extends State<HasanApp> {
   bool _loading = true;
   String _themeMode = 'dark';
   String _language = 'fa';
+  double _fontScale = 1.0;
 
   @override
   void initState() {
@@ -423,6 +424,7 @@ class _HasanAppState extends State<HasanApp> {
     await SettingsService.loadVersion();
     _themeMode = await SettingsService.getThemeMode();
     _language = await SettingsService.getLanguage();
+    _fontScale = await SettingsService.getFontScale();
 
     final subs = await SubscriptionService.load();
     _subs = subs;
@@ -548,7 +550,12 @@ class _HasanAppState extends State<HasanApp> {
       builder: (context, child) => Directionality(
         textDirection:
             _language == 'fa' ? TextDirection.rtl : TextDirection.ltr,
-        child: child!,
+        child: MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(_fontScale),
+          ),
+          child: child!,
+        ),
       ),
       home: _loading
           ? const _LoadingScreen()
@@ -566,6 +573,11 @@ class _HasanAppState extends State<HasanApp> {
               onLanguageChanged: (l) async {
                 await SettingsService.setLanguage(l);
                 setState(() => _language = l);
+              },
+              fontScale: _fontScale,
+              onFontScaleChanged: (v) async {
+                await SettingsService.setFontScale(v);
+                setState(() => _fontScale = v);
               },
             ),
     );
@@ -603,6 +615,8 @@ class RootTabs extends StatefulWidget {
   final Future<void> Function() onRefreshAll;
   final Function(String) onThemeChanged;
   final Function(String) onLanguageChanged;
+  final double fontScale;
+  final Function(double) onFontScaleChanged;
 
   const RootTabs({
     super.key,
@@ -614,6 +628,8 @@ class RootTabs extends StatefulWidget {
     required this.onRefreshAll,
     required this.onThemeChanged,
     required this.onLanguageChanged,
+    required this.fontScale,
+    required this.onFontScaleChanged,
   });
 
   @override
@@ -632,6 +648,8 @@ class _RootTabsState extends State<RootTabs> {
           language: widget.language,
           onThemeChanged: widget.onThemeChanged,
           onLanguageChanged: widget.onLanguageChanged,
+          fontScale: widget.fontScale,
+          onFontScaleChanged: widget.onFontScaleChanged,
         ),
       ),
     );

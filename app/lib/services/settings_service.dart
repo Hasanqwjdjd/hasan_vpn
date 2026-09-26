@@ -412,6 +412,7 @@ class SettingsService {
 
   // --------------------------------------------------------- Auto-connect on boot (A8)
   static const String _autoConnectBootKey = 'settings_auto_connect_boot_v1';
+  static const String _fontScaleKey = 'settings_font_scale_v1';
   static Future<bool> getAutoConnectBoot() async {
     try {
       final p = await SharedPreferences.getInstance();
@@ -425,6 +426,18 @@ class SettingsService {
       final p = await SharedPreferences.getInstance();
       await p.setBool(_autoConnectBootKey, v);
     } catch (_) {}
+  
+
+  // ------- Font scale -------
+  static Future<double> getFontScale() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getDouble(_fontScaleKey) ?? 1.0;
   }
+
+  static Future<void> setFontScale(double v) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setDouble(_fontScaleKey, v);
+  }
+}
 
 }

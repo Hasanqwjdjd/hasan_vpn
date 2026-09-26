@@ -343,6 +343,17 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                 _dropdown('muxXudpQuic', 'QUIC در Mux', 'QUIC in Mux',
                     ['reject', 'allow', 'skip']),
 
+                // ---- Reality overrides ----
+                _section(_t('Reality (override)', 'Reality (override)'),
+                    icon: Icons.security),
+                _textField('realityPublicKey', 'Public key', 'Public key'),
+                _textField('realityShortId', 'Short ID', 'Short ID'),
+                _textField('realityFingerprint', 'Fingerprint (chrome/firefox/…)',
+                    'Fingerprint'),
+                _textField('realityServerName', 'Server name (SNI)',
+                    'Server name'),
+                _textField('realitySpiderX', 'Spider X path', 'Spider X'),
+
                 // ---- A4 Fragment ----
                 _section(_t('Fragment', 'Fragment'), icon: Icons.call_split),
                 _sw('skipCertVerify', 'نادیده‌گرفتن اعتبار گواهی TLS',

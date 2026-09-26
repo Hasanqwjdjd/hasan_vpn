@@ -40,6 +40,13 @@ class XraySettings {
     'dnsHosts': '',
     'dnsLeakProtection': true,
     'skipCertVerify': false,
+    // Reality overrides — وقتی کاربر پر کنه، روی همه outboundهای reality
+    // اعمال می‌شه (به‌جای مقادیر لینک).
+    'realityPublicKey': '',
+    'realityShortId': '',
+    'realityFingerprint': '',
+    'realityServerName': '',
+    'realitySpiderX': '',
 
     // ---- Mux (A3) ----
     'muxEnable': false,
@@ -376,6 +383,36 @@ class XraySettings {
             m['enabled'] = false;
             ob['mux'] = m;
           }
+        });
+      }
+
+      // Reality overrides — اگه کاربر هر کدوم رو پر کرده باشه، روی همه
+      // outbound های reality جایگزین می‌شه.
+      final rPub = settings['realityPublicKey']?.toString() ?? '';
+      final rSid = settings['realityShortId']?.toString() ?? '';
+      final rFp = settings['realityFingerprint']?.toString() ?? '';
+      final rSni = settings['realityServerName']?.toString() ?? '';
+      final rSpider = settings['realitySpiderX']?.toString() ?? '';
+      final hasRealityOverride = rPub.isNotEmpty ||
+          rSid.isNotEmpty ||
+          rFp.isNotEmpty ||
+          rSni.isNotEmpty ||
+          rSpider.isNotEmpty;
+      if (hasRealityOverride) {
+        _applyToOutbounds(map, (ob) {
+          final stream = Map<String, dynamic>.from(
+              ob['streamSettings'] as Map? ?? {});
+          final security = stream['security']?.toString().toLowerCase() ?? '';
+          if (security != 'reality') return;
+          final rs = Map<String, dynamic>.from(
+              stream['realitySettings'] as Map? ?? {});
+          if (rPub.isNotEmpty) rs['publicKey'] = rPub;
+          if (rSid.isNotEmpty) rs['shortId'] = rSid;
+          if (rFp.isNotEmpty) rs['fingerprint'] = rFp;
+          if (rSni.isNotEmpty) rs['serverName'] = rSni;
+          if (rSpider.isNotEmpty) rs['spiderX'] = rSpider;
+          stream['realitySettings'] = rs;
+          ob['streamSettings'] = stream;
         });
       }
 

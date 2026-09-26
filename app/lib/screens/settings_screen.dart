@@ -24,6 +24,8 @@ class SettingsScreen extends StatefulWidget {
   final String language;
   final Function(String) onThemeChanged;
   final Function(String) onLanguageChanged;
+  final double fontScale;
+  final Function(double) onFontScaleChanged;
 
   const SettingsScreen({
     super.key,
@@ -31,7 +33,11 @@ class SettingsScreen extends StatefulWidget {
     required this.language,
     required this.onThemeChanged,
     required this.onLanguageChanged,
+    this.fontScale = 1.0,
+    this.onFontScaleChanged = _defaultFontScale,
   });
+
+  static void _defaultFontScale(double _) {}
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -790,6 +796,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 16),
+
+          // ------- اندازه فونت -------
+          _sectionTitle(_t('اندازه فونت', 'Font size')),
+          _card(
+            context,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.text_fields,
+                        color: AppColors.muted(context), size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _t('مقیاس متن', 'Text scale'),
+                        style: TextStyle(
+                            color: AppColors.fg(context), fontSize: 14),
+                      ),
+                    ),
+                    Text(
+                      '${(widget.fontScale * 100).round()}%',
+                      style: const TextStyle(
+                          color: AppColors.accent,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: widget.fontScale,
+                  min: 0.8,
+                  max: 1.4,
+                  divisions: 6,
+                  activeColor: AppColors.accent,
+                  label: '${(widget.fontScale * 100).round()}%',
+                  onChanged: (v) {
+                    widget.onFontScaleChanged(v);
+                    setState(() {});
+                  },
+                ),
+              ],
+            ),
+          ),
 
           // ------- بروزرسانی -------
           _sectionTitle(_t('بروزرسانی', 'Update')),
