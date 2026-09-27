@@ -88,17 +88,22 @@ class TorBridges {
     }
   }
 
+  /// آیا برای این نوع پل، «پل‌های رایگان» داریم که در UI نمایش داده بشن؟
+  /// طبق درخواست کاربر:
+  ///   - vanilla (ساده) و webtunnel → نیازی به نمایش ندارن
+  ///   - obfs4 / snowflake / meek_lite / conjure → باید نمایش داده بشن
+  ///   - dnstt → فقط با پل سفارشی (pubkey لازمه)
   static bool hasFree(String bridgeType) {
     switch (bridgeType) {
+      case 'vanilla':
       case 'webtunnel':
-        return webtunnel.isNotEmpty;
-      case 'snowflake':
-      case 'meek_lite':
-      case 'obfs4':
       case 'dnstt':
         return false;
+      case 'obfs4':
+      case 'snowflake':
+      case 'meek_lite':
       case 'conjure':
-        return false;
+        return true;
       default:
         return false;
     }
