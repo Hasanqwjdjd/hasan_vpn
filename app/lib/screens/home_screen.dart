@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -49,7 +50,7 @@ class _TwoSecondDragStartListener extends ReorderableDragStartListener {
   @override
   MultiDragGestureRecognizer createRecognizer() {
     return DelayedMultiDragGestureRecognizer(
-      delay: const Duration(seconds: 2),
+      delay: const Duration(milliseconds: 1500),
       debugOwner: this,
     );
   }
@@ -116,6 +117,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const String _userGroupsKey = 'server_groups_v1';
   static const String _userGroupsOrderKey = 'server_groups_order_v1';
   final TextEditingController _groupConfigCtrl = TextEditingController();
+  // state برای drag-reorder در حالت دوستونی
+  bool _gridDragEnabled = false;
 
   String? _selectedSubId;
   // اگر از ویجت با widget_needs_server اومده باشیم، این مقدار پر می‌شه
@@ -2752,52 +2755,156 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   icon: Icon(Icons.edit,
                                       size: 18, color: AppColors.muted2(sCtx)),
                                   onPressed: () async {
-                                    final ctrl =
+                                    final nameCtrl =
                                         TextEditingController(text: name);
+                                    final linkCtrl = TextEditingController();
+                                    final curIds = List<String>.from(
+                                        workingGroups[name] ??
+                                            const <String>[]);
                                     try {
-                                    final nn = await showDialog<String>(
-                                      context: sCtx,
-                                      builder: (d) => AlertDialog(
-                                        backgroundColor: AppColors.surface(d),
-                                        title: Text(
-                                            _t('تغییر نام گروه', 'Rename group'),
-                                            style: TextStyle(
-                                                color: AppColors.fg(d))),
-                                        content: TextField(
-                                          controller: ctrl,
-                                          autofocus: true,
-                                          style: TextStyle(
-                                              color: AppColors.fg(d)),
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(
-                                                d, ctrl.text.trim()),
-                                            child: const Text('OK'),
-                                          ),
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(d),
-                                            child: Text(
-                                                _t('انصراف', 'Cancel')),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                    if (nn == null ||
-                                        nn.isEmpty ||
-                                        nn == name) {
-                                      return;
-                                    }
-                                    final ids = workingGroups[name];
-                                    if (ids == null) return;
-                                    workingGroups.remove(name);
-                                    workingGroups[nn] = ids;
-                                    final idx = workingOrder.indexOf(name);
-                                    if (idx >= 0) workingOrder[idx] = nn;
-                                    setLocal(() {});
-                                    await persist();
+                                      final res = await showDialog<Map<String, dynamic>>(
+                                        context: sCtx,
+                                        builder: (d) {
+                                          return StatefulBuilder(builder: (dCtx, setLocalEdit) {
+                                            return AlertDialog(
+                                              backgroundColor: AppColors.surface(d),
+                                              title: Text(
+                                                  _t('ویرایش گروه', 'Edit group'),
+                                                  style: TextStyle(color: AppColors.fg(d), fontSize: 16)),
+                                              content: SizedBox(
+                                                width: double.maxFinite,
+                                                child: SingleChildScrollView(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Text(_t('نام گروه', 'Group name'),
+                                                          style: TextStyle(color: AppColors.muted(d), fontSize: 12)),
+                                                      const SizedBox(height: 6),
+                                                      TextField(
+                                                        controller: nameCtrl,
+                                                        style: TextStyle(color: AppColors.fg(d), fontSize: 13),
+                                                        decoration: InputDecoration(
+                                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 10),
+                                                      Text(_t('سرورهای داخل گروه (${curIds.length})',
+                                                          'Servers in group (${curIds.length})'),
+                                                          style: TextStyle(color: AppColors.muted(d), fontSize: 12)),
+                                                      const SizedBox(height: 6),
+                                                      Container(
+                                                        constraints: const BoxConstraints(maxHeight: 220),
+                                                        decoration: BoxDecoration(
+                                                          color: AppColors.bg(dCtx),
+                                                          borderRadius: BorderRadius.circular(8),
+                                                          border: Border.all(color: AppColors.border(dCtx)),
+                                                        ),
+                                                        child: curIds.isEmpty
+                                                            ? Padding(
+                                                                padding: const EdgeInsets.all(12),
+                                                                child: Text(_t('خالی', 'Empty'),
+                                                                    style: TextStyle(color: AppColors.muted2(dCtx), fontSize: 12)),
+                                                              )
+                                                            : ListView.builder(
+                                                                shrinkWrap: true,
+                                                                itemCount: curIds.length,
+                                                                itemBuilder: (_, i) {
+                                                                  final sid = curIds[i];
+                                                                  final srv = _customServers.firstWhere(
+                                                                    (s) => s.id == sid,
+                                                                    orElse: () => VpnServer(
+                                                                      id: sid, name: sid, flag: '?', shareLink: '',
+                                                                      protocol: VpnProtocol.custom, host: '',
+                                                                    ),
+                                                                  );
+                                                                  return ListTile(
+                                                                    dense: true,
+                                                                    title: Text(srv.displayName,
+                                                                        style: TextStyle(color: AppColors.fg(dCtx), fontSize: 12),
+                                                                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                                    trailing: IconButton(
+                                                                      icon: const Icon(Icons.close, size: 16, color: Colors.redAccent),
+                                                                      onPressed: () {
+                                                                        setLocalEdit(() => curIds.remove(sid));
+                                                                      },
+                                                                    ),
+                                                                  );
+                                                                },
+                                                              ),
+                                                      ),
+                                                      const SizedBox(height: 10),
+                                                      Text(_t('افزودن کانفیگ جدید (هر خط یکی: vless/vmess/trojan/ss/hysteria2 یا JSON)',
+                                                          'Add new config (vless/vmess/trojan/ss/hysteria2 or JSON)'),
+                                                          style: TextStyle(color: AppColors.muted(d), fontSize: 11)),
+                                                      const SizedBox(height: 6),
+                                                      TextField(
+                                                        controller: linkCtrl,
+                                                        maxLines: 3,
+                                                        style: TextStyle(color: AppColors.fg(d), fontSize: 12),
+                                                        decoration: InputDecoration(
+                                                          hintText: 'vless://...',
+                                                          hintStyle: TextStyle(color: AppColors.muted2(d), fontSize: 11),
+                                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.pop(d),
+                                                  child: Text(_t('انصراف', 'Cancel')),
+                                                ),
+                                                TextButton(
+                                                  onPressed: () => Navigator.pop(d, {
+                                                    'name': nameCtrl.text.trim(),
+                                                    'ids': curIds,
+                                                    'newLinks': linkCtrl.text.trim(),
+                                                  }),
+                                                  child: Text(_t('ذخیره', 'Save'),
+                                                      style: const TextStyle(color: AppColors.accent)),
+                                                ),
+                                              ],
+                                            );
+                                          });
+                                        },
+                                      );
+                                      if (res == null) return;
+                                      final newName = res['name'] as String;
+                                      if (newName.isEmpty) return;
+                                      final finalIds = (res['ids'] as List).cast<String>().toList();
+                                      // افزودن کانفیگ‌های جدید
+                                      final newLinks = res['newLinks'] as String;
+                                      if (newLinks.isNotEmpty) {
+                                        final links = LinkParser.extractLinks(newLinks);
+                                        final stamp = DateTime.now().millisecondsSinceEpoch;
+                                        if (XrayJson.looksLike(newLinks)) {
+                                          final srv = XrayJson.parse(newLinks, id: 'custom_${stamp}_ge');
+                                          if (srv != null) {
+                                            _customServers.insert(0, srv);
+                                            finalIds.add(srv.id);
+                                          }
+                                        } else {
+                                          for (var i = 0; i < links.length; i++) {
+                                            final srv = LinkParser.parse(links[i], id: 'custom_${stamp}_ge$i');
+                                            if (srv == null) continue;
+                                            _customServers.insert(0, srv);
+                                            finalIds.add(srv.id);
+                                          }
+                                        }
+                                        await _saveCustomServers();
+                                      }
+                                      workingGroups.remove(name);
+                                      workingGroups[newName] = finalIds;
+                                      final idx = workingOrder.indexOf(name);
+                                      if (idx >= 0) workingOrder[idx] = newName;
+                                      setLocal(() {});
+                                      await persist();
                                     } finally {
-                                      ctrl.dispose();
+                                      nameCtrl.dispose();
+                                      linkCtrl.dispose();
                                     }
                                   },
                                 ),
@@ -3154,7 +3261,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           Expanded(
             child: _twoColumnGrid
-                ? GridView.builder(
+                ? ReorderableGridView.builder(
                     controller: _listScrollController,
                     padding: const EdgeInsets.only(
                         left: 8, right: 8, bottom: 110),
@@ -3166,10 +3273,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       mainAxisExtent: 62,
                     ),
                     itemCount: _servers.length,
-                    itemBuilder: (context, index) => Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: _buildServerTile(_servers[index], compact: true),
-                    ),
+                    onReorder: _onReorder,
+                    proxyDecorator: (child, index, animation) {
+                      return Material(
+                        color: Colors.transparent,
+                        elevation: 8,
+                        borderRadius: BorderRadius.circular(14),
+                        child: child,
+                      );
+                    },
+                    itemBuilder: (context, index) {
+                      final server = _servers[index];
+                      return _TwoSecondDragStartListener(
+                        key: ValueKey('grid_reorder_${server.id}'),
+                        index: index,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: _buildServerTile(server, compact: true),
+                        ),
+                      );
+                    },
                   )
                 : ReorderableListView.builder(
               scrollController: _listScrollController,

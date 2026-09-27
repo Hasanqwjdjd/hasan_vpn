@@ -4,6 +4,7 @@ publish_to: "none"
 version: 10.0.0+100
 
 environment:
+  reorderable_grid_view: ^2.2.8
   sdk: ">=3.0.0 <4.0.0"
 
 dependencies:

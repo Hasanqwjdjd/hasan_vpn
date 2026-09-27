@@ -265,10 +265,15 @@ class TelegramSourceService {
   ///   4) api.allorigins.win (CORS proxy)
   static Future<List<String>> _fetchOne(String channel, int socksPort) async {
     final url = 'https://t.me/s/$channel';
+    final urlAlt = 'https://telegram.me/s/$channel';
 
-    // 1) SOCKS محلی — هم t.me/s/ هم t.me/
+    // FIX: ترتیب جدید — اول direct (چون v2ray vless خودش tun داره و
+    // direct ترافیک از Xray رد می‌شه)، بعد SOCKS، بعد proxy عمومی.
+    // اگر Tor وصله، SOCKS اول میاد چون direct blocked می‌شه.
+
+    // 1) SOCKS (وقتی Tor یا Aether وصلن)
     if (socksPort > 0) {
-      for (final u in [url, 'https://t.me/$channel']) {
+      for (final u in [url, urlAlt]) {
         final html = await _nativeFetch(u, socksPort);
         if (html != null) {
           final l = _extractLinks(html);
@@ -277,21 +282,24 @@ class TelegramSourceService {
       }
     }
 
-    // 2) direct
-    try {
-      final r = await http.get(Uri.parse(url),
-          headers: {'User-Agent': _ua}).timeout(
-          const Duration(seconds: 15));
-      if (r.statusCode == 200) {
-        final l = _extractLinks(r.body);
-        if (l.isNotEmpty) return l;
-      }
-    } catch (_) {}
+    // 2) direct (وقتی VPN سرور وصله یا کاربر اپ رو بدون تونل باز کرده)
+    for (final u in [url, urlAlt]) {
+      try {
+        final r = await http.get(Uri.parse(u),
+            headers: {'User-Agent': _ua, 'Accept': 'text/html'}).timeout(
+            const Duration(seconds: 15));
+        if (r.statusCode == 200) {
+          final l = _extractLinks(r.body);
+          if (l.isNotEmpty) return l;
+        }
+      } catch (_) {}
+    }
 
-    // 3+4) public proxies
+    // 3+4) public proxies (وقتی Iran block کامل شده)
     final paths = <String>[
       'https://r.jina.ai/$url',
       'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}',
+      'https://corsproxy.io/?${Uri.encodeComponent(url)}',
     ];
     for (final p in paths) {
       try {

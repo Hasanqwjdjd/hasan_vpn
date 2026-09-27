@@ -45,7 +45,7 @@ class _TwoSecondDragStartListener extends ReorderableDragStartListener {
   @override
   MultiDragGestureRecognizer createRecognizer() {
     return DelayedMultiDragGestureRecognizer(
-      delay: const Duration(seconds: 2),
+      delay: const Duration(milliseconds: 1500),
       debugOwner: this,
     );
   }
