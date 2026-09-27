@@ -1628,8 +1628,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final prefs = await SharedPreferences.getInstance();
       final done = prefs.getBool('geo_iran_downloaded_v1') ?? false;
       if (done) return;
+      // 1. geoip + geosite از chocolate4u-iran
       try {
         await GeoAssetsService.downloadFromSource('chocolate4u-iran');
+      } catch (_) {}
+      // 2. FIX: geoip-only-cn-private.dat (قبلاً فقط دستی دانلود می‌شد)
+      try {
+        final cnUrl = GeoAssetsService.catalog
+            .firstWhere((e) => e['id'] == 'geoip-cn-private')['url']!;
+        await GeoAssetsService.download(
+            'geoip-only-cn-private.dat', cnUrl);
       } catch (_) {}
       await prefs.setBool('geo_iran_downloaded_v1', true);
     } catch (_) {}
@@ -1659,7 +1667,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _freeFetchTotal = 24;
     });
     try {
+      // silent=true یعنی از bootstrap خودکار اومده — Tor رو خودکار
+      // استارت نکن. silent=false یعنی کاربر دستی زده — اجازه‌ی auto-Tor.
       final n = await TelegramSourceService.refresh(
+        allowAutoTor: !silent,
         onProgress: (d, t) {
           if (!mounted) return;
           setState(() {
@@ -3074,17 +3085,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ? GridView.builder(
                     controller: _listScrollController,
                     padding: const EdgeInsets.only(
-                        left: 16, right: 16, bottom: 90),
+                        left: 8, right: 8, bottom: 110),
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
-                      mainAxisSpacing: 4,
-                      crossAxisSpacing: 8,
-                      mainAxisExtent: 58,
+                      mainAxisSpacing: 6,
+                      crossAxisSpacing: 6,
+                      mainAxisExtent: 62,
                     ),
                     itemCount: _servers.length,
-                    itemBuilder: (context, index) =>
-                        _buildServerTile(_servers[index]),
+                    itemBuilder: (context, index) => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: _buildServerTile(_servers[index], compact: true),
+                    ),
                   )
                 : ReorderableListView.builder(
               scrollController: _listScrollController,
@@ -3122,11 +3135,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildServerTile(VpnServer server) {
+  Widget _buildServerTile(VpnServer server, {bool compact = false}) {
     final tileKey = _tileKeys.putIfAbsent(server.id, () => GlobalKey());
     return ServerTile(
       key: tileKey,
       server: server,
+      compact: compact,
       selected: _selected?.id == server.id,
       active: _connected && _active?.id == server.id,
       onTap: () async {

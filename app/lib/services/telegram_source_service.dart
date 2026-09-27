@@ -184,18 +184,25 @@ class TelegramSourceService {
   /// fetch همه کانال‌ها، round-robin بین‌شون تا سقف maxServers.
   static Future<int> refresh({
     void Function(int done, int total)? onProgress,
+    bool allowAutoTor = false,
   }) async {
     final channels = await loadChannels();
     final perChannel = <String, List<String>>{};
     int done = 0;
     final total = channels.length;
 
-    // پیدا کردن مسیر SOCKS فعال. اگه هیچ VPN/Tor فعال نبود،
-    // خودکار Tor ساده رو بالا میاریم (تا fetch از تونل رد شه).
+    // پیدا کردن مسیر SOCKS فعال. اگه هیچ VPN/Tor فعال نبود، فقط وقتی
+    // کاربر دستی refresh رو زده (allowAutoTor=true) Tor رو استارت کن.
+    // توی bootstrap خودکار (allowAutoTor=false) نباید Tor بی‌دلیل بالا بیاد.
     int socksPort = await _detectSocksPort();
     if (socksPort == 0) {
+      if (!allowAutoTor) {
+        // مسیر فعالی نیست و کاربر نخواسته — بی‌سروصدا رد شو.
+        return 0;
+      }
       onProgress?.call(0, total);
       socksPort = await _ensureSocks();
+      if (socksPort == 0) return 0;
     }
 
     for (final ch in channels) {

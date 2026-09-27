@@ -5,16 +5,7 @@ concurrency:
   cancel-in-progress: false
 
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - '.build-counter'
   workflow_dispatch:
-    inputs:
-      force_build:
-        description: 'Force APK build (ignore counter)'
-        type: boolean
-        default: false
 
 jobs:
   check:
@@ -23,13 +14,14 @@ jobs:
       contents: write
     outputs:
       should_build: ${{ steps.counter.outputs.should_build }}
+      index: ${{ steps.counter.outputs.index }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Update counter and decide
+      - name: Read release index
         id: counter
         run: |
           set -e
@@ -41,33 +33,9 @@ jobs:
           case "$C" in
             ''|*[!0-9]*) C=0 ;;
           esac
-
-          # هر push یک واحد اضافه می‌شه. reset فقط بعد از build موفق
-          C=$((C + 1))
-
-          SHOULD=false
-          if [ "$C" -ge 3 ]; then
-            SHOULD=true
-          fi
-          if [ "${{ github.event.inputs.force_build }}" = "true" ]; then
-            SHOULD=true
-          fi
-
-          echo "$C" > .build-counter
-          echo "should_build=$SHOULD" >> "$GITHUB_OUTPUT"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .build-counter
-          if ! git diff --cached --quiet; then
-            git commit -m "[skip ci] counter=$C should_build=$SHOULD"
-            for i in 1 2 3 4 5; do
-              if git pull --rebase origin main && git push; then
-                break
-              fi
-              sleep 3
-            done
-          fi
+          echo "index=$C" >> "$GITHUB_OUTPUT"
+          echo "should_build=true" >> "$GITHUB_OUTPUT"
+          echo "Release index: $C (version will be derived from it)" 
 
   build:
     needs: check
@@ -107,51 +75,41 @@ jobs:
       - name: Compute app version
         id: appver
         run: |
-          # Version is derived from the previous release tag when available so
-          # we no longer depend on a hardcoded BASE that drifts as run_number grows.
-          # Fallback keeps historical arithmetic (BASE=369 → 2.11.0 at that run)
-          # so existing builds stay continuous if tags are missing.
+          # New scheme:
+          #   index=0   → 2.0.0
+          #   index=1   → 2.0.1
+          #   ...
+          #   index=9   → 2.0.9
+          #   index=10  → 2.1.0
+          #   index=199 → 2.19.9
+          #   index=200 → 3.0.0
+          #   index=201 → 3.0.1
           set -e
-          FALLBACK_BASE=369
-          TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
-          if [ -n "$TAG" ]; then
-            # Accept v2.11.0 or 2.11.0
-            CLEAN_TAG="${TAG#v}"
-            if echo "$CLEAN_TAG" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-              MAJOR=$(echo "$CLEAN_TAG" | cut -d. -f1)
-              MINOR=$(echo "$CLEAN_TAG" | cut -d. -f2)
-              PATCH=$(echo "$CLEAN_TAG" | cut -d. -f3)
-              # Bump patch by 2 each run (same step as legacy formula), roll minor at 20.
-              PATCH=$(( PATCH + 2 ))
-              while [ "$PATCH" -ge 10 ]; do
-                PATCH=$(( PATCH - 10 ))
-                MINOR=$(( MINOR + 1 ))
-              done
-              while [ "$MINOR" -ge 20 ]; do
-                MAJOR=$(( MAJOR + 1 ))
-                MINOR=$(( MINOR - 20 ))
-              done
-              CLEAN="${MAJOR}.${MINOR}.${PATCH}"
-              echo "Computed version from tag $TAG → $CLEAN (run: ${{ github.run_number }})"
-            else
-              TAG=""
-            fi
-          fi
-          if [ -z "$TAG" ]; then
-            BASE=$FALLBACK_BASE
-            N=$(( ${{ github.run_number }} - BASE ))
-            if [ "$N" -lt 0 ]; then N=0; fi
-            MINOR=$(( 11 + N / 5 ))
-            PATCH=$(( (N % 5) * 2 ))
-            MAJOR=2
-            while [ "$MINOR" -ge 20 ]; do
-              MAJOR=$(( MAJOR + 1 ))
-              MINOR=$(( MINOR - 20 ))
-            done
-            CLEAN="${MAJOR}.${MINOR}.${PATCH}"
-            echo "Computed version from fallback BASE=$BASE → $CLEAN (run: ${{ github.run_number }})"
-          fi
+          N=${{ needs.check.outputs.index }}
+          MAJOR=$(( 2 + N / 200 ))
+          MINOR=$(( (N / 10) % 20 ))
+          PATCH=$(( N % 10 ))
+          CLEAN="${MAJOR}.${MINOR}.${PATCH}"
           echo "version=$CLEAN" >> "$GITHUB_OUTPUT"
+          echo "Release index $N → version $CLEAN"
+
+      - name: Bump release index for next build
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          N=${{ needs.check.outputs.index }}
+          echo "$((N + 1))" > .build-counter
+          git add .build-counter
+          if ! git diff --cached --quiet; then
+            git commit -m "[skip ci] release index → $((N + 1))"
+            for i in 1 2 3 4 5; do
+              if git pull --rebase origin main && git push; then
+                break
+              fi
+              sleep 3
+            done
+          fi
 
       - name: Prepare signing keystore
         env:
@@ -553,27 +511,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  reset_counter:
-    needs: [check, build]
-    if: needs.check.outputs.should_build == 'true' && needs.build.result == 'success'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout main
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          ref: main
-      - name: Reset counter to 0
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
-          echo "0" > .build-counter
-          git add .build-counter
-          if ! git diff --cached --quiet; then
-            git commit -m "[skip ci] reset counter after successful build"
-            git push
-          fi
 

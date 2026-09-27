@@ -20,6 +20,8 @@ class ServerTile extends StatelessWidget {
   final VoidCallback? onTest;
   final VoidCallback? onHomeWidget;
   final VoidCallback? onLongPress;
+  /// حالت گرید دوستونی: آیکون‌ها و padding فشرده می‌شن تا همپوشانی نشه.
+  final bool compact;
 
   const ServerTile({
     super.key,
@@ -35,6 +37,7 @@ class ServerTile extends StatelessWidget {
     this.onTest,
     this.onHomeWidget,
     this.onLongPress,
+    this.compact = false,
   });
 
   String get _caption {
@@ -176,8 +179,11 @@ class ServerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // حالت compact: گرید دوستونی — آیکون‌ها فشرده،
+    // Pin / Test / CDN-badge مخفی، متن ellipsis.
+    final c = compact;
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
+      margin: EdgeInsets.only(bottom: c ? 0 : 6),
       decoration: BoxDecoration(
         color: selected
             ? AppColors.elevated(context)
@@ -193,12 +199,14 @@ class ServerTile extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: onTap,
-      onLongPress: onLongPress,
+          onLongPress: onLongPress,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(4, 6, 8, 6),
+            padding: EdgeInsets.fromLTRB(c ? 6 : 4, c ? 4 : 6, c ? 4 : 8,
+                c ? 4 : 6),
             child: Row(
               children: [
-                if (onPin != null)
+                // Pin فقط در حالت لیست (تک‌ستونی)
+                if (!c && onPin != null)
                   InkWell(
                     onTap: onPin,
                     borderRadius: BorderRadius.circular(20),
@@ -216,35 +224,46 @@ class ServerTile extends StatelessWidget {
                     ),
                   ),
 
-                Text(server.flag, style: const TextStyle(fontSize: 16)),
-                Builder(builder: (ctx) {
-                  final cdn = CdnDetector.label(server.host);
-                  if (cdn == null) return const SizedBox.shrink();
-                  return Padding(
-                    padding: const EdgeInsets.only(left: 3),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: AppColors.accent.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: AppColors.accent.withOpacity(0.4),
-                          width: 0.5,
+                if (c && server.isPinned)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 2),
+                    child: Icon(Icons.push_pin,
+                        color: AppColors.accent, size: 12),
+                  ),
+
+                Text(server.flag,
+                    style: TextStyle(fontSize: c ? 13 : 16)),
+
+                // CDN badge فقط در حالت لیست
+                if (!c)
+                  Builder(builder: (ctx) {
+                    final cdn = CdnDetector.label(server.host);
+                    if (cdn == null) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(left: 3),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: AppColors.accent.withOpacity(0.4),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Text(
+                          cdn,
+                          style: const TextStyle(
+                            color: AppColors.accent,
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                      child: Text(
-                        cdn,
-                        style: const TextStyle(
-                          color: AppColors.accent,
-                          fontSize: 8.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-                const SizedBox(width: 6),
+                    );
+                  }),
+                SizedBox(width: c ? 3 : 6),
 
                 Expanded(
                   child: Column(
@@ -258,7 +277,7 @@ class ServerTile extends StatelessWidget {
                               _cleanName(),
                               style: TextStyle(
                                 color: AppColors.fg(context),
-                                fontSize: 13,
+                                fontSize: c ? 11 : 13,
                                 fontWeight: FontWeight.w500,
                               ),
                               maxLines: 1,
@@ -267,10 +286,10 @@ class ServerTile extends StatelessWidget {
                           ),
                           if (active) ...[
                             const SizedBox(width: 4),
-                            const Icon(
+                            Icon(
                               Icons.check_circle,
                               color: AppColors.accent,
-                              size: 14,
+                              size: c ? 11 : 14,
                             ),
                           ],
                         ],
@@ -280,7 +299,7 @@ class ServerTile extends StatelessWidget {
                         _caption,
                         style: TextStyle(
                           color: AppColors.muted2(context),
-                          fontSize: 10,
+                          fontSize: c ? 9 : 10,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -289,19 +308,20 @@ class ServerTile extends StatelessWidget {
                   ),
                 ),
 
-                const SizedBox(width: 6),
+                SizedBox(width: c ? 2 : 6),
 
                 SizedBox(
-                  width: 38,
+                  width: c ? 28 : 38,
                   child: Align(
                     alignment: Alignment.centerRight,
                     child: _buildPing(context),
                   ),
                 ),
 
-                const SizedBox(width: 2),
+                SizedBox(width: c ? 0 : 2),
 
-                if (onTest != null)
+                // Test icon فقط در حالت لیست
+                if (!c && onTest != null)
                   _smallIcon(
                     icon: Icons.bolt,
                     color: AppColors.warn,
@@ -317,10 +337,10 @@ class ServerTile extends StatelessWidget {
                   icon: Icon(
                     Icons.more_vert,
                     color: AppColors.muted(context),
-                    size: 18,
+                    size: c ? 16 : 18,
                   ),
                   padding: EdgeInsets.zero,
-                  iconSize: 18,
+                  iconSize: c ? 16 : 18,
                   color: AppColors.surface(context),
                   onSelected: (value) {
                     switch (value) {
