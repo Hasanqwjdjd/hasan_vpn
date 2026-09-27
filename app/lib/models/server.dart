@@ -122,6 +122,9 @@ enum VpnProtocol {
   socks5,
   /// زنجیره دو سرور (multi-hop) — link با فرمت chain://
   chain,
+  /// AmneziaWG — WireGuard با obfuscation (Jc/Jmin/Jmax/S1/S2/H1..H4).
+  /// link با فرمت vpn:// (base64 JSON) از Amnezia.
+  amneziaWg,
 }
 
 /// idle: تست نشده | testing: در حال تست | online: سالم | offline: از کار افتاده

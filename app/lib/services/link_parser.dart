@@ -90,6 +90,8 @@ class LinkParser {
         case 'hysteria2':
         case 'hy2':
           return _parseUri(link, id, VpnProtocol.hysteria2);
+        case 'vpn':
+          return _parseVpnLink(link, id);
         default:
           return null;
       }
@@ -103,6 +105,117 @@ class LinkParser {
   static final RegExp _authorityRegex = RegExp(
     r'^[a-zA-Z0-9+.-]+://(?:[^@/?#]*@)?(\[[^\]]+\]|[^:/?#\[\]]+)(?::(\d+))?',
   );
+
+  /// Amnezia `vpn://` — base64 از یه JSON با containers[].awg.last_config.
+  /// last_config خودش یه JSON string از interface/peer WireGuard هست.
+  static VpnServer? _parseVpnLink(String link, String id) {
+    try {
+      final body = link.substring(link.indexOf('://') + 3);
+      // حذف fragment/query احتمالی
+      final clean = body.split('#').first.split('?').first.trim();
+      final decoded = utf8.decode(_b64(clean), allowMalformed: true);
+      final json = jsonDecode(decoded);
+      if (json is! Map) return null;
+
+      final host = (json['hostName'] ?? '').toString().trim();
+      if (host.isEmpty) return null;
+
+      // اولین container از نوع awg رو پیدا کن
+      Map? awg;
+      final containers = json['containers'];
+      if (containers is List) {
+        for (final c in containers) {
+          if (c is Map && c['awg'] is Map) {
+            awg = Map<String, dynamic>.from(c['awg'] as Map);
+            break;
+          }
+        }
+      }
+      if (awg == null) return null;
+
+      final lastCfg = (awg['last_config'] ?? '').toString();
+      if (lastCfg.isEmpty) return null;
+
+      // last_config خودش یه JSON string هست
+      dynamic inner;
+      try {
+        inner = jsonDecode(lastCfg);
+      } catch (_) {
+        return null;
+      }
+      if (inner is! Map) return null;
+
+      final iface = inner['interface'];
+      final peer = inner['peer'];
+      if (peer is! Map) return null;
+      final port = int.tryParse((awg['port'] ?? '51820').toString()) ?? 51820;
+
+      final name = _cleanName(
+        (json['description'] ?? '').toString(),
+        fallback: 'AmneziaWG · $host',
+      );
+
+      // کل JSON رو دوباره base64 می‌کنیم که موقع اتصال بتونیم بازیابی کنیم
+      final rawB64 = base64.encode(utf8.encode(decoded));
+
+      return VpnServer(
+        id: id,
+        name: name,
+        flag: guessFlag(name),
+        shareLink: 'vpn://$rawB64',
+        protocol: VpnProtocol.amneziaWg,
+        host: host,
+        port: port,
+        sniOrHost: (peer['endpoint'] ?? '').toString(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// ssd:// (ShadowsocksDroid) — base64 JSON با servers[]. چند سرور برمی‌گردونه.
+  static List<VpnServer> parseSsd(String link, String idPrefix) {
+    final out = <VpnServer>[];
+    try {
+      final body = link.substring(link.indexOf('://') + 3);
+      final clean = body.split('#').first.split('?').first.trim();
+      final decoded = utf8.decode(_b64(clean), allowMalformed: true);
+      final json = jsonDecode(decoded);
+      if (json is! Map) return out;
+
+      final servers = json['servers'];
+      if (servers is! List) return out;
+
+      final defaultPort =
+          int.tryParse((json['port'] ?? '443').toString()) ?? 443;
+      final defaultEnc = (json['encryption'] ?? 'aes-256-gcm').toString();
+      final defaultPwd = (json['password'] ?? '').toString();
+      final groupName = (json['airport'] ?? 'SSD').toString();
+
+      for (var i = 0; i < servers.length; i++) {
+        final s = servers[i];
+        if (s is! Map) continue;
+        final host = (s['server'] ?? '').toString().trim();
+        if (host.isEmpty) continue;
+        final port =
+            int.tryParse((s['port'] ?? defaultPort).toString()) ?? defaultPort;
+        final enc = (s['encryption'] ?? defaultEnc).toString();
+        final pwd = (s['password'] ?? defaultPwd).toString();
+        final remarks = (s['remarks'] ?? '').toString().trim();
+
+        // لینک استاندارد ss://userinfo@host:port#name
+        // userinfo = base64(method:password)
+        final userInfo =
+            base64.encode(utf8.encode('$enc:$pwd')).replaceAll('=', '');
+        final tag = remarks.isEmpty ? '$groupName #$i' : '$groupName · $remarks';
+        final ssLink = 'ss://$userInfo@$host:$port#${Uri.encodeComponent(tag)}';
+
+        final srv = _parseShadowsocks(ssLink, '${idPrefix}_$i');
+        if (srv != null) out.add(srv);
+      }
+    } catch (_) {}
+    return out;
+  }
 
   static VpnServer? _parseUri(String link, String id, VpnProtocol protocol) {
     final scheme = link.substring(0, link.indexOf('://')).toLowerCase();
