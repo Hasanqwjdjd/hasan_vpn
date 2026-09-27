@@ -3208,7 +3208,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                           TextButton(
                                             onPressed: () =>
                                                 Navigator.pop(d, true),
-                                            child: const Text('Delete'),
+                                            child: Text(_t('حذف', 'Delete')),
                                           ),
                                         ],
                                       ),
