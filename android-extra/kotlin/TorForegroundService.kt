@@ -88,17 +88,8 @@ class TorForegroundService : Service() {
     }
 
     private fun createChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Tor Connection",
-                NotificationManager.IMPORTANCE_LOW,
-            )
-            channel.description = "Tor VPN connection status"
-            channel.setShowBadge(false)
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
-        }
+        // FIX: از helper مشترک استفاده کن — یه channel واحد.
+        NotificationHelper.ensureChannel(this)
     }
 
     private fun buildNotification(): Notification {
