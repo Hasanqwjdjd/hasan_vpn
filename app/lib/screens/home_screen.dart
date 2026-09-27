@@ -107,6 +107,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _autoFastestTimer;
   Timer? _autoTestTimer;
   bool _autoReconnectRunning = false;
+  DateTime? _lastConnectTime;
   List<String> _manualOrder = <String>[];
   static const String _sortKey = 'settings_sort_ascending_v1';
   bool _sortAscending = true;
@@ -1501,6 +1502,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     if (!_connected && !_connecting) return;
     if (_autoReconnectRunning) return;
+    // FIX: اگر ۶۰ ثانیه از زمان اتصال نگذشته، احتمالاً این تغییر شبکه
+    // خودِ VPN interface ماست، نه شبکه‌ی واقعی. auto-reconnect نزن.
+    if (_lastConnectTime != null &&
+        DateTime.now().difference(_lastConnectTime!).inSeconds < 60) {
+      debugPrint('NetworkReconnected ignored: within 60s of last connect');
+      return;
+    }
     _autoReconnectRunning = true;
     // ignore: unawaited_futures
     _autoReconnect().whenComplete(() => _autoReconnectRunning = false);
@@ -2311,6 +2319,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       _deadStrikes = 0;
       _pollTick = 0;
+      if (connected) _lastConnectTime = DateTime.now();
       setState(() {
         _connected = connected;
         _connecting = false;
