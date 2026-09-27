@@ -177,6 +177,18 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   /// سایفون: true = برنامه خودش SponsorId/Channel/پروتکل را انتخاب می‌کند.
   bool _psiphonAuto = true;
 
+  /// Psiphon Over X — 'none' | 'warpmasque' | 'masterdns'
+  String _psiphonUpstream = 'none';
+
+  /// فیلدهای MasterDNS وقتی upstream = masterdns انتخاب شده
+  final TextEditingController _psiphonMdnsDomainController =
+      TextEditingController();
+  final TextEditingController _psiphonMdnsKeyController =
+      TextEditingController();
+  final TextEditingController _psiphonMdnsResolversController =
+      TextEditingController();
+  int _psiphonMdnsMethod = 1;
+
   /// کشور خروجی سایفون؛ '' = خودکار (سریع‌ترین).
   String _psiphonRegion = '';
   List<String> _psiphonRegions = PsiphonAuto.fallbackRegions;
@@ -565,6 +577,23 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       if (config.isNotEmpty) params['config'] = config;
     }
     if (region.isNotEmpty) params['region'] = region;
+    if (_psiphonUpstream != 'none') params['upstream'] = _psiphonUpstream;
+    if (_psiphonUpstream == 'masterdns') {
+      final md = _psiphonMdnsDomainController.text.trim();
+      final mk = _psiphonMdnsKeyController.text.trim();
+      final mr = _psiphonMdnsResolversController.text.trim();
+      if (md.isEmpty || mk.isEmpty) {
+        _showMsg(_t(
+          'برای Psiphon Over MasterDNS، domain و key الزامی است',
+          'MasterDNS domain & key are required',
+        ));
+        return;
+      }
+      params['mdns_domain'] = md;
+      params['mdns_key'] = mk;
+      params['mdns_method'] = '$_psiphonMdnsMethod';
+      if (mr.isNotEmpty) params['mdns_resolvers'] = mr;
+    }
 
     final q = params.entries
         .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
@@ -1352,6 +1381,133 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
           style: TextStyle(color: AppColors.fg(context)),
           decoration:
               _siphonDecoration(_t('مثال: سایفون من', 'e.g. My Psiphon')),
+        ),
+        const SizedBox(height: 16),
+        // Psiphon Over X — chaining
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.surface(context),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border(context)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _t('Psiphon Over (اختیاری)',
+                    'Psiphon Over (optional)'),
+                style: TextStyle(
+                  color: AppColors.fg(context),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _t(
+                  'اگه اینترنت ایران Psiphon رو بلاک کرده، اول یه تونل دیگه وصل می‌شه و Psiphon از اون رد می‌شه.',
+                  'If Psiphon is blocked, connect another tunnel first and route Psiphon through it.',
+                ),
+                style: TextStyle(
+                    color: AppColors.muted2(context),
+                    fontSize: 10,
+                    height: 1.4),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _psiphonUpstream,
+                isExpanded: true,
+                dropdownColor: AppColors.surface(context),
+                style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: AppColors.border(context)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: AppColors.border(context)),
+                  ),
+                ),
+                items: [
+                  DropdownMenuItem(
+                      value: 'none',
+                      child: Text(_t('بدون واسط (مستقیم)', 'None (direct)'))),
+                  const DropdownMenuItem(
+                      value: 'warpmasque',
+                      child: Text('WARP MASQUE/H2 (1819)')),
+                  const DropdownMenuItem(
+                      value: 'masterdns',
+                      child: Text('MasterDNS (18000)')),
+                ],
+                onChanged: (v) => setState(() => _psiphonUpstream = v ?? 'none'),
+              ),
+              // اگه MasterDNS انتخاب شد، ۳ فیلد زیر بیاد
+              if (_psiphonUpstream == 'masterdns') ...[
+                const SizedBox(height: 10),
+                _tunnelField(
+                  controller: _psiphonMdnsDomainController,
+                  label: _t('دامنه MasterDNS', 'MasterDNS domain'),
+                  hint: 'v.domain.com',
+                  color: teal,
+                ),
+                const SizedBox(height: 8),
+                _tunnelField(
+                  controller: _psiphonMdnsKeyController,
+                  label: _t('کلید MasterDNS', 'MasterDNS key'),
+                  hint: 'shared secret',
+                  color: teal,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _t('روش رمزنگاری MDNS', 'MDNS encryption method'),
+                  style: TextStyle(
+                      color: AppColors.muted(context), fontSize: 12),
+                ),
+                const SizedBox(height: 4),
+                DropdownButtonFormField<int>(
+                  value: _psiphonMdnsMethod,
+                  isExpanded: true,
+                  dropdownColor: AppColors.surface(context),
+                  style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 8),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: AppColors.border(context)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: AppColors.border(context)),
+                    ),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 0, child: Text('0 — None')),
+                    DropdownMenuItem(value: 1, child: Text('1 — XOR')),
+                    DropdownMenuItem(value: 2, child: Text('2 — ChaCha20')),
+                    DropdownMenuItem(value: 3, child: Text('3 — AES-128-GCM')),
+                    DropdownMenuItem(value: 4, child: Text('4 — AES-192-GCM')),
+                    DropdownMenuItem(value: 5, child: Text('5 — AES-256-GCM')),
+                  ],
+                  onChanged: (v) =>
+                      setState(() => _psiphonMdnsMethod = v ?? 1),
+                ),
+                const SizedBox(height: 8),
+                _tunnelField(
+                  controller: _psiphonMdnsResolversController,
+                  label: _t('resolverها (اختیاری)', 'Resolvers (optional)'),
+                  hint: '8.8.8.8,1.1.1.1',
+                  color: teal,
+                ),
+              ],
+            ],
+          ),
         ),
         const SizedBox(height: 16),
         SizedBox(
@@ -4073,6 +4229,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _psiphonSponsorController.dispose();
     _psiphonChannelController.dispose();
     _psiphonConfigController.dispose();
+    _psiphonMdnsDomainController.dispose();
+    _psiphonMdnsKeyController.dispose();
+    _psiphonMdnsResolversController.dispose();
     _nameController.dispose();
     _sniController.dispose();
     _aetherDnsController.dispose();

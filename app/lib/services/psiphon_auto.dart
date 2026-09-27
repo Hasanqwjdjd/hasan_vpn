@@ -11,11 +11,18 @@ class PsiphonProfile {
   /// کلیدهای اضافه‌ی کانفیگ که فقط برای همین پروفایل لازم است.
   final Map<String, dynamic> extra;
 
+  /// FIX: پروکسی بالادستی (Upstream Proxy). اگه پر بود، Psiphon از
+  /// این SOCKS5/HTTP رد می‌شه. مثلاً:
+  ///   socks5://127.0.0.1:1819 → WARP MASQUE
+  ///   socks5://127.0.0.1:18000 → MasterDNS
+  final String upstreamProxyUrl;
+
   const PsiphonProfile({
     required this.id,
     required this.sponsorId,
     required this.channelId,
     this.extra = const <String, dynamic>{},
+    this.upstreamProxyUrl = '',
   });
 }
 
@@ -156,6 +163,7 @@ class PsiphonAuto {
     String? networkId,
     bool emptyRemoteList = false,
     String? platformOverride,
+    String upstreamProxyUrl = '',
   }) {
     final map = <String, dynamic>{
       'SponsorId': profile.sponsorId,
@@ -185,6 +193,13 @@ class PsiphonAuto {
     map.addAll(profile.extra);
     if (limitProtocols != null && limitProtocols.isNotEmpty) {
       map['LimitTunnelProtocols'] = limitProtocols;
+    }
+    // FIX: Upstream Proxy — Psiphon از این SOCKS/HTTP رد می‌شه
+    final upstream = upstreamProxyUrl.isNotEmpty
+        ? upstreamProxyUrl
+        : profile.upstreamProxyUrl;
+    if (upstream.isNotEmpty) {
+      map['UpstreamProxyUrl'] = upstream;
     }
     return map;
   }

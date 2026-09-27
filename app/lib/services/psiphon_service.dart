@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 
 import '../models/server.dart';
 import 'aether_service.dart';
+import 'warp_masque_service.dart';
+import 'master_dns_service.dart';
 import 'psiphon_auto.dart';
 import 'v2ray_engine.dart';
 import 'connection_log_service.dart';
@@ -48,6 +50,7 @@ class PsiphonService {
     String sponsorId = '',
     String propagationChannelId = '',
     String egressRegion = '',
+    String upstreamProxyUrl = '',
   }) {
     final base = PsiphonAuto.profiles.first;
     final profile = PsiphonProfile(
@@ -56,12 +59,14 @@ class PsiphonService {
       channelId: propagationChannelId.isEmpty
           ? base.channelId
           : propagationChannelId,
+      upstreamProxyUrl: upstreamProxyUrl,
     );
     return jsonEncode(
       PsiphonAuto.buildConfig(
         profile,
         region: egressRegion,
         establishTimeoutSec: 60,
+        upstreamProxyUrl: upstreamProxyUrl,
       ),
     );
   }
@@ -105,6 +110,60 @@ class PsiphonService {
       return;
     }
     await stop(reason: reason);
+  }
+
+  /// FIX: قبل از Psiphon، سرویس upstream رو بالا می‌آره.
+  static Future<void> _ensureUpstream(
+    VpnServer server,
+    PsiphonProgress? onProgress,
+    bool Function() cancelled,
+    bool Function() stale,
+  ) async {
+    try {
+      final uri = Uri.parse(server.shareLink);
+      final upstream = (uri.queryParameters['upstream'] ?? '').trim();
+      if (upstream.isEmpty || upstream == 'none') return;
+
+      if (upstream == 'warpmasque') {
+        if (WarpMasqueService.isRunning) return;
+        onProgress?.call('Psiphon · connecting WARP MASQUE upstream');
+        final ok = await WarpMasqueService.start();
+        if (!ok || cancelled() || stale()) {
+          throw StateError(
+              'Upstream WARP MASQUE failed: ${WarpMasqueService.lastError ?? "unknown"}');
+        }
+        return;
+      }
+
+      if (upstream == 'masterdns') {
+        if (MasterDnsService.isRunning) return;
+        final domain = (uri.queryParameters['mdns_domain'] ?? '').trim();
+        final key = (uri.queryParameters['mdns_key'] ?? '').trim();
+        final method =
+            int.tryParse(uri.queryParameters['mdns_method'] ?? '1') ?? 1;
+        final resolvers =
+            (uri.queryParameters['mdns_resolvers'] ?? '').trim();
+        if (domain.isEmpty || key.isEmpty) {
+          throw StateError(
+              'برای Psiphon Over MasterDNS، domain و key را در فرم Psiphon پر کنید');
+        }
+        onProgress?.call('Psiphon · connecting MasterDNS upstream');
+        final ok = await MasterDnsService.start(
+          domain: domain,
+          key: key,
+          method: method,
+          resolvers: resolvers,
+        );
+        if (!ok || cancelled() || stale()) {
+          throw StateError(
+              'Upstream MasterDNS failed: ${MasterDnsService.lastError ?? "unknown"}');
+        }
+        return;
+      }
+    } catch (e) {
+      lastError = e.toString();
+      rethrow;
+    }
   }
 
   static Future<bool> connect(
@@ -171,6 +230,10 @@ class PsiphonService {
 
       int port = 0;
       String? failure;
+      // FIX: Psiphon Over X — اگه upstream ست بود، اول اون رو وصل کن.
+      // این کار به‌جای داخل حلقه انجام می‌شه تا فقط یک‌بار اجرا شه.
+      await _ensureUpstream(server, onProgress, cancelled, () => gen != _connectGen);
+
       for (var i = 0; i < attempts.length; i++) {
         if (cancelled() || gen != _connectGen) {
           await _stopIfStillCurrent(gen, 'cancelled-in-loop');
@@ -318,10 +381,12 @@ class PsiphonService {
         final sponsor = uri.queryParameters['sponsor'] ?? '';
         final channel = uri.queryParameters['channel'] ?? '';
         final region = uri.queryParameters['region'] ?? '';
+        final upstream = uri.queryParameters['upstream'] ?? '';
         return defaultConfigJson(
           sponsorId: sponsor,
           propagationChannelId: channel,
           egressRegion: region,
+          upstreamProxyUrl: upstream,
         );
       } catch (_) {}
     }
