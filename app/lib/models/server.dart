@@ -1,3 +1,107 @@
+class TlsOptions {
+  final String? fingerprint;
+  final bool allowInsecure;
+  final String? alpn;
+  final String? cipherSuites;
+  final String? echConfigList;
+  final String? verifyPeerCertByName;
+  final String? pinnedPeerCertSha256;
+  final String? finalMask;
+  final String? dialMode;
+  final bool browserDialer;
+  final String? targetStrategy;
+
+  const TlsOptions({
+    this.fingerprint,
+    this.allowInsecure = false,
+    this.alpn,
+    this.cipherSuites,
+    this.echConfigList,
+    this.verifyPeerCertByName,
+    this.pinnedPeerCertSha256,
+    this.finalMask,
+    this.dialMode,
+    this.browserDialer = false,
+    this.targetStrategy,
+  });
+
+  static const TlsOptions empty = TlsOptions();
+
+  bool get isEmpty =>
+      (fingerprint == null || fingerprint!.isEmpty) &&
+      !allowInsecure &&
+      (alpn == null || alpn!.isEmpty) &&
+      (cipherSuites == null || cipherSuites!.isEmpty) &&
+      (echConfigList == null || echConfigList!.isEmpty) &&
+      (verifyPeerCertByName == null || verifyPeerCertByName!.isEmpty) &&
+      (pinnedPeerCertSha256 == null || pinnedPeerCertSha256!.isEmpty) &&
+      (finalMask == null || finalMask!.isEmpty) &&
+      (dialMode == null || dialMode!.isEmpty) &&
+      !browserDialer &&
+      (targetStrategy == null || targetStrategy!.isEmpty);
+
+  TlsOptions copyWith({
+    String? fingerprint,
+    bool? allowInsecure,
+    String? alpn,
+    String? cipherSuites,
+    String? echConfigList,
+    String? verifyPeerCertByName,
+    String? pinnedPeerCertSha256,
+    String? finalMask,
+    String? dialMode,
+    bool? browserDialer,
+    String? targetStrategy,
+  }) =>
+      TlsOptions(
+        fingerprint: fingerprint ?? this.fingerprint,
+        allowInsecure: allowInsecure ?? this.allowInsecure,
+        alpn: alpn ?? this.alpn,
+        cipherSuites: cipherSuites ?? this.cipherSuites,
+        echConfigList: echConfigList ?? this.echConfigList,
+        verifyPeerCertByName: verifyPeerCertByName ?? this.verifyPeerCertByName,
+        pinnedPeerCertSha256: pinnedPeerCertSha256 ?? this.pinnedPeerCertSha256,
+        finalMask: finalMask ?? this.finalMask,
+        dialMode: dialMode ?? this.dialMode,
+        browserDialer: browserDialer ?? this.browserDialer,
+        targetStrategy: targetStrategy ?? this.targetStrategy,
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (fingerprint != null && fingerprint!.isNotEmpty)
+          'fingerprint': fingerprint,
+        if (allowInsecure) 'allowInsecure': allowInsecure,
+        if (alpn != null && alpn!.isNotEmpty) 'alpn': alpn,
+        if (cipherSuites != null && cipherSuites!.isNotEmpty)
+          'cipherSuites': cipherSuites,
+        if (echConfigList != null && echConfigList!.isNotEmpty)
+          'echConfigList': echConfigList,
+        if (verifyPeerCertByName != null && verifyPeerCertByName!.isNotEmpty)
+          'verifyPeerCertByName': verifyPeerCertByName,
+        if (pinnedPeerCertSha256 != null && pinnedPeerCertSha256!.isNotEmpty)
+          'pinnedPeerCertSha256': pinnedPeerCertSha256,
+        if (finalMask != null && finalMask!.isNotEmpty) 'finalMask': finalMask,
+        if (dialMode != null && dialMode!.isNotEmpty) 'dialMode': dialMode,
+        if (browserDialer) 'browserDialer': browserDialer,
+        if (targetStrategy != null && targetStrategy!.isNotEmpty)
+          'targetStrategy': targetStrategy,
+      };
+
+  factory TlsOptions.fromJson(Map<String, dynamic> j) => TlsOptions(
+        fingerprint: j['fingerprint']?.toString(),
+        allowInsecure: j['allowInsecure'] == true,
+        alpn: j['alpn']?.toString(),
+        cipherSuites: j['cipherSuites']?.toString(),
+        echConfigList: j['echConfigList']?.toString(),
+        verifyPeerCertByName: j['verifyPeerCertByName']?.toString(),
+        pinnedPeerCertSha256: j['pinnedPeerCertSha256']?.toString(),
+        finalMask: j['finalMask']?.toString(),
+        dialMode: j['dialMode']?.toString(),
+        browserDialer: j['browserDialer'] == true,
+        targetStrategy: j['targetStrategy']?.toString(),
+      );
+}
+
 enum VpnProtocol {
   trojan,
   vless,
@@ -70,6 +174,9 @@ class VpnServer {
   /// نام سفارشی که کاربر جایگزین نام اصلی کرده. null = نام اصلی.
   String? nameOverride;
 
+  /// تنظیمات TLS سفارشی کاربر (fingerprint, allowInsecure, finalMask, ...)
+  TlsOptions tls;
+
   int? ping;
   int? jitter;
   PingKind pingKind;
@@ -88,6 +195,7 @@ class VpnServer {
     this.isDeletable = true,
     this.isPinned = false,
     this.nameOverride,
+    this.tls = TlsOptions.empty,
     this.ping,
     this.jitter,
     this.pingKind = PingKind.none,
@@ -118,6 +226,7 @@ class VpnServer {
     int? port,
     String? nameOverride,
     bool? isPinned,
+    TlsOptions? tls,
   }) =>
       VpnServer(
         id: id,
@@ -131,6 +240,7 @@ class VpnServer {
         isDeletable: isDeletable,
         isPinned: isPinned ?? this.isPinned,
         nameOverride: nameOverride ?? this.nameOverride,
+        tls: tls ?? this.tls,
       );
 
   /// پاک‌کردن نتیجه‌ی تست قبلی.

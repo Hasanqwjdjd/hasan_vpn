@@ -436,53 +436,256 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await _editAetherServer(server);
       return;
     }
-    final ctrl = TextEditingController(text: server.displayName);
+    await _editServerFull(server);
+  }
+
+  Future<void> _editServerFull(VpnServer server) async {
+    final nameCtrl = TextEditingController(text: server.displayName);
+    final sniCtrl = TextEditingController(text: server.sniOrHost ?? '');
+    final alpnCtrl = TextEditingController(text: server.tls.alpn ?? '');
+    final cipherCtrl =
+        TextEditingController(text: server.tls.cipherSuites ?? '');
+    final echCtrl = TextEditingController(text: server.tls.echConfigList ?? '');
+    final verifyPeerCtrl =
+        TextEditingController(text: server.tls.verifyPeerCertByName ?? '');
+    final pinCtrl =
+        TextEditingController(text: server.tls.pinnedPeerCertSha256 ?? '');
+    final finalMaskCtrl =
+        TextEditingController(text: server.tls.finalMask ?? '');
+    final dialModeCtrl =
+        TextEditingController(text: server.tls.dialMode ?? '');
+    final targetStratCtrl =
+        TextEditingController(text: server.tls.targetStrategy ?? '');
+
+    String fp = server.tls.fingerprint ?? 'none';
+    bool insecure = server.tls.allowInsecure;
+    bool browserDialer = server.tls.browserDialer;
+
     try {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.elevated(ctx),
-        title: Text(_t('ویرایش نام سرور', 'Edit server name'),
-            style: TextStyle(color: AppColors.fg(ctx))),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: TextStyle(color: AppColors.fg(ctx)),
-          decoration: InputDecoration(
-            labelText: _t('نام جدید', 'New name'),
-            labelStyle: TextStyle(color: AppColors.muted(ctx)),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(_t('لغو', 'Cancel'),
-                style: TextStyle(color: AppColors.muted(ctx))),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(_t('ذخیره', 'Save'),
-                style: const TextStyle(color: AppColors.accent)),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) {
-      ctrl.dispose();
-      return;
-    }
+      final result = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
+          Widget field(String label, TextEditingController c,
+              {int maxLines = 1, String? hint}) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: TextField(
+                controller: c,
+                maxLines: maxLines,
+                style: TextStyle(color: AppColors.fg(ctx), fontSize: 13),
+                decoration: InputDecoration(
+                  labelText: label,
+                  hintText: hint,
+                  hintStyle:
+                      TextStyle(color: AppColors.muted2(ctx), fontSize: 11),
+                  labelStyle:
+                      TextStyle(color: AppColors.muted(ctx), fontSize: 12),
+                  isDense: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            );
+          }
 
-    final newName = ctrl.text.trim();
-    ctrl.dispose();
-    if (newName.isEmpty) return;
+          return AlertDialog(
+            backgroundColor: AppColors.elevated(ctx),
+            title: Text(_t('ویرایش سرور', 'Edit server'),
+                style: TextStyle(color: AppColors.fg(ctx), fontSize: 16)),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_t('عمومی', 'General'),
+                        style: TextStyle(
+                            color: AppColors.accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 6),
+                    field(_t('نام', 'Name'), nameCtrl),
+                    field(_t('SNI', 'SNI'), sniCtrl),
 
-    await SettingsService.setServerNameOverride(server.id, newName);
-    if (!mounted) return;
-    setState(() {
-      server.nameOverride = VpnServer.sanitizeServerName(newName);
-    });
+                    const SizedBox(height: 8),
+                    Text(_t('TLS / Fingerprint', 'TLS / Fingerprint'),
+                        style: TextStyle(
+                            color: AppColors.accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: fp,
+                      dropdownColor: AppColors.elevated(ctx),
+                      style: TextStyle(color: AppColors.fg(ctx), fontSize: 13),
+                      decoration: InputDecoration(
+                        labelText: _t('اثرانگشت (fingerprint)', 'Fingerprint'),
+                        labelStyle:
+                            TextStyle(color: AppColors.muted(ctx), fontSize: 12),
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'none', child: Text('none')),
+                        DropdownMenuItem(value: 'chrome', child: Text('chrome')),
+                        DropdownMenuItem(value: 'firefox', child: Text('firefox')),
+                        DropdownMenuItem(value: 'safari', child: Text('safari')),
+                        DropdownMenuItem(value: 'ios', child: Text('ios')),
+                        DropdownMenuItem(value: 'android', child: Text('android')),
+                        DropdownMenuItem(value: 'edge', child: Text('edge')),
+                        DropdownMenuItem(value: 'random', child: Text('random')),
+                        DropdownMenuItem(value: 'randomized', child: Text('randomized')),
+                        DropdownMenuItem(value: 'unsafe', child: Text('unsafe')),
+                      ],
+                      onChanged: (v) => setLocal(() => fp = v ?? 'none'),
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      activeColor: AppColors.accent,
+                      title: Text(
+                          _t('نادیده گرفتن تأیید گواهی (allowInsecure)',
+                              'Skip cert verify (allowInsecure)'),
+                          style:
+                              TextStyle(color: AppColors.fg(ctx), fontSize: 12)),
+                      value: insecure,
+                      onChanged: (v) => setLocal(() => insecure = v),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      activeColor: AppColors.accent,
+                      title: Text(_t('Browser Dialer', 'Browser Dialer'),
+                          style:
+                              TextStyle(color: AppColors.fg(ctx), fontSize: 12)),
+                      value: browserDialer,
+                      onChanged: (v) => setLocal(() => browserDialer = v),
+                    ),
+                    field('ALPN', alpnCtrl, hint: 'h2,http/1.1'),
+                    field(_t('مجموعه رمزنگاری (Cipher Suites)', 'Cipher Suites'),
+                        cipherCtrl, maxLines: 3),
+                    field('echConfigList', echCtrl),
+                    field(
+                        _t('تأیید گواهی بر اساس نام', 'Verify peer cert by name'),
+                        verifyPeerCtrl,
+                        hint: 'example.com'),
+                    field(_t('اثر انگشت گواهی (SHA-256)',
+                            'Pinned peer cert SHA-256'),
+                        pinCtrl, maxLines: 3),
+
+                    const SizedBox(height: 8),
+                    Text(_t('پیشرفته', 'Advanced'),
+                        style: TextStyle(
+                            color: AppColors.accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 6),
+                    field('finalMask',
+                        finalMaskCtrl, maxLines: 4,
+                        hint: '{"tcp":[...]}'),
+                    field('dialMode', dialModeCtrl),
+                    field('targetStrategy', targetStratCtrl, hint: 'AsIs'),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(_t('انصراف', 'Cancel'),
+                    style: TextStyle(color: AppColors.muted(ctx))),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, {
+                  'name': nameCtrl.text.trim(),
+                  'sni': sniCtrl.text.trim(),
+                  'fingerprint': fp == 'none' ? null : fp,
+                  'allowInsecure': insecure,
+                  'alpn': alpnCtrl.text.trim(),
+                  'cipherSuites': cipherCtrl.text.trim(),
+                  'echConfigList': echCtrl.text.trim(),
+                  'verifyPeerCertByName': verifyPeerCtrl.text.trim(),
+                  'pinnedPeerCertSha256': pinCtrl.text.trim(),
+                  'finalMask': finalMaskCtrl.text.trim(),
+                  'dialMode': dialModeCtrl.text.trim(),
+                  'browserDialer': browserDialer,
+                  'targetStrategy': targetStratCtrl.text.trim(),
+                }),
+                child: Text(_t('ذخیره', 'Save'),
+                    style: const TextStyle(color: AppColors.accent)),
+              ),
+            ],
+          );
+        }),
+      );
+
+      if (result == null || !mounted) return;
+
+      final newName = (result['name'] as String).trim();
+      final newSni = (result['sni'] as String).trim();
+
+      String? nz(dynamic v) {
+        final s = v?.toString() ?? '';
+        return s.isEmpty ? null : s;
+      }
+
+      final newTls = TlsOptions(
+        fingerprint: nz(result['fingerprint']),
+        allowInsecure: result['allowInsecure'] == true,
+        alpn: nz(result['alpn']),
+        cipherSuites: nz(result['cipherSuites']),
+        echConfigList: nz(result['echConfigList']),
+        verifyPeerCertByName: nz(result['verifyPeerCertByName']),
+        pinnedPeerCertSha256: nz(result['pinnedPeerCertSha256']),
+        finalMask: nz(result['finalMask']),
+        dialMode: nz(result['dialMode']),
+        browserDialer: result['browserDialer'] == true,
+        targetStrategy: nz(result['targetStrategy']),
+      );
+
+      final updated = server.copyWith(
+        name: newName.isNotEmpty ? newName : null,
+        nameOverride: newName.isNotEmpty ? newName : null,
+        tls: newTls,
+      );
+
+      // آپدیت sniOrHost (nullable final است؛ مستقیم ست می‌کنیم)
+      updated.sniOrHost = newSni.isEmpty ? null : newSni;
+
+      // ذخیره در custom servers یا name override
+      final idx = _customServers.indexWhere((s) => s.id == server.id);
+      if (idx >= 0) {
+        _customServers[idx] = updated;
+        await _saveCustomServers();
+      } else if (newName.isNotEmpty) {
+        await SettingsService.setServerNameOverride(server.id, newName);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        final si = _servers.indexWhere((s) => s.id == server.id);
+        if (si >= 0) _servers[si] = updated;
+        if (_selected?.id == server.id) _selected = updated;
+        if (_active?.id == server.id) _active = updated;
+      });
+
+      _showMsg(_t('سرور ویرایش شد', 'Server updated'));
     } finally {
-      ctrl.dispose();
+      nameCtrl.dispose();
+      sniCtrl.dispose();
+      alpnCtrl.dispose();
+      cipherCtrl.dispose();
+      echCtrl.dispose();
+      verifyPeerCtrl.dispose();
+      pinCtrl.dispose();
+      finalMaskCtrl.dispose();
+      dialModeCtrl.dispose();
+      targetStratCtrl.dispose();
     }
   }
 
