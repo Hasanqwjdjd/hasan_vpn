@@ -55,6 +55,20 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   String _tunnelKind = 'dnstt';
   String _tunnelTransport = 'udp'; // udp | dot | doh
 
+  // Hysteria2
+  final TextEditingController _hy2HostController = TextEditingController();
+  final TextEditingController _hy2PortController =
+      TextEditingController(text: '443');
+  final TextEditingController _hy2AuthController = TextEditingController();
+  final TextEditingController _hy2SniController = TextEditingController();
+  final TextEditingController _hy2ObfsPassController =
+      TextEditingController();
+  final TextEditingController _hy2UpController = TextEditingController();
+  final TextEditingController _hy2DownController = TextEditingController();
+  final TextEditingController _hy2NameController = TextEditingController();
+  String _hy2Obfs = 'salamander';
+  bool _hy2Insecure = false;
+
   // SSH
   final TextEditingController _sshHostController = TextEditingController();
   final TextEditingController _sshPortController =
@@ -1622,6 +1636,236 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _showMsg(_t('سرور SSH اضافه شد', 'SSH server added'));
   }
 
+  void _addHysteria2Server() {
+    final host = _hy2HostController.text.trim();
+    final auth = _hy2AuthController.text.trim();
+    if (host.isEmpty || auth.isEmpty) {
+      _showMsg(_t('هاست و رمز auth الزامی است', 'Host and auth are required'));
+      return;
+    }
+    final port = int.tryParse(_hy2PortController.text.trim()) ?? 443;
+    final sni = _hy2SniController.text.trim();
+    final name = _hy2NameController.text.trim();
+
+    final params = <String, String>{
+      'security': 'tls',
+      if (sni.isNotEmpty) 'sni': sni,
+      if (_hy2Obfs != 'none') 'obfs': _hy2Obfs,
+      if (_hy2Obfs != 'none' && _hy2ObfsPassController.text.trim().isNotEmpty)
+        'obfs-password': _hy2ObfsPassController.text.trim(),
+      if (_hy2UpController.text.trim().isNotEmpty)
+        'up': _hy2UpController.text.trim(),
+      if (_hy2DownController.text.trim().isNotEmpty)
+        'down': _hy2DownController.text.trim(),
+      'insecure': _hy2Insecure ? '1' : '0',
+    };
+
+    final uri = Uri(
+      scheme: 'hysteria2',
+      userInfo: auth,
+      host: host,
+      port: port,
+      queryParameters: params,
+      fragment: name.isEmpty ? null : name,
+    );
+
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final server = LinkParser.parse(uri.toString(), id: 'custom_$stamp');
+    if (server == null) {
+      _showMsg(_t('ساخت لینک ناموفق بود', 'Failed to build link'));
+      return;
+    }
+    widget.onServerAdded(server);
+    Navigator.pop(context);
+    _showMsg(_t('سرور Hysteria2 اضافه شد', 'Hysteria2 server added'));
+  }
+
+  Widget _buildHysteria2Form() {
+    const color = Color(0xFFEF6C00);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.waves, color: color, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _t(
+                    'Hysteria2 با پارامترهای پیشرفته: obfs، پهنای باند، SNI، insecure.',
+                    'Hysteria2 with advanced params: obfs, bandwidth, SNI, insecure.',
+                  ),
+                  style: TextStyle(
+                    color: AppColors.muted(context),
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: _tunnelField(
+                controller: _hy2HostController,
+                label: _t('هاست', 'Host'),
+                hint: 'hy2.example.com',
+                color: color,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _tunnelField(
+                controller: _hy2PortController,
+                label: _t('پورت', 'Port'),
+                hint: '443',
+                color: color,
+                keyboard: TextInputType.number,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _hy2AuthController,
+          label: _t('رمز auth (UUID یا دلخواه)', 'Auth (UUID or password)'),
+          hint: '',
+          color: color,
+        ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _hy2SniController,
+          label: _t('SNI', 'SNI'),
+          hint: 'hy2.example.com',
+          color: color,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          _t('Obfs', 'Obfs'),
+          style: TextStyle(
+              color: AppColors.muted(context),
+              fontSize: 12,
+              fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: AppColors.surface(context),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border(context)),
+          ),
+          child: DropdownButton<String>(
+            value: _hy2Obfs,
+            isExpanded: true,
+            dropdownColor: AppColors.surface(context),
+            underline: const SizedBox.shrink(),
+            style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+            items: const [
+              DropdownMenuItem(value: 'none', child: Text('none')),
+              DropdownMenuItem(
+                  value: 'salamander', child: Text('salamander')),
+            ],
+            onChanged: (v) => setState(() => _hy2Obfs = v ?? 'salamander'),
+          ),
+        ),
+        if (_hy2Obfs != 'none') ...[
+          const SizedBox(height: 12),
+          _tunnelField(
+            controller: _hy2ObfsPassController,
+            label: _t('رمز obfs', 'Obfs password'),
+            hint: '',
+            color: color,
+          ),
+        ],
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _tunnelField(
+                controller: _hy2UpController,
+                label: _t('Up (Mbps)', 'Up (Mbps)'),
+                hint: '100',
+                color: color,
+                keyboard: TextInputType.number,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _tunnelField(
+                controller: _hy2DownController,
+                label: _t('Down (Mbps)', 'Down (Mbps)'),
+                hint: '100',
+                color: color,
+                keyboard: TextInputType.number,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.surface(context),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border(context)),
+          ),
+          child: SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            activeColor: color,
+            title: Text(
+              _t('نادیده گرفتن خطای گواهی (insecure)',
+                  'Insecure (skip cert verify)'),
+              style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+            ),
+            value: _hy2Insecure,
+            onChanged: (v) => setState(() => _hy2Insecure = v),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _hy2NameController,
+          label: _t('نام سرور (اختیاری)', 'Server name (optional)'),
+          hint: '',
+          color: color,
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton(
+            onPressed: _addHysteria2Server,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: Text(
+              _t('افزودن سرور', 'Add Server'),
+              style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+        const SizedBox(height: 30),
+      ],
+    );
+  }
+
   Widget _buildSshForm() {
     const color = Color(0xFF66BB6A);
     return Column(
@@ -2747,6 +2991,14 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: const Color(0xFFAB47BC),
             ),
             _buildTypeCard(
+              title: 'Hysteria2',
+              subtitle: _t('HY2 با پارامترهای پیشرفته',
+                  'HY2 with advanced params'),
+              icon: Icons.waves,
+              type: 'hysteria2',
+              color: const Color(0xFFEF6C00),
+            ),
+            _buildTypeCard(
               title: 'SSH',
               subtitle: _t(
                 'اتصال SSH + SOCKS5 روی سرور (ssh -D)',
@@ -2985,6 +3237,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             ] else if (_selectedType == 'aether' ||
                 false) ...[
                             _buildAetherForm(),
+              const SizedBox(height: 16),
+            ] else if (_selectedType == 'hysteria2') ...[
+              _buildHysteria2Form(),
               const SizedBox(height: 16),
             ] else if (_selectedType == 'siphon') ...[
               _buildSiphonForm(),

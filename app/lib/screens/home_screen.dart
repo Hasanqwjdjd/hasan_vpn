@@ -106,6 +106,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _autoReconnectRunning = false;
   List<String> _manualOrder = <String>[];
 
+  // ─── گروه‌های کاربر ───
+  Map<String, List<String>> _userGroups = <String, List<String>>{};
+  List<String> _userGroupsOrder = <String>[];
+  static const String _userGroupsKey = 'server_groups_v1';
+  static const String _userGroupsOrderKey = 'server_groups_order_v1';
+
   String? _selectedSubId;
   // اگر از ویجت با widget_needs_server اومده باشیم، این مقدار پر می‌شه
   int? _pendingWidgetId;
@@ -211,6 +217,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _loadCustomSubTags();
     await _loadServerNameOverrides();
     await _loadManualOrder();
+    await _loadUserGroups();
     if (!mounted) return;
     _rebuildServerList();
     await _loadPings();
@@ -892,6 +899,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _manualOrder = prefs.getStringList(_orderKey) ?? <String>[];
   }
 
+  Future<void> _loadUserGroups() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_userGroupsKey) ?? '{}';
+      final dec = jsonDecode(raw);
+      final m = <String, List<String>>{};
+      if (dec is Map) {
+        dec.forEach((k, v) {
+          if (v is List) {
+            m[k.toString()] = v.map((e) => e.toString()).toList();
+          }
+        });
+      }
+      final ord = prefs.getStringList(_userGroupsOrderKey) ?? <String>[];
+      for (final k in m.keys) {
+        if (!ord.contains(k)) ord.add(k);
+      }
+      if (mounted) {
+        setState(() {
+          _userGroups = m;
+          _userGroupsOrder = ord;
+        });
+      } else {
+        _userGroups = m;
+        _userGroupsOrder = ord;
+      }
+    } catch (_) {}
+  }
+
   Future<void> _saveManualOrder() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_orderKey, _manualOrder);
@@ -1336,6 +1372,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_selectedSubId == TelegramSourceService.groupId) {
       // گروه «سرور رایگان» — فقط سرورهای fetch‌شده از تلگرام
       list = List<VpnServer>.from(_freeServers);
+    } else if (_selectedSubId != null && _selectedSubId!.startsWith('ugroup:')) {
+      final gname = _selectedSubId!.substring('ugroup:'.length);
+      final ids = (_userGroups[gname] ?? const <String>[]).toSet();
+      list = list.where((s) => ids.contains(s.id)).toList();
     } else if (_selectedSubId != null) {
       final sub = widget.subscriptions.firstWhere(
         (s) => s.id == _selectedSubId,
@@ -2294,7 +2334,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildSubTabs() {
-    if (widget.subscriptions.isEmpty) return const SizedBox.shrink();
+    if (widget.subscriptions.isEmpty && _userGroups.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
     final tabs = <Widget>[];
     final showAll = _showAllTab;
@@ -2306,6 +2348,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     ));
     for (final sub in widget.subscriptions) {
       tabs.add(_subTab(sub.id, sub.name, sub.serverCount));
+    }
+    for (final gname in _userGroupsOrder) {
+      if (!_userGroups.containsKey(gname)) continue;
+      final cnt = (_userGroups[gname] ?? const <String>[]).length;
+      tabs.add(_userGroupTab(gname, cnt));
+    }
+    if (_userGroups.isNotEmpty) {
+      tabs.add(
+        GestureDetector(
+          onTap: () => _openGroupManager(),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.surface(context),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border(context)),
+            ),
+            child: Center(
+              child: Icon(Icons.folder_open,
+                  size: 16, color: AppColors.muted2(context)),
+            ),
+          ),
+        ),
+      );
     }
 
     return SizedBox(
@@ -2348,6 +2414,250 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  Widget _userGroupTab(String name, int count) {
+    final active = _selectedSubId == 'ugroup:$name';
+    final short = name.length > 14 ? '${name.substring(0, 13)}…' : name;
+    return GestureDetector(
+      onTap: () => _selectSubscription('ugroup:$name'),
+      onLongPress: () => _openGroupManager(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: active
+              ? AppColors.accent.withOpacity(0.15)
+              : AppColors.surface(context),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: active ? AppColors.accent : AppColors.border(context),
+          ),
+        ),
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.folder_outlined,
+                  size: 14,
+                  color: active ? AppColors.accent : AppColors.muted2(context)),
+              const SizedBox(width: 6),
+              Text(
+                count > 0 ? '$short ($count)' : short,
+                style: TextStyle(
+                  color: active ? AppColors.accent : AppColors.fg(context),
+                  fontSize: 12.5,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openGroupManager() async {
+    if (_userGroups.isEmpty) {
+      _showMsg(_t('هنوز گروهی نساخته‌اید', 'No groups yet'));
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final workingGroups = <String, List<String>>{};
+    _userGroups.forEach((k, v) => workingGroups[k] = List<String>.from(v));
+    final workingOrder = List<String>.from(_userGroupsOrder);
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface(context),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (bsCtx) {
+        return StatefulBuilder(
+          builder: (sCtx, setLocal) {
+            Future<void> persist() async {
+              final g = <String, dynamic>{};
+              for (final k in workingOrder) {
+                if (workingGroups[k] != null) g[k] = workingGroups[k];
+              }
+              await prefs.setString(_userGroupsKey, jsonEncode(g));
+              await prefs.setStringList(_userGroupsOrderKey, workingOrder);
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 8),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.folder_outlined,
+                              color: AppColors.accent),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _t('مدیریت گروه‌ها', 'Manage groups'),
+                              style: TextStyle(
+                                  color: AppColors.fg(sCtx),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.close,
+                                color: AppColors.muted2(sCtx)),
+                            onPressed: () => Navigator.pop(bsCtx),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Flexible(
+                      child: ReorderableListView.builder(
+                        shrinkWrap: true,
+                        itemCount: workingOrder.length,
+                        onReorder: (a, b) {
+                          if (b > a) b -= 1;
+                          final item = workingOrder.removeAt(a);
+                          workingOrder.insert(b, item);
+                          setLocal(() {});
+                          persist();
+                        },
+                        itemBuilder: (_, i) {
+                          final name = workingOrder[i];
+                          final cnt =
+                              (workingGroups[name] ?? const <String>[]).length;
+                          return ListTile(
+                            key: ValueKey('grp_$name'),
+                            leading: const Icon(Icons.drag_handle),
+                            title: Text(name,
+                                style: TextStyle(color: AppColors.fg(sCtx))),
+                            subtitle: Text(
+                              '$cnt ${_t('سرور', 'servers')}',
+                              style: TextStyle(
+                                  color: AppColors.muted2(sCtx), fontSize: 11),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.edit,
+                                      size: 18, color: AppColors.muted2(sCtx)),
+                                  onPressed: () async {
+                                    final ctrl =
+                                        TextEditingController(text: name);
+                                    final nn = await showDialog<String>(
+                                      context: sCtx,
+                                      builder: (d) => AlertDialog(
+                                        backgroundColor: AppColors.surface(d),
+                                        title: Text(
+                                            _t('تغییر نام گروه', 'Rename group'),
+                                            style: TextStyle(
+                                                color: AppColors.fg(d))),
+                                        content: TextField(
+                                          controller: ctrl,
+                                          autofocus: true,
+                                          style: TextStyle(
+                                              color: AppColors.fg(d)),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(
+                                                d, ctrl.text.trim()),
+                                            child: const Text('OK'),
+                                          ),
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(d),
+                                            child: Text(
+                                                _t('انصراف', 'Cancel')),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (nn == null ||
+                                        nn.isEmpty ||
+                                        nn == name) {
+                                      return;
+                                    }
+                                    final ids = workingGroups[name];
+                                    if (ids == null) return;
+                                    workingGroups.remove(name);
+                                    workingGroups[nn] = ids;
+                                    final idx = workingOrder.indexOf(name);
+                                    if (idx >= 0) workingOrder[idx] = nn;
+                                    setLocal(() {});
+                                    await persist();
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline,
+                                      size: 18, color: Colors.redAccent),
+                                  onPressed: () async {
+                                    final ok = await showDialog<bool>(
+                                      context: sCtx,
+                                      builder: (d) => AlertDialog(
+                                        backgroundColor: AppColors.surface(d),
+                                        title: Text(_t('حذف گروه', 'Delete group'),
+                                            style: TextStyle(
+                                                color: AppColors.fg(d))),
+                                        content: Text(
+                                          _t('گروه «$name» حذف شود؟',
+                                              'Delete group "$name"?'),
+                                          style: TextStyle(
+                                              color: AppColors.fg(d)),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(d, false),
+                                            child: Text(
+                                                _t('انصراف', 'Cancel')),
+                                          ),
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(d, true),
+                                            child: const Text('Delete'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (ok != true) return;
+                                    workingGroups.remove(name);
+                                    workingOrder.remove(name);
+                                    setLocal(() {});
+                                    await persist();
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (!mounted) return;
+    setState(() {
+      _userGroups = workingGroups;
+      _userGroupsOrder = workingOrder;
+      if (_selectedSubId != null && _selectedSubId!.startsWith('ugroup:')) {
+        final gname = _selectedSubId!.substring('ugroup:'.length);
+        if (!_userGroups.containsKey(gname)) _selectedSubId = null;
+      }
+    });
+    _rebuildServerList();
   }
 
   Widget _buildTopBar() {
@@ -2883,9 +3193,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final existing = (groups[groupName] as List?)?.cast<String>() ?? [];
     final merged = {...existing, ...ids}.toList();
     groups[groupName] = merged;
-    await prefs.setString('server_groups_v1', jsonEncode(groups));
+    await prefs.setString(_userGroupsKey, jsonEncode(groups));
     if (!mounted) return;
+    final newGroups = <String, List<String>>{};
+    groups.forEach((k, v) {
+      if (v is List) {
+        newGroups[k.toString()] = v.map((e) => e.toString()).toList();
+      }
+    });
+    final newOrder = List<String>.from(_userGroupsOrder);
+    if (!newOrder.contains(groupName)) newOrder.add(groupName);
+    await prefs.setStringList(_userGroupsOrderKey, newOrder);
     setState(() {
+      _userGroups = newGroups;
+      _userGroupsOrder = newOrder;
       _selectionMode = false;
       _selectedIds.clear();
     });
