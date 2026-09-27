@@ -27,11 +27,29 @@ class SpeedTestService {
   SpeedTestService._();
 
   /// URL های تست به ترتیب اولویت — اگه اولی fail داد، بعدی.
+  /// هم HTTPS هم HTTP (بعضی تونل‌ها HTTP رو سریع‌تر رد می‌کنن)، و
+  /// چند endpoint مختلف تا اگه یکی مسدود بود، بعدی جواب بده.
   static const List<String> _testUrls = <String>[
-    'https://speed.cloudflare.com/__down?bytes=10000000',
+    'https://speed.cloudflare.com/__down?bytes=20000000',
+    'http://speedtest.tele2.net/10MB.zip',
     'https://proof.ovh.net/files/10Mb.dat',
+    'http://ipv4.download.thinkbroadband.com/10MB.zip',
     'https://cachefly.cachefly.net/10mb.test',
+    'http://cachefly.cachefly.net/10mb.test',
+    'https://ash-speed.hetzner.com/10MB.bin',
   ];
+
+  /// pre-check: SOCKS پورت واقعاً listener داره؟
+  static Future<bool> _socksAlive(int port) async {
+    try {
+      final s = await Socket.connect('127.0.0.1', port,
+          timeout: const Duration(seconds: 3));
+      s.destroy();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// دانلود از طریق SOCKS محلی روی 10808.
   static Future<SpeedTestResult> run({
@@ -43,16 +61,29 @@ class SpeedTestService {
     if (port <= 0) {
       return const SpeedTestResult(error: 'no active tunnel');
     }
+    // FIX: قبل از هر تلاشی، چک کن SOCKS پورت واقعاً بازه. اگه نباشه،
+    // error معنادار برگردون نه "all test urls failed".
+    if (!await _socksAlive(port)) {
+      return SpeedTestResult(
+          error: 'SOCKS port $port not listening — reconnect');
+    }
 
+    final errors = <String>[];
     for (final url in _testUrls) {
       try {
         final r = await _tryDownload(url, port, timeout, onProgress);
-        if (r.error == null) return r;
+        if (r.error == null && r.bytes > 0) return r;
+        if (r.error != null) errors.add('${Uri.parse(url).host}: ${r.error}');
       } catch (e) {
+        errors.add('${Uri.parse(url).host}: $e');
         debugPrint('SpeedTest $url: $e');
       }
     }
-    return const SpeedTestResult(error: 'all test urls failed');
+    // پیام خطا شامل ۲ تا خطای آخر
+    final tail = errors.length > 2
+        ? errors.sublist(errors.length - 2).join(' | ')
+        : errors.join(' | ');
+    return SpeedTestResult(error: 'all urls failed — $tail');
   }
 
   static Future<SpeedTestResult> _tryDownload(
