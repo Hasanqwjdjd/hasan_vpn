@@ -294,8 +294,9 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, warpMasqueChannelName)
-            .setMethodCallHandler { call, result ->
+        val wmqCh = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, warpMasqueChannelName)
+        warpMasqueChannel = wmqCh
+        wmqCh.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "start" -> {
                         val endpoint = call.argument<String>("endpoint") ?: "162.159.198.238:443"
@@ -325,10 +326,10 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
-            .also { warpMasqueChannel = it }
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, masterDnsChannelName)
-            .setMethodCallHandler { call, result ->
+        val mdnsCh = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, masterDnsChannelName)
+        masterDnsChannel = mdnsCh
+        mdnsCh.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "start" -> {
                         val domain = call.argument<String>("domain") ?: ""
@@ -360,7 +361,6 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
-            .also { masterDnsChannel = it }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, logsChannel)
             .setMethodCallHandler { call, result ->
