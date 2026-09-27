@@ -928,6 +928,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  Future<void> _cleanupOrphanGroupIds() async {
+    // FIX2: strip deleted-server ids out of every user group
+    if (_userGroups.isEmpty) return;
+    var changed = false;
+    final cleaned = <String, List<String>>{};
+    _userGroups.forEach((k, v) {
+      final filtered = v.where((id) => !_deletedIds.contains(id)).toList();
+      if (filtered.length != v.length) changed = true;
+      cleaned[k] = filtered;
+    });
+    if (!changed) return;
+    _userGroups = cleaned;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_userGroupsKey, jsonEncode(_userGroups));
+    if (mounted) setState(() {});
+  }
+
   Future<void> _saveManualOrder() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_orderKey, _manualOrder);
@@ -1375,7 +1392,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } else if (_selectedSubId != null && _selectedSubId!.startsWith('ugroup:')) {
       final gname = _selectedSubId!.substring('ugroup:'.length);
       final ids = (_userGroups[gname] ?? const <String>[]).toSet();
-      list = list.where((s) => ids.contains(s.id)).toList();
+      // FIX1: free telegram servers must be visible inside a user group too
+      final withFree = <VpnServer>[...list, ..._freeServers];
+      final seenIds = <String>{};
+      final merged = <VpnServer>[];
+      for (final s in withFree) {
+        if (seenIds.add(s.id)) merged.add(s);
+      }
+      list = merged.where((s) => ids.contains(s.id)).toList();
     } else if (_selectedSubId != null) {
       final sub = widget.subscriptions.firstWhere(
         (s) => s.id == _selectedSubId,
@@ -1873,6 +1897,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _customSubTags.remove(server.id);
     _saveCustomSubTags();
     if (_selected?.id == server.id) _selected = null;
+    // ignore: unawaited_futures
+    _cleanupOrphanGroupIds();
     _rebuildServerList();
     _saveDeleted();
     _saveCustomServers();
@@ -1900,6 +1926,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_selected != null && _deletedIds.contains(_selected!.id)) {
       _selected = null;
     }
+    // ignore: unawaited_futures
+    _cleanupOrphanGroupIds();
     _rebuildServerList();
     _saveDeleted();
     _saveCustomServers();
@@ -1924,6 +1952,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_selected != null && _deletedIds.contains(_selected!.id)) {
       _selected = null;
     }
+    // ignore: unawaited_futures
+    _cleanupOrphanGroupIds();
     _rebuildServerList();
     _saveDeleted();
     _saveCustomServers();
@@ -2226,9 +2256,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           onServerAdded: (server) async {
             _customServers.insert(0, server);
             _manualOrder.insert(0, server.id);
-            // اگر سابسکریپشن خاصی انتخاب شده، سرور را به آن tag بزن
-            if (_selectedSubId != null) {
-              _customSubTags[server.id] = _selectedSubId!;
+            final subId = _selectedSubId;
+            if (subId != null && subId.startsWith('ugroup:')) {
+              // FIX4: adding a server while a user group tab is active must
+              // put it in that group too, or the group filter hides it and
+              // the auto-ping below updates a server the UI never shows.
+              final gname = subId.substring('ugroup:'.length);
+              final gList =
+                  List<String>.from(_userGroups[gname] ?? const <String>[]);
+              if (!gList.contains(server.id)) {
+                gList.add(server.id);
+                _userGroups = {..._userGroups, gname: gList};
+                // ignore: unawaited_futures
+                SharedPreferences.getInstance().then(
+                  (p) => p.setString(_userGroupsKey, jsonEncode(_userGroups)),
+                );
+              }
+            } else if (subId != null) {
+              // اگر سابسکریپشن خاصی انتخاب شده، سرور را به آن tag بزن
+              _customSubTags[server.id] = subId;
               _saveCustomSubTags();
             }
             _rebuildServerList();
