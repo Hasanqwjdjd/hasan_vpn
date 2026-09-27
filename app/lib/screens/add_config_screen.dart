@@ -1636,6 +1636,112 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _showMsg(_t('سرور SSH اضافه شد', 'SSH server added'));
   }
 
+  /// از متن پیست‌شده (لینک hysteria2:// یا YAML/JSON hy2-client) فرم رو پر کن.
+  Future<void> _pasteHysteria2FromClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text?.trim() ?? '';
+    if (text.isEmpty) {
+      _showMsg(_t('کلیپ‌بورد خالی است', 'Clipboard is empty'));
+      return;
+    }
+    final ok = _fillHysteria2FromText(text);
+    _showMsg(ok
+        ? _t('مقادیر از کلیپ‌بورد پر شد', 'Filled from clipboard')
+        : _t('فرمت شناسایی نشد', 'Format not recognized'));
+  }
+
+  /// lینک `hysteria2://user:pass@host:port?params#name` یا YAML/JSON
+  /// `hy2-client` یا نمونهٔ ساده `server: host:port` + `auth: ...`.
+  bool _fillHysteria2FromText(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return false;
+
+    // ---- حالت ۱: لینک hysteria2:// یا hy2:// ----
+    if (text.startsWith('hysteria2://') || text.startsWith('hy2://')) {
+      try {
+        final uri = Uri.parse(text);
+        final host = uri.host;
+        if (host.isEmpty) return false;
+        final port = uri.hasPort ? uri.port : 443;
+        final auth = uri.userInfo.isNotEmpty
+            ? Uri.decodeComponent(uri.userInfo)
+            : '';
+        final q = uri.queryParameters;
+        final sni = q['sni'] ?? q['peer'] ?? '';
+        final obfs = q['obfs'] ?? '';
+        final obfsPass = q['obfs-password'] ?? q['obfs-pwd'] ?? '';
+        final insecureRaw =
+            (q['insecure'] ?? q['skip-cert-verify'] ?? '0').toLowerCase();
+        final insecure = insecureRaw == '1' || insecureRaw == 'true';
+        final name = uri.fragment.isNotEmpty
+            ? Uri.decodeComponent(uri.fragment)
+            : '';
+
+        setState(() {
+          _hy2HostController.text = host;
+          _hy2PortController.text = port.toString();
+          _hy2AuthController.text = auth;
+          _hy2SniController.text = sni;
+          _hy2Obfs = (obfs == 'salamander') ? 'salamander' : 'none';
+          _hy2ObfsPassController.text = obfsPass;
+          _hy2Insecure = insecure;
+          if (name.isNotEmpty) _hy2NameController.text = name;
+        });
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    // ---- حالت ۲: YAML hy2-client ----
+    // server: host:port
+    // auth: xxx
+    // tls:
+    //   sni: xxx
+    //   insecure: false
+    final serverMatch = RegExp(
+      r'^\s*server\s*:\s*([^\s#]+)',
+      multiLine: true,
+      caseSensitive: false,
+    ).firstMatch(text);
+    final authMatch = RegExp(
+      r'^\s*auth\s*:\s*([^\s#]+)',
+      multiLine: true,
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (serverMatch == null) return false;
+
+    final serverField = serverMatch.group(1)!.trim();
+    final parts = serverField.split(':');
+    if (parts.length < 2) return false;
+    final host = parts.sublist(0, parts.length - 1).join(':');
+    final port = int.tryParse(parts.last) ?? 443;
+    final auth = authMatch?.group(1)?.trim() ?? '';
+
+    final sniMatch = RegExp(
+      r'^\s*sni\s*:\s*([^\s#]+)',
+      multiLine: true,
+      caseSensitive: false,
+    ).firstMatch(text);
+    final sni = sniMatch?.group(1)?.trim() ?? '';
+
+    final insecureMatch = RegExp(
+      r'^\s*insecure\s*:\s*(true|1|yes)',
+      multiLine: true,
+      caseSensitive: false,
+    ).firstMatch(text);
+    final insecure = insecureMatch != null;
+
+    setState(() {
+      _hy2HostController.text = host;
+      _hy2PortController.text = port.toString();
+      if (auth.isNotEmpty) _hy2AuthController.text = auth;
+      if (sni.isNotEmpty) _hy2SniController.text = sni;
+      _hy2Insecure = insecure;
+    });
+    return true;
+  }
+
   void _addHysteria2Server() {
     final host = _hy2HostController.text.trim();
     final auth = _hy2AuthController.text.trim();
@@ -1712,6 +1818,37 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               ),
             ],
           ),
+        ),
+        const SizedBox(height: 10),
+        // FIX(HY2): Paste + auto-fill از لینک یا YAML hy2-client
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _pasteHysteria2FromClipboard,
+                icon: const Icon(Icons.paste, size: 18),
+                label: Text(_t('پیست از کلیپ‌بورد', 'Paste')),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: color,
+                  side: BorderSide(color: color),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _pasteHysteria2FromClipboard,
+                icon: const Icon(Icons.content_paste_search, size: 18),
+                label: Text(_t('تشخیص خودکار', 'Auto-detect')),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: color,
+                  side: BorderSide(color: color),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 14),
         Row(
