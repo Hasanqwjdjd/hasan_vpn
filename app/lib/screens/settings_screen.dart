@@ -49,7 +49,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late String _theme;
   late String _lang;
   String _vpnMode = 'vpn';
-  bool _connectFastest = false;
   bool _autoConnectBoot = false;
   bool _checkingUpdate = false;
   int _autoTestMin = 0;
@@ -57,7 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadConnectFastest();
+    // removed
     _theme = widget.themeMode;
     // ignore: unawaited_futures
     SettingsService.getAutoTestIntervalMin().then((v) {
@@ -1028,13 +1027,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
-  }
-
-  Future<void> _loadConnectFastest() async {
-    try {
-      final v = await SettingsService.getConnectFastest();
-      if (mounted) setState(() => _connectFastest = v);
-    } catch (_) {}
   }
 
   Widget _sectionTitle(String text) => Padding(
