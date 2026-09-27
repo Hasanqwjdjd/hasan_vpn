@@ -3300,6 +3300,14 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _socks5PassController.dispose();
     _chainFirstController.dispose();
     _chainSecondController.dispose();
+    _hy2HostController.dispose();
+    _hy2PortController.dispose();
+    _hy2AuthController.dispose();
+    _hy2SniController.dispose();
+    _hy2ObfsPassController.dispose();
+    _hy2UpController.dispose();
+    _hy2DownController.dispose();
+    _hy2NameController.dispose();
     super.dispose();
   }
 }

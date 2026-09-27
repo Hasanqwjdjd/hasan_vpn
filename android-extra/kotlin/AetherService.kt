@@ -436,15 +436,22 @@ class AetherService : Service() {
         environment.putAll(env)
 
         SafeLog.i(TAG, "launch cmd=${binary.absolutePath} cwd=${filesDir.absolutePath} envKeys=${env.keys.sorted()}")
-        // Full env for diagnosing gool outer/inner (compare with PattNG)
+        // FIX(R2/security): redact credential-looking env keys before logging.
+        fun isSensitiveEnvKey(k: String): Boolean {
+            val upper = k.uppercase()
+            return upper.contains("TOKEN") || upper.contains("SECRET") ||
+                upper.contains("PASS") || upper.contains("AUTH") ||
+                upper.contains("KEY") || upper.contains("EMAIL")
+        }
+        fun redactedValue(k: String, v: String): String =
+            if (isSensitiveEnvKey(k)) "<redacted:${v.length}chars>" else v
         env.toSortedMap().forEach { (k, v) ->
-            SafeLog.i(TAG, "AETHER_ENV_DUMP $k=$v")
+            SafeLog.i(TAG, "AETHER_ENV_DUMP $k=${redactedValue(k, v)}")
         }
         val proc = try {
-            // AETHER_ENV_DUMP — full env dump for debugging
             try {
                 val dumpLines = env.entries.joinToString(" ") { (k, v) ->
-                    "$k=$v"
+                    "$k=${redactedValue(k, v)}"
                 }
                 SafeLog.d(TAG, "AETHER_ENV_DUMP ${binary.absolutePath}")
                 SafeLog.d(TAG, "AETHER_ENV_DUMP $dumpLines")

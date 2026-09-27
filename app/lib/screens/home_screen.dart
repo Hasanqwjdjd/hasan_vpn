@@ -2096,6 +2096,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _showMsg(_t('اول یک سرور انتخاب کن', 'Select a server first'));
       return;
     }
+    // FIX(R2): ssh/tunnel از سرویس اختصاصی خودشون روت می‌شن، نه V2RayEngine.
+    if (selected.protocol == VpnProtocol.ssh ||
+        selected.protocol == VpnProtocol.tunnel) {
+      _showMsg(_t(
+          'برای این نوع سرور، روی خود سرور در لیست ضربه بزن',
+          'For this server type, tap the server in the list instead'));
+      return;
+    }
     _cancelConnect = false;
     // اگه Tor داره ترافیک رو روت می‌کنه، اول قطعش کن تا هم‌زمان با سرور
     // وصل نباشه (باگ: قبلاً Tor و سرور با هم وصل می‌شدن).
