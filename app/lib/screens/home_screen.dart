@@ -113,6 +113,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<String> _userGroupsOrder = <String>[];
   static const String _userGroupsKey = 'server_groups_v1';
   static const String _userGroupsOrderKey = 'server_groups_order_v1';
+  final TextEditingController _groupConfigCtrl = TextEditingController();
 
   String? _selectedSubId;
   // اگر از ویجت با widget_needs_server اومده باشیم، این مقدار پر می‌شه
@@ -1534,6 +1535,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final enabled = await SettingsService.getConnectFastest();
       if (!enabled) return;
       if (!mounted) return;
+      // FIX: اگه Tor/Tunnel/SSH دارن ترافیک رو روت می‌کنن، سرور خودکار
+      // وصل نکن — وگرنه Tor و سرور همزمان فعال می‌شن.
+      if (TorSessionService.instance.anyRouting ||
+          TunnelSessionService.instance.anyRouting ||
+          SshSessionService.instance.anyRouting) {
+        return;
+      }
       final fastest = ServerTester.fastest(_servers);
       if (fastest == null) return;
       final same = _active?.id == fastest.id || _selected?.id == fastest.id;
@@ -3554,6 +3562,103 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           );
                         },
                       ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // FIX: بخش افزودن کانفیگ مستقیم به گروه (مثل سابسکریپشن‌ها)
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.bg(sCtx),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.border(sCtx)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _t('افزودن کانفیگ مستقیم (vless/vmess/trojan/ss/hysteria2 یا JSON)',
+                              'Add config (vless/vmess/trojan/ss/hysteria2 or JSON)'),
+                          style: TextStyle(
+                              color: AppColors.muted(sCtx), fontSize: 11),
+                        ),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: _groupConfigCtrl,
+                          maxLines: 3,
+                          style: TextStyle(
+                              color: AppColors.fg(sCtx), fontSize: 12),
+                          decoration: InputDecoration(
+                            hintText: 'vless://...\nvmess://...',
+                            hintStyle: TextStyle(
+                                color: AppColors.muted2(sCtx),
+                                fontSize: 11),
+                            filled: true,
+                            fillColor: AppColors.surface(sCtx),
+                            contentPadding: const EdgeInsets.all(8),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: TextButton.icon(
+                            onPressed: () async {
+                              final text = _groupConfigCtrl.text.trim();
+                              if (text.isEmpty) {
+                                _showMsg(_t('چیزی وارد نشده', 'Nothing pasted'));
+                                return;
+                              }
+                              final links = LinkParser.extractLinks(text);
+                              if (links.isEmpty && !XrayJson.looksLike(text)) {
+                                _showMsg(_t('لینک معتبری پیدا نشد',
+                                    'No valid link found'));
+                                return;
+                              }
+                              int added = 0;
+                              final stamp = DateTime.now()
+                                  .millisecondsSinceEpoch;
+                              if (XrayJson.looksLike(text)) {
+                                final srv = XrayJson.parse(text,
+                                    id: 'custom_${stamp}_grp');
+                                if (srv != null) {
+                                  _customServers.insert(0, srv);
+                                  editingIds.add(srv.id);
+                                  added++;
+                                }
+                              } else {
+                                for (var i = 0; i < links.length; i++) {
+                                  final srv = LinkParser.parse(
+                                      links[i], id: 'custom_${stamp}_g$i');
+                                  if (srv == null) continue;
+                                  _customServers.insert(0, srv);
+                                  editingIds.add(srv.id);
+                                  added++;
+                                }
+                              }
+                              if (added > 0) {
+                                await _saveCustomServers();
+                                _groupConfigCtrl.clear();
+                              }
+                              if (sCtx.mounted) {
+                                setLocal(() {});
+                                _showMsg(added > 0
+                                    ? _t('$added کانفیگ اضافه شد',
+                                        '$added config(s) added')
+                                    : _t('افزودن ناموفق',
+                                        'Failed to add'));
+                              }
+                            },
+                            icon: const Icon(Icons.add,
+                                color: AppColors.accent, size: 16),
+                            label: Text(_t('افزودن', 'Add'),
+                                style: const TextStyle(
+                                    color: AppColors.accent, fontSize: 12)),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 10),

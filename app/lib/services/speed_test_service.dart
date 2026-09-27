@@ -57,15 +57,26 @@ class SpeedTestService {
     Duration timeout = const Duration(seconds: 20),
     void Function(int bytes, double mbps)? onProgress,
   }) async {
-    final port = socksPort ?? V2RayEngine.localSocksPort;
-    if (port <= 0) {
-      return const SpeedTestResult(error: 'no active tunnel');
+    // FIX: چند تا پورت رو امتحان کن — چون ممکنه Tor فعال باشه (9050)
+    // یا Xray (10808) یا Aether (پورت داینامیک). اولین پورت زنده رو بگیر.
+    final candidates = <int>[
+      if (socksPort != null && socksPort > 0) socksPort,
+      V2RayEngine.localSocksPort,
+      10808,
+      9050,
+    ];
+    int port = 0;
+    for (final p in candidates) {
+      if (p <= 0) continue;
+      if (await _socksAlive(p)) {
+        port = p;
+        break;
+      }
     }
-    // FIX: قبل از هر تلاشی، چک کن SOCKS پورت واقعاً بازه. اگه نباشه،
-    // error معنادار برگردون نه "all test urls failed".
-    if (!await _socksAlive(port)) {
+    if (port == 0) {
       return SpeedTestResult(
-          error: 'SOCKS port $port not listening — reconnect');
+          error:
+              'no SOCKS port listening — tried: ${candidates.where((p) => p > 0).join(", ")}');
     }
 
     final errors = <String>[];

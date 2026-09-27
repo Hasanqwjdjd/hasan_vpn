@@ -181,15 +181,44 @@ class TelegramSourceService {
       if (socksPort == 0) return 0;
     }
 
+    final fetchErrors = <String>[];
+    final emptyChannels = <String>[];
     for (final ch in channels) {
       try {
         final links = await _fetchOne(ch, socksPort);
-        if (links.isNotEmpty) perChannel[ch] = links;
-      } catch (_) {}
+        if (links.isNotEmpty) {
+          perChannel[ch] = links;
+        } else {
+          emptyChannels.add(ch);
+        }
+      } catch (e) {
+        fetchErrors.add('$ch: ${e.toString().split("\n").first}');
+      }
       done++;
       onProgress?.call(done, total);
       // rate-limit بین کانال‌ها
       await Future.delayed(const Duration(milliseconds: 300));
+    }
+
+    // اگه هیچ سروری پیدا نشد، علت رو ذخیره کن که به کاربر نشون بدیم
+    if (perChannel.isEmpty) {
+      final msg = StringBuffer('no links found. ');
+      if (fetchErrors.isNotEmpty) {
+        msg.write('errors: ${fetchErrors.take(3).join("; ")}. ');
+      }
+      if (emptyChannels.isNotEmpty) {
+        msg.write(
+            'empty channels: ${emptyChannels.take(5).join(", ")} (${emptyChannels.length} total)');
+      }
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('telegram_last_error', msg.toString());
+      } catch (_) {}
+    } else {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('telegram_last_error');
+      } catch (_) {}
     }
 
     // round-robin انتخاب بین کانال‌ها
