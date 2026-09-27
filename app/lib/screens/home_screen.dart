@@ -2042,9 +2042,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// این تضمین می‌کنه که هیچ‌وقت دو تونل همزمان فعال نباشن —
   /// مثلاً کاربر وسط Tor هست، روی یه vless می‌زنه: Tor باید بمیره.
   Future<void> _disconnectAllSessionsForNewConnect() async {
+    final st = StackTrace.current.toString().split('\n').take(4).join(' | ');
     // ignore: unawaited_futures
-    ConnectionLogService.logError('TRACE',
-        'UI._disconnectAllSessionsForNewConnect initiated');
+    ConnectionLogService.logError('TRACE_STACK',
+        '_disconnectAllSessionsForNewConnect START | stack: $st');
     // 1) قطع session سرویس‌های اختصاصی (هرکدوم جدا)
     try {
       if (TorSessionService.instance.anyRouting) {
@@ -2084,6 +2085,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _disconnectAll() async {
+    final st = StackTrace.current.toString().split('\n').take(4).join(' | ');
+    // ignore: unawaited_futures
+    ConnectionLogService.logError('TRACE_STACK',
+        '_disconnectAll START | stack: $st');
     await AetherService.disconnect();
     await PsiphonService.stop();
     await V2RayEngine.disconnect();
