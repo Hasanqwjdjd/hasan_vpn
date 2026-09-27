@@ -862,36 +862,38 @@ class V2RayEngine {
   static Future<bool> _waitConnected(Duration timeout) async {
     final started = DateTime.now();
     final deadline = started.add(timeout);
+    // FIX FINAL: به‌جای اعتماد به state stream پلاگین (که گاهی 'disconnected'
+    // اولیه می‌ده حتی وقتی Xray درست بالاست)، هر ۴ ثانیه SOCKS محلی رو
+    // probe کن. اگه probe جواب داد → تونل واقعاً کار می‌کنه.
+    var nextProbe = started.add(const Duration(seconds: 2));
+
     while (DateTime.now().isBefore(deadline)) {
       final s = _lastState;
-      if (s.contains('connected') && !s.contains('disconnect')) return true;
-
-      final elapsed = DateTime.now().difference(started);
-      // Chain grace: when Xray sits on a freshly-opened Psiphon/Aether SOCKS,
-      // the plugin can report a transient 'disconnect' before real connect.
-      // 6s was too short and caused stop of a working Psiphon ~7s after win.
-      // FIX: وقتی پلاگین بعد از startVless بلافاصله 'disconnect' می‌ده
-      // (bug رایج flutter_vless)، تا ۲۵ ثانیه فرصت بده. بعد ۲ بار probe کن.
-      if (_sawState &&
-          s.contains('disconnect') &&
-          elapsed > const Duration(seconds: 25)) {
-        debugPrint(
-            'V2Ray _waitConnected: disconnect-like state after ${elapsed.inSeconds}s '
-            '(state="$s") — probing twice before giving up');
-        final ms1 = await connectedDelay(timeout: const Duration(seconds: 8));
-        if (ms1 > 0) return true;
-        await Future<void>.delayed(const Duration(seconds: 2));
-        final ms2 = await connectedDelay(timeout: const Duration(seconds: 6));
-        if (ms2 > 0) return true;
-        lastError ??= 'VPN service stopped before it connected (state: $s)';
-        return false;
+      if (s.contains('connected') && !s.contains('disconnect')) {
+        return true;
       }
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      if (DateTime.now().isAfter(nextProbe)) {
+        nextProbe = DateTime.now().add(const Duration(seconds: 4));
+        try {
+          final probe = await probeConnected();
+          if (probe.ok) {
+            debugPrint(
+                'V2Ray _waitConnected: SOCKS probe OK at '
+                '${DateTime.now().difference(started).inSeconds}s '
+                '(plugin state="$s" — overriding)');
+            return true;
+          }
+        } catch (_) {}
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
     }
 
-    // پلاگین وضعیت نداد یا روی CONNECTING ماند: با یک درخواست واقعی بررسی کن.
-    final ms = await connectedDelay();
-    if (ms > 0) return true;
+    try {
+      final probe = await probeConnected();
+      if (probe.ok) return true;
+    } catch (_) {}
+
     lastError ??= _sawState
         ? 'connect timeout (state: $_lastState)'
         : 'no status from VPN service';
