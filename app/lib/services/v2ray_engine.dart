@@ -454,6 +454,15 @@ class V2RayEngine {
           lastError = 'invalid socks5 config';
           return false;
         }
+      } else if (server.protocol == VpnProtocol.amneziaWg) {
+        // FIX: AmneziaWG → WireGuard outbound Xray (v1.8+).
+        // نکته: obfuscation (Jc/Jmin/Jmax/S1/S2/H1..H4) توسط Xray
+        // پشتیبانی نمی‌شه؛ فقط WireGuard استاندارد کار می‌کنه.
+        config = _buildAmneziaWgConfig(server);
+        if (config.isEmpty) {
+          lastError = 'invalid amneziawg config';
+          return false;
+        }
       } else {
         final FlutterVlessURL parser = FlutterVless.parse(server.shareLink);
         config = parser.getFullConfiguration();
@@ -534,6 +543,150 @@ class V2RayEngine {
   ///     - proxy (server2) با dialerProxy=relay
   ///     - relay (server1)
   ///     - direct, block
+  /// FIX: تبدیل `vpn://` (AmneziaWG/WireGuard) به Xray config با
+  /// wireguard outbound. ساختار Amnezia JSON:
+  ///   { hostName, description, containers[].awg.{port, last_config} }
+  /// و last_config یه JSON string با interface + peer هست.
+  ///
+  /// نکته: Xray-core obfuscation AmneziaWG (Jc, Jmin, Jmax, S1, S2,
+  /// H1..H4) رو پشتیبانی نمی‌کنه. اگه اینا توی کانفیگ باشه، ما فقط
+  /// بخش WireGuard استاندارد رو استخراج می‌کنیم.
+  static String _buildAmneziaWgConfig(VpnServer server) {
+    try {
+      final link = server.shareLink;
+      if (!link.startsWith('vpn://')) return '';
+      final b64 = link.substring('vpn://'.length).trim();
+      final raw = utf8.decode(base64.decode(base64.normalize(b64)),
+          allowMalformed: true);
+      final outer = jsonDecode(raw);
+      if (outer is! Map) return '';
+
+      // پیدا کردن اولین container با awg
+      Map? awg;
+      final containers = outer['containers'];
+      if (containers is List) {
+        for (final c in containers) {
+          if (c is Map && c['awg'] is Map) {
+            awg = Map<String, dynamic>.from(c['awg'] as Map);
+            break;
+          }
+        }
+      }
+      if (awg == null) return '';
+
+      final lastCfg = (awg['last_config'] ?? '').toString();
+      if (lastCfg.isEmpty) return '';
+      final inner = jsonDecode(lastCfg);
+      if (inner is! Map) return '';
+
+      final iface = inner['interface'];
+      final peer = inner['peer'];
+      if (iface is! Map || peer is! Map) return '';
+
+      String s(dynamic v) => v?.toString().trim() ?? '';
+
+      final privateKey = s(iface['private_key'] ?? iface['privateKey']);
+      final publicKey = s(peer['public_key'] ?? peer['publicKey']);
+      final endpoint = s(peer['endpoint']);
+      final address = s(iface['address']);
+      final dns = s(iface['dns']);
+      final mtu = int.tryParse(s(iface['mtu'] ?? awg['mtu'] ?? '1420')) ?? 1420;
+      final psk = s(peer['preshared_key'] ?? peer['presharedKey']);
+
+      // allowed_ips یا allowedIps
+      List<String> allowedIPs = ['0.0.0.0/0', '::/0'];
+      final rawAllowed =
+          peer['allowed_ips'] ?? peer['allowedIps'];
+      if (rawAllowed is List) {
+        allowedIPs = rawAllowed
+            .map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+        if (allowedIPs.isEmpty) allowedIPs = ['0.0.0.0/0', '::/0'];
+      } else if (rawAllowed is String && rawAllowed.isNotEmpty) {
+        allowedIPs = rawAllowed
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+      }
+
+      if (privateKey.isEmpty || publicKey.isEmpty || endpoint.isEmpty) {
+        return '';
+      }
+
+      // اگه آدرس به‌شکل "10.0.0.2/32" یا "10.0.0.2" باشه
+      final addr = address.isEmpty ? '10.0.0.2/32' : address;
+
+      // هشدار اگه obfuscation AmneziaWG تنظیم شده (پشتیبانی نمی‌شه)
+      final jc = awg['Jc'] ?? awg['jc'];
+      if (jc != null && jc.toString() != '0' && jc.toString().isNotEmpty) {
+        debugPrint(
+            'AmneziaWG: obfuscation params detected (Jc=$jc) but Xray '
+            'does not support them — falling back to plain WireGuard.');
+      }
+
+      final wgPeer = <String, dynamic>{
+        'publicKey': publicKey,
+        'endpoint': endpoint,
+        'allowedIPs': allowedIPs,
+        if (psk.isNotEmpty) 'preSharedKey': psk,
+      };
+
+      final wgSettings = <String, dynamic>{
+        'secretKey': privateKey,
+        'address': [addr],
+        'peers': [wgPeer],
+        'mtu': mtu,
+        'kernelMode': false,
+      };
+
+      final cfg = <String, dynamic>{
+        'log': {'loglevel': 'warning'},
+        'inbounds': [
+          {
+            'tag': 'socks-in',
+            'port': 10808,
+            'listen': '127.0.0.1',
+            'protocol': 'socks',
+            'settings': {'auth': 'noauth', 'udp': true},
+            'sniffing': {
+              'enabled': true,
+              'destOverride': ['http', 'tls', 'quic'],
+            },
+          },
+        ],
+        'outbounds': [
+          {
+            'tag': 'wg-out',
+            'protocol': 'wireguard',
+            'settings': wgSettings,
+          },
+          {'tag': 'direct', 'protocol': 'freedom'},
+          {
+            'tag': 'block',
+            'protocol': 'blackhole',
+            'settings': {
+              'response': {'type': 'http'},
+            },
+          },
+        ],
+        if (dns.isNotEmpty)
+          'dns': {
+            'servers': dns
+                .split(',')
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty)
+                .toList(),
+          },
+      };
+      return jsonEncode(cfg);
+    } catch (e) {
+      debugPrint('buildAmneziaWgConfig error: $e');
+      return '';
+    }
+  }
+
   static String _buildChainConfig(VpnServer server) {
     try {
       final link = server.shareLink;
