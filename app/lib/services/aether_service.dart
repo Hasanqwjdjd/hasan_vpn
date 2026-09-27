@@ -200,12 +200,14 @@ class AetherService {
           blockQuic: profile.blockQuic,
         );
 
+        // FIX: requireBlockedApps=false — اگه plugin از blockedApps
+        // پشتیبانی نکنه، نباید Aether تازه وصل شده رو بکشه.
         final started = await V2RayEngine.startConfig(
           remark: server.name,
           config: xrayConfig,
           server: server,
           blockedApps: await V2RayEngine.resolveBlockedApps(),
-          requireBlockedApps: true,
+          requireBlockedApps: false,
         );
 
         if (!started) {

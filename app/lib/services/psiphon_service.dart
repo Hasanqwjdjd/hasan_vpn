@@ -251,12 +251,15 @@ class PsiphonService {
           !xrayConfig.contains('"port": $port')) {
         debugPrint('PSIPHON_DIAG: WARNING config missing port $port');
       }
+      // FIX: requireBlockedApps=false — اگه flutter_vless از blockedApps
+      // پشتیبانی نکنه، نباید Psiphon تازه WIN شده رو بکشه. fallback به
+      // startVless بدون blockedApps.
       final started = await V2RayEngine.startConfig(
         remark: server.name,
         config: xrayConfig,
         server: server,
         blockedApps: await V2RayEngine.resolveBlockedApps(),
-        requireBlockedApps: true,
+        requireBlockedApps: false,
       );
 
       if (gen != _connectGen) {

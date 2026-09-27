@@ -857,14 +857,19 @@ class V2RayEngine {
       // Chain grace: when Xray sits on a freshly-opened Psiphon/Aether SOCKS,
       // the plugin can report a transient 'disconnect' before real connect.
       // 6s was too short and caused stop of a working Psiphon ~7s after win.
+      // FIX: وقتی پلاگین بعد از startVless بلافاصله 'disconnect' می‌ده
+      // (bug رایج flutter_vless)، تا ۲۵ ثانیه فرصت بده. بعد ۲ بار probe کن.
       if (_sawState &&
           s.contains('disconnect') &&
-          elapsed > const Duration(seconds: 15)) {
+          elapsed > const Duration(seconds: 25)) {
         debugPrint(
             'V2Ray _waitConnected: disconnect-like state after ${elapsed.inSeconds}s '
-            '(state="$s") — probing real connectivity before giving up');
-        final ms = await connectedDelay(timeout: const Duration(seconds: 8));
-        if (ms > 0) return true;
+            '(state="$s") — probing twice before giving up');
+        final ms1 = await connectedDelay(timeout: const Duration(seconds: 8));
+        if (ms1 > 0) return true;
+        await Future<void>.delayed(const Duration(seconds: 2));
+        final ms2 = await connectedDelay(timeout: const Duration(seconds: 6));
+        if (ms2 > 0) return true;
         lastError ??= 'VPN service stopped before it connected (state: $s)';
         return false;
       }
