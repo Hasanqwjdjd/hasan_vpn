@@ -3445,6 +3445,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _hy2UpController.dispose();
     _hy2DownController.dispose();
     _hy2NameController.dispose();
+    _hy2FragmentLengthController.dispose();
+    _hy2FragmentIntervalController.dispose();
+    _hy2PortHoppingController.dispose();
     super.dispose();
   }
 }
