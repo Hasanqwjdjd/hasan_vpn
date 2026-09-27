@@ -183,23 +183,15 @@ class WidgetConnectService : Service() {
     }
 
     private fun buildNotification(text: String, ongoing: Boolean): Notification {
-        val channelId = "widget_connect_quiet"
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, channelId)
-                .setContentTitle("Hasan VPN")
-                .setContentText(text)
-                .setSmallIcon(android.R.drawable.ic_lock_lock)
-                .setOngoing(ongoing)
-                .build()
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-                .setContentTitle("Hasan VPN")
-                .setContentText(text)
-                .setSmallIcon(android.R.drawable.ic_lock_lock)
-                .setOngoing(ongoing)
-                .build()
-        }
+        // FIX: از helper مشترک استفاده کن.
+        val n = NotificationHelper.build(
+            this,
+            NotificationHelper.ID_WIDGET,
+            "Hasan VPN",
+            text,
+            showAction = false,
+        )
+        return n
     }
 
     private fun stopSoon() {
@@ -255,19 +247,8 @@ class WidgetConnectService : Service() {
     }
 
     private fun startFgQuiet(action: String) {
-        val channelId = "widget_connect_quiet"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val nm = getSystemService(NotificationManager::class.java)
-            val ch = NotificationChannel(
-                channelId,
-                "Quick connect",
-                NotificationManager.IMPORTANCE_MIN,
-            ).apply {
-                setShowBadge(false)
-                description = "Background widget connect"
-            }
-            nm?.createNotificationChannel(ch)
-        }
+        // FIX: از helper مشترک استفاده کن — به‌جای channel جدا.
+        NotificationHelper.ensureChannel(this)
         val text = if (action == ACTION_CONNECT) "Connecting…" else "Disconnecting…"
         val n = buildNotification(text, true)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

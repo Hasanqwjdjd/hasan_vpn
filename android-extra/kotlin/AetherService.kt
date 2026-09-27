@@ -565,54 +565,14 @@ class AetherService : Service() {
     // --------------------------------------------------------- notification
 
     private fun enterForeground(remark: String) {
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Aether", NotificationManager.IMPORTANCE_LOW),
-            )
-        }
-
-        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, CHANNEL_ID)
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-        }
-
-        val icon = if (applicationInfo.icon != 0) {
-            applicationInfo.icon
-        } else {
-            android.R.drawable.ic_dialog_info
-        }
-
-        builder
-            .setContentTitle("Aether")
-            .setContentText(remark)
-            .setSmallIcon(icon)
-            .setOngoing(true)
-
-        packageManager.getLaunchIntentForPackage(packageName)?.let { launchIntent ->
-            builder.setContentIntent(
-                PendingIntent.getActivity(
-                    this,
-                    0,
-                    launchIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                ),
-            )
-        }
-
-        val notification = builder.build()
-
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
+        // FIX: از NotificationHelper مشترک استفاده کن — یه channel واحد
+        // برای همه‌ی سرویس‌ها، به‌جای channel جدا.
+        val notification = NotificationHelper.build(
+            this,
+            NotificationHelper.ID_AETHER,
+            "Hasan VPN — Aether",
+            remark,
+        )
+        NotificationHelper.startForegroundSafe(this, NotificationHelper.ID_AETHER, notification)
     }
 }

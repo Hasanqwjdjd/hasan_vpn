@@ -325,33 +325,13 @@ class TunnelService : Service() {
     }
 
     private fun enterForeground(remark: String) {
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Tunnel", NotificationManager.IMPORTANCE_LOW),
-            )
-        }
-        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, CHANNEL_ID)
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-        }
-        val icon = if (applicationInfo.icon != 0) applicationInfo.icon else android.R.drawable.ic_dialog_info
-        builder.setContentTitle("Tunnel").setContentText(remark).setSmallIcon(icon).setOngoing(true)
-        packageManager.getLaunchIntentForPackage(packageName)?.let { li ->
-            builder.setContentIntent(
-                PendingIntent.getActivity(
-                    this, 0, li,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                ),
-            )
-        }
-        val n = builder.build()
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(NOTIFICATION_ID, n)
-        }
+        // FIX: از NotificationHelper مشترک استفاده کن.
+        val notification = NotificationHelper.build(
+            this,
+            NotificationHelper.ID_TUNNEL,
+            "Hasan VPN — Tunnel",
+            remark,
+        )
+        NotificationHelper.startForegroundSafe(this, NotificationHelper.ID_TUNNEL, notification)
     }
 }

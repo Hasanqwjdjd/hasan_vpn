@@ -21,23 +21,14 @@ import android.os.Build
  *    reuse 4240 or 4243.
  */
 object TelemetryNotifier {
-    private const val CHANNEL_ID = "hasan_status"
+    // FIX: از channel مشترک NotificationHelper استفاده می‌کنیم.
     const val NOTIFICATION_ID = 4240
 
     fun show(context: Context, title: String, text: String) {
         val manager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Hasan VPN status",
-                NotificationManager.IMPORTANCE_LOW,
-            )
-            channel.setShowBadge(false)
-            channel.setSound(null, null)
-            manager.createNotificationChannel(channel)
-        }
+        NotificationHelper.ensureChannel(context)
 
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(context, CHANNEL_ID)

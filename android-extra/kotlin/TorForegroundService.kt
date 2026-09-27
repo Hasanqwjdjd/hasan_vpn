@@ -23,8 +23,6 @@ class TorForegroundService : Service() {
 
     companion object {
         private const val TAG = "TorForegroundService"
-        private const val CHANNEL_ID = "tor_core"
-        private const val NOTIFICATION_ID = 4241 // was 4243; must not collide with TelemetryNotifier(4240)
 
         fun start(context: Context) {
             try {
@@ -62,15 +60,11 @@ class TorForegroundService : Service() {
         try {
             createChannel()
             val notification = buildNotification()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
-                )
-            } else {
-                startForeground(NOTIFICATION_ID, notification)
-            }
+            NotificationHelper.startForegroundSafe(
+                this,
+                NotificationHelper.ID_TOR,
+                notification,
+            )
         } catch (e: Exception) {
             SafeLog.e(TAG, "startForeground failed", e)
             return START_NOT_STICKY
@@ -108,36 +102,12 @@ class TorForegroundService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        val tapIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pi = PendingIntent.getActivity(
+        // FIX: از helper مشترک استفاده کن.
+        return NotificationHelper.build(
             this,
-            0,
-            tapIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            NotificationHelper.ID_TOR,
+            "Hasan VPN — Tor",
+            "متصل به Tor · پورت SOCKS 9050",
         )
-
-        val iconRes = resources.getIdentifier(
-            "ic_launcher", "mipmap", packageName
-        )
-        val smallIcon = if (iconRes != 0) iconRes else android.R.drawable.ic_lock_lock
-
-        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, CHANNEL_ID)
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-        }
-
-        return builder
-            .setContentTitle("Tor")
-            .setContentText("متصل به Tor · پورت SOCKS 9050")
-            .setSmallIcon(smallIcon)
-            .setContentIntent(pi)
-            .setOngoing(true)
-            .setShowWhen(false)
-            .build()
     }
 }
