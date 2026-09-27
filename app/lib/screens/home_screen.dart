@@ -26,6 +26,8 @@ import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
 import '../services/exit_ip_service.dart';
 import '../services/psiphon_service.dart';
+import '../services/link_parser.dart';
+import '../services/xray_json.dart';
 import '../services/v2ray_engine.dart';
 import '../services/home_widget_service.dart';
 import '../services/widget_connect_handler.dart';
@@ -4091,6 +4093,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
     _session?.cancel();
+    _groupConfigCtrl.dispose();
     _searchController.dispose();
     _listScrollController.dispose();
     super.dispose();
