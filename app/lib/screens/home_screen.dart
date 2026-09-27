@@ -466,9 +466,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true) {
+      ctrl.dispose();
+      return;
+    }
 
     final newName = ctrl.text.trim();
+    ctrl.dispose();
     if (newName.isEmpty) return;
 
     await SettingsService.setServerNameOverride(server.id, newName);
@@ -3885,6 +3889,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
       ),
     );
+    ctrl.dispose();
     if (groupName == null || groupName.isEmpty) return;
     final existing = (groups[groupName] as List?)?.cast<String>() ?? [];
     final merged = {...existing, ...ids}.toList();

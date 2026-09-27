@@ -18,11 +18,9 @@ class MainActivity : FlutterActivity() {
     private val torChannel = "com.hasan.hasan_vpn/tor"
     private val monitorChannel = "com.hasan.hasan_vpn/monitor"
     private val widgetChannel = "com.hasan.hasan_vpn/widget"
-    private val widgetsChannel = "com.hasan.hasan_vpn/widgets"
     private val logsChannel = "com.hasan.hasan_vpn/logs"
 
     private var widgetChannelRef: MethodChannel? = null
-    private var widgetsChannelRef: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -309,16 +307,6 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        widgetsChannelRef = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, widgetsChannel)
-        widgetsChannelRef!!.setMethodCallHandler { call, result ->
-            when (call.method) {
-                "updateWidgets" -> { refreshAllWidgets(); result.success(true) }
-                "getInitialIntent" -> result.success(intentToMap(intent))
-                "getLaunchExtras" -> result.success(intentToMap(intent))
-                "moveTaskToBack" -> { moveTaskToBack(true); result.success(true) }
-                else -> result.notImplemented()
-            }
-        }
     }
 
     private var autoMoveToBackOnWidget = false
@@ -346,7 +334,6 @@ class MainActivity : FlutterActivity() {
         if (map.isNotEmpty()) {
             try {
                 widgetChannelRef?.invokeMethod("onWidgetIntent", map)
-                widgetsChannelRef?.invokeMethod("onWidgetIntent", map)
             } catch (_: Exception) { }
         }
     }

@@ -150,8 +150,12 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true) {
+      nameCtrl.dispose();
+      return;
+    }
     final name = nameCtrl.text.trim();
+    nameCtrl.dispose();
     if (name.isEmpty) {
       _showMsg(_t('نام گروه لازم است', 'Group name is required'));
       return;
@@ -226,8 +230,12 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true) {
+      ctrl.dispose();
+      return;
+    }
     final raw = ctrl.text;
+    ctrl.dispose();
     if (raw.trim().isEmpty) return;
     final servers = SubscriptionService.parseContent(raw, sub.id);
     if (servers.isEmpty) {
@@ -301,6 +309,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
     final typedName = nameCtrl.text.trim();
     final typedUrl = urlCtrl.text.trim();
+    nameCtrl.dispose();
+    urlCtrl.dispose();
 
     if (ok != true) return;
 
