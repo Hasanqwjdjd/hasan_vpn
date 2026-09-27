@@ -182,7 +182,14 @@ class DnsRegistryService {
   /// missing/older ones are added; when false, the import replaces
   /// the current registry entirely.
   Future<void> importJson(String raw, {bool merge = true}) async {
-    final decoded = jsonDecode(raw);
+    // FIX: jsonDecode ممکنه روی ورودی نامعتبر throw کنه.
+    // اون رو به FormatException تبدیل کن که caller بتونه handle کنه.
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(raw);
+    } catch (e) {
+      throw FormatException('Registry export is not valid JSON: $e');
+    }
     if (decoded is! Map) {
       throw const FormatException('Registry export must be a JSON object');
     }

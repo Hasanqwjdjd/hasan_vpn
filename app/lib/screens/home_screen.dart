@@ -1664,10 +1664,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       } catch (_) {}
       // 2. FIX: geoip-only-cn-private.dat (قبلاً فقط دستی دانلود می‌شد)
       try {
-        final cnUrl = GeoAssetsService.catalog
-            .firstWhere((e) => e['id'] == 'geoip-cn-private')['url']!;
-        await GeoAssetsService.download(
-            'geoip-only-cn-private.dat', cnUrl);
+        final cnEntry = GeoAssetsService.catalog.firstWhere(
+          (e) => e['id'] == 'geoip-cn-private',
+          orElse: () => const <String, String>{},
+        );
+        final cnUrl = cnEntry['url'];
+        if (cnUrl != null && cnUrl.isNotEmpty) {
+          await GeoAssetsService.download(
+              'geoip-only-cn-private.dat', cnUrl);
+        }
       } catch (_) {}
       await prefs.setBool('geo_iran_downloaded_v1', true);
     } catch (_) {}
@@ -1755,6 +1760,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final wid = _pendingWidgetId;
     if (wid == null) return;
     await _bindServerToWidget(wid, server);
+    if (!mounted) return;
     setState(() {
       _selected = server;
       _pendingWidgetId = null;
@@ -2241,6 +2247,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // disconnect کن (Tor، Tunnel، SSH، Aether، Psiphon، Xray).
     // هرگز نباید دو تونل همزمان فعال باشن.
     await _disconnectAllSessionsForNewConnect();
+    if (!mounted) return;
 
     setState(() {
       _connecting = true;
