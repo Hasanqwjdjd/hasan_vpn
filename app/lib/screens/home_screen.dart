@@ -23,6 +23,7 @@ import '../models/tunnel_profile.dart';
 import '../models/ssh_profile.dart';
 import '../services/ssh_session_service.dart';
 import '../services/master_dns_session_service.dart';
+import '../services/final_mask_finder.dart';
 import '../services/warp_masque_session_service.dart';
 import '../services/geo_assets_service.dart';
 import '../services/xray_settings.dart';
@@ -110,6 +111,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _autoTestTimer;
   bool _autoReconnectRunning = false;
   DateTime? _lastConnectTime;
+  VoidCallback? _finalMaskDialogRefresh;
   List<String> _manualOrder = <String>[];
   static const String _sortKey = 'settings_sort_ascending_v1';
   bool _sortAscending = true;
@@ -445,6 +447,167 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _editServerFull(server);
   }
 
+  Future<void> _findBestFinalMask(
+    VpnServer server,
+    TextEditingController finalMaskCtrl,
+    BuildContext dialogCtx,
+  ) async {
+    if (FinalMaskFinder.isRunning) return;
+
+    final results = <FinalMaskResult>[];
+    int currentIdx = 0;
+    int total = FinalMaskFinder.presets.length;
+    String currentLabel = '';
+    bool cancelled = false;
+
+    Future<void> showProgressDialog() async {
+      if (!mounted) return;
+      return showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dCtx) => StatefulBuilder(
+          builder: (dCtx, setDlg) {
+            // rebuild از بیرون
+            _finalMaskDialogRefresh = () {
+              if (dCtx.mounted) setDlg(() {});
+            };
+            return AlertDialog(
+              backgroundColor: AppColors.surface(dCtx),
+              title: Text(
+                _t('در حال اسکن FinalMask', 'Scanning FinalMask'),
+                style: TextStyle(color: AppColors.fg(dCtx), fontSize: 16),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    LinearProgressIndicator(
+                      value: total > 0 ? currentIdx / total : 0,
+                      color: AppColors.accent,
+                      backgroundColor: AppColors.border(dCtx),
+                    ),
+                    const SizedBox(height: 10),
+                    Text('$currentIdx / $total',
+                        style: TextStyle(
+                            color: AppColors.muted(dCtx), fontSize: 11)),
+                    const SizedBox(height: 6),
+                    if (currentLabel.isNotEmpty)
+                      Text(
+                        currentLabel,
+                        style: TextStyle(
+                            color: AppColors.fg(dCtx), fontSize: 12),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    const SizedBox(height: 10),
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      decoration: BoxDecoration(
+                        color: AppColors.bg(dCtx),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.border(dCtx)),
+                      ),
+                      child: results.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Text(
+                                _t('شروع...', 'Starting...'),
+                                style: TextStyle(
+                                    color: AppColors.muted2(dCtx),
+                                    fontSize: 11),
+                              ),
+                            )
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: results.length,
+                              itemBuilder: (_, i) {
+                                final r = results[i];
+                                return ListTile(
+                                  dense: true,
+                                  title: Text(
+                                    r.preset.label,
+                                    style: TextStyle(
+                                        color: AppColors.fg(dCtx),
+                                        fontSize: 11),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  trailing: Text(
+                                    r.ok ? '${r.ms}ms' : '✕',
+                                    style: TextStyle(
+                                      color: r.ok
+                                          ? AppColors.accent
+                                          : AppColors.danger,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    cancelled = true;
+                    FinalMaskFinder.cancel();
+                    try { V2RayEngine.disconnect(); } catch (_) {}
+                    Navigator.pop(dCtx);
+                  },
+                  child: Text(_t('لغو', 'Cancel'),
+                      style: TextStyle(color: AppColors.muted(dCtx))),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    }
+
+    // ignore: unawaited_futures
+    showProgressDialog();
+
+    FinalMaskResult? best;
+    try {
+      best = await FinalMaskFinder.findBest(
+        server,
+        onProgress: (idx, t, preset) {
+          currentIdx = idx;
+          total = t;
+          currentLabel = preset.label;
+          _finalMaskDialogRefresh?.call();
+        },
+        onResult: (r) {
+          results.add(r);
+          _finalMaskDialogRefresh?.call();
+        },
+      );
+    } catch (e) {
+      debugPrint('findBest error: $e');
+    }
+
+    _finalMaskDialogRefresh = null;
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    if (cancelled) return;
+    if (best == null) {
+      _showMsg(_t('هیچ preset ای جواب نداد', 'No preset worked'));
+      return;
+    }
+
+    finalMaskCtrl.text = best.preset.finalMask;
+    _showMsg(_t(
+      'بهترین: ${best.preset.label} (${best.ms}ms)',
+      'Best: ${best.preset.label} (${best.ms}ms)',
+    ));
+  }
+
   Future<void> _editServerFull(VpnServer server) async {
     final nameCtrl = TextEditingController(text: server.displayName);
     final sniCtrl = TextEditingController(text: server.sniOrHost ?? '');
@@ -648,6 +811,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     field('finalMask',
                         finalMaskCtrl, maxLines: 4,
                         hint: '{"tcp":[...]}'),
+                    // دکمه اسکن FinalMask — preset ها رو تست می‌کنه
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            await _findBestFinalMask(
+                              server, finalMaskCtrl, ctx,
+                            );
+                          },
+                          icon: const Icon(Icons.search, size: 16),
+                          label: Text(
+                            _t('Find FinalMask — اسکن preset ها',
+                                'Find FinalMask — scan presets'),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.accent,
+                            side: const BorderSide(color: AppColors.accent),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                          ),
+                        ),
+                      ),
+                    ),
                     field('dialMode', dialModeCtrl),
                     field('targetStrategy', targetStratCtrl, hint: 'AsIs'),
                   ],
