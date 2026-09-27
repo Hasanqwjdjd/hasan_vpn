@@ -471,6 +471,16 @@ class V2RayEngine {
       // BLOCKER 1: every setting must land in the runtime config for ALL
       // protocols, including full Xray JSON profiles.
       config = await XraySettings.applyToConfig(config);
+
+      // FIX: اعمال تنظیمات TLS مخصوص همون سرور (fingerprint, ALPN,
+      // cipherSuites, finalMask, ...) روی کانفیگ نهایی.
+      if (!server.tls.isEmpty) {
+        config = XraySettings.applyServerTls(
+          config,
+          server.tls.toJson(),
+          sniOverride: server.sniOrHost,
+        );
+      }
       config = await _applyRoutingRules(config);
       config = await _applyGeoAssetPaths(config);
 

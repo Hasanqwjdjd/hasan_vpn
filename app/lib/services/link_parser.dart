@@ -151,6 +151,9 @@ class LinkParser {
       } catch (_) {}
     }
 
+    // FIX: خواندن فیلدهای TLS از query و پر کردن TlsOptions
+    final tls = _tlsFromQuery(query);
+
     return VpnServer(
       id: id,
       name: name,
@@ -160,6 +163,41 @@ class LinkParser {
       host: host,
       port: port,
       sniOrHost: correctSni,
+      tls: tls,
+    );
+  }
+
+  /// خواندن فیلدهای TLS از query string لینک اشتراک.
+  /// کلیدهای استاندارد: fp/fingerprint, allowInsecure/insecure, alpn,
+  /// cipherSuites, echConfigList, verifyPeerCertByName,
+  /// pinnedPeerCertSha256, finalMask, dialMode, browserDialer, targetStrategy.
+  static TlsOptions _tlsFromQuery(Map<String, String> q) {
+    String? s(String key) {
+      final v = q[key];
+      if (v == null || v.isEmpty) return null;
+      return _decode(v);
+    }
+
+    bool b(String key) {
+      final v = (q[key] ?? '').toLowerCase();
+      return v == '1' || v == 'true' || v == 'yes';
+    }
+
+    final fp = s('fp') ?? s('fingerprint');
+    final insecure = b('allowInsecure') || b('insecure') || b('skip-cert-verify');
+
+    return TlsOptions(
+      fingerprint: fp,
+      allowInsecure: insecure,
+      alpn: s('alpn'),
+      cipherSuites: s('cipherSuites') ?? s('cipher-suites'),
+      echConfigList: s('echConfigList') ?? s('ech'),
+      verifyPeerCertByName: s('verifyPeerCertByName'),
+      pinnedPeerCertSha256: s('pinnedPeerCertSha256') ?? s('pinSHA256'),
+      finalMask: s('finalMask') ?? s('final-mask'),
+      dialMode: s('dialMode'),
+      browserDialer: b('browserDialer'),
+      targetStrategy: s('targetStrategy'),
     );
   }
 

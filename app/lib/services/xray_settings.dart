@@ -153,6 +153,92 @@ class XraySettings {
   }
 
   /// Apply settings onto a core JSON config string.
+  /// FIX: اعمال تنظیمات TLS مخصوص یه سرور روی کانفیگ نهایی.
+  /// روی outbound اصلی (اولین outbound غیر-آزاد) اعمال می‌شه.
+  static String applyServerTls(
+    String configJson,
+    Map<String, dynamic> tls, {
+    String? sniOverride,
+  }) {
+    if (tls.isEmpty) return configJson;
+    try {
+      final dynamic decoded = jsonDecode(configJson);
+      if (decoded is! Map) return configJson;
+      final map = Map<String, dynamic>.from(decoded);
+
+      final fp = tls['fingerprint']?.toString() ?? '';
+      final insecure = tls['allowInsecure'] == true;
+      final alpnStr = tls['alpn']?.toString() ?? '';
+      final cipher = tls['cipherSuites']?.toString() ?? '';
+      final ech = tls['echConfigList']?.toString() ?? '';
+      final verifyName = tls['verifyPeerCertByName']?.toString() ?? '';
+      final pinSha = tls['pinnedPeerCertSha256']?.toString() ?? '';
+      final finalMask = tls['finalMask']?.toString() ?? '';
+      final dialMode = tls['dialMode']?.toString() ?? '';
+      final browserDialer = tls['browserDialer'] == true;
+      final targetStrategy = tls['targetStrategy']?.toString() ?? '';
+
+      _applyToOutbounds(map, (ob) {
+        final stream = Map<String, dynamic>.from(
+            ob['streamSettings'] as Map? ?? {});
+        final security = stream['security']?.toString().toLowerCase() ?? '';
+        if (security != 'tls' &&
+            security != 'xtls' &&
+            security != 'reality') {
+          return;
+        }
+
+        // tlsSettings
+        final ts = Map<String, dynamic>.from(
+            stream['tlsSettings'] as Map? ?? {});
+        if (fp.isNotEmpty) ts['fingerprint'] = fp;
+        if (insecure) ts['allowInsecure'] = true;
+        if (alpnStr.isNotEmpty) {
+          ts['alpn'] = alpnStr
+              .split(RegExp(r'[,\s]+'))
+              .where((s) => s.isNotEmpty)
+              .toList();
+        }
+        if (cipher.isNotEmpty) ts['cipherSuites'] = cipher;
+        if (ech.isNotEmpty) ts['echConfigList'] = ech;
+        if (verifyName.isNotEmpty) ts['verifyPeerCertByName'] = verifyName;
+        if (pinSha.isNotEmpty) ts['pinnedPeerCertSha256'] = pinSha;
+        if (sniOverride != null && sniOverride.isNotEmpty) {
+          ts['serverName'] = sniOverride;
+        }
+        if (ts.isNotEmpty) stream['tlsSettings'] = ts;
+
+        // sockopt.dialMode + finalMask
+        final sockopt = Map<String, dynamic>.from(
+            stream['sockopt'] as Map? ?? {});
+        if (dialMode.isNotEmpty) sockopt['dialMode'] = dialMode;
+        if (finalMask.isNotEmpty) {
+          try {
+            final fm = jsonDecode(finalMask);
+            sockopt['finalMask'] = fm;
+          } catch (_) {
+            sockopt['finalMask'] = finalMask;
+          }
+        }
+        if (sockopt.isNotEmpty) stream['sockopt'] = sockopt;
+
+        // targetStrategy + browserDialer
+        if (targetStrategy.isNotEmpty) {
+          stream['targetStrategy'] = targetStrategy;
+        }
+        if (browserDialer) {
+          stream['browserDialer'] = true;
+        }
+
+        ob['streamSettings'] = stream;
+      });
+
+      return jsonEncode(map);
+    } catch (_) {
+      return configJson;
+    }
+  }
+
   static Future<String> applyToConfig(String configJson) async {
     try {
       final settings = await load();
