@@ -105,6 +105,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _autoTestTimer;
   bool _autoReconnectRunning = false;
   List<String> _manualOrder = <String>[];
+  static const String _sortKey = 'settings_sort_ascending_v1';
+  bool _sortAscending = true;
 
   // ─── گروه‌های کاربر ───
   Map<String, List<String>> _userGroups = <String, List<String>>{};
@@ -126,7 +128,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _connected = false;
   bool _selectionMode = false;
   final Set<String> _selectedIds = <String>{};
-  bool _sortAscending = true;
   bool _showSearch = false;
   bool _cancelConnect = false;
   bool _polling = false;
@@ -221,6 +222,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     _rebuildServerList();
     await _loadPings();
+    // FIX: بعد از بارگذاری ping‌ها، ترتیب sort رو اعمال کن — وگرنه
+    // سرورها بدون ping مرتب می‌شن و ترتیب گم می‌شه.
+    await _loadSortPreference();
+    _rebuildServerList();
     await _loadLastServer();
     await V2RayEngine.init();
     await V2RayEngine.loadDelayUrl();
@@ -892,6 +897,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _savePinned() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_pinnedKey, jsonEncode(_pinnedIds.toList()));
+  }
+
+  Future<void> _loadSortPreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final v = prefs.getBool(_sortKey);
+      if (v != null) _sortAscending = v;
+    } catch (_) {}
+  }
+
+  Future<void> _saveSortPreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_sortKey, _sortAscending);
+    } catch (_) {}
   }
 
   Future<void> _loadManualOrder() async {
@@ -1807,6 +1827,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted || session.cancelled) return;
     _sortCurrentServers();
     await _savePings();
+    // FIX: sort state رو هم ذخیره کن که بعد از ریستارت بمونه
+    await _saveSortPreference();
+    // FIX: ترتیب جدید رو به‌عنوان manualOrder هم ذخیره کن — تا اگه
+    // لیست از نو ساخته شد، همون ترتیب برگرده.
+    _manualOrder = _servers.map((s) => s.id).toList();
+    await _saveManualOrder();
 
     setState(() {
       _servers = List<VpnServer>.from(_servers);
@@ -2264,6 +2290,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _toggleSort() {
+    // FIX: واقعاً toggle کن (قبلاً همیشه true می‌شد و فقط صعودی می‌موند).
+    // manualOrder رو هم پاک نکن — فقط ترتیب sort رو عوض کن.
+    _sortAscending = !_sortAscending;
+    // ignore: unawaited_futures
+    _saveSortPreference();
+    _sortCurrentServers();
+    // ترتیب جدید رو ذخیره کن تا بعد از ریستارت بمونه
+    _manualOrder = _servers.map((s) => s.id).toList();
+    // ignore: unawaited_futures
+    _saveManualOrder();
+    if (mounted) {
+      setState(() {});
+      _showMsg(_sortAscending
+          ? _t('مرتب‌سازی صعودی', 'Sort ascending')
+          : _t('مرتب‌سازی نزولی', 'Sort descending'));
+    }
+  }
+
+  void _sortCurrentServersLegacy() {
     _sortAscending = true;
     _manualOrder = [];
     // ignore: unawaited_futures
