@@ -11,6 +11,7 @@ import '../services/app_colors.dart';
 import '../services/link_parser.dart';
 import '../services/psiphon_auto.dart';
 import '../services/psiphon_service.dart';
+import '../services/warp_service.dart';
 import '../services/tor_sni_presets.dart';
 import '../services/xray_json.dart';
 import 'qr_scan_screen.dart';
@@ -87,6 +88,11 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _sshSocksPortController =
       TextEditingController(text: '1080');
   bool _sshUseKey = false;
+
+  // WARP
+  final TextEditingController _warpLicenseController = TextEditingController();
+  bool _warpGenerating = false;
+  String _warpProgress = '';
 
   // SOCKS5
   final TextEditingController _socks5HostController = TextEditingController();
@@ -2088,6 +2094,223 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
+  Widget _buildWarpForm() {
+    const color = Color(0xFF1976D2);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.cloud_outlined, color: color, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _t(
+                    'WARP رایگان کلاودفلر (بدون نیاز به اکانت). کلید خودکار ساخته می‌شه و سریع‌ترین edge انتخاب می‌شه.',
+                    'Cloudflare free WARP (no account). Auto key + fastest edge.',
+                  ),
+                  style: TextStyle(
+                    color: AppColors.muted(context),
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: ElevatedButton.icon(
+            onPressed: _warpGenerating
+                ? null
+                : () => _generateWarp(plus: false),
+            icon: _warpGenerating
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.cloud_download_outlined),
+            label: Text(_t('تولید WARP رایگان', 'Generate free WARP')),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+
+        if (_warpGenerating && _warpProgress.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            _warpProgress,
+            style: TextStyle(
+                color: AppColors.muted(context), fontSize: 11),
+            textAlign: TextAlign.center,
+          ),
+        ],
+
+        const SizedBox(height: 18),
+        Divider(color: AppColors.border(context)),
+        const SizedBox(height: 10),
+
+        Text(
+          _t('WARP Plus (اختیاری)', 'WARP Plus (optional)'),
+          style: TextStyle(
+              color: AppColors.fg(context),
+              fontSize: 13,
+              fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _t(
+            'اگه license داری، اینجا بذار تا کانفیگ WARP+ بسازه (سرعت بیشتر).',
+            'If you have a license, paste it here to build a WARP+ config.',
+          ),
+          style: TextStyle(
+              color: AppColors.muted2(context), fontSize: 11, height: 1.4),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _warpLicenseController,
+          style: TextStyle(color: AppColors.fg(context), fontSize: 12),
+          decoration: InputDecoration(
+            hintText: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+            hintStyle:
+                TextStyle(color: AppColors.muted2(context), fontSize: 11),
+            filled: true,
+            fillColor: AppColors.surface(context),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: AppColors.border(context)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: AppColors.border(context)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          height: 46,
+          child: OutlinedButton.icon(
+            onPressed: _warpGenerating
+                ? null
+                : () => _generateWarp(plus: true),
+            icon: const Icon(Icons.workspace_premium, size: 18),
+            label: Text(
+                _t('ساخت WARP+ با این کلید', 'Build WARP+ with this license')),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: color,
+              side: BorderSide(color: color),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 14),
+        Center(
+          child: TextButton.icon(
+            onPressed: () async {
+              await WarpService.reset();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content:
+                      Text(_t('کلید WARP پاک شد', 'WARP state cleared')),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            },
+            icon: const Icon(Icons.refresh, size: 16),
+            label: Text(_t('پاک کردن و شروع از نو', 'Reset & start over'),
+                style: const TextStyle(fontSize: 11)),
+          ),
+        ),
+
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  Future<void> _generateWarp({bool plus = false}) async {
+    if (_warpGenerating) return;
+
+    if (plus) {
+      final lic = _warpLicenseController.text.trim();
+      if (lic.isEmpty) {
+        _showMsg(_t('license رو وارد کن', 'Enter your license'));
+        return;
+      }
+    }
+
+    setState(() {
+      _warpGenerating = true;
+      _warpProgress = _t('شروع...', 'Starting...');
+    });
+
+    try {
+      final result = plus
+          ? await WarpService.generatePlus(
+              license: _warpLicenseController.text.trim(),
+              onProgress: (m) {
+                if (mounted) setState(() => _warpProgress = m);
+              },
+            )
+          : await WarpService.generate(
+              onProgress: (m) {
+                if (mounted) setState(() => _warpProgress = m);
+              },
+            );
+
+      if (!mounted) return;
+
+      if (result.server == null) {
+        setState(() {
+          _warpGenerating = false;
+          _warpProgress = _t('خطا', 'Failed');
+        });
+        _showMsg(_t(
+          'تولید ناموفق: ${result.error ?? "unknown"}',
+          'Generation failed: ${result.error ?? "unknown"}',
+        ));
+        return;
+      }
+
+      widget.onServerAdded(result.server!);
+      if (!mounted) return;
+      Navigator.pop(context);
+      _showMsg(plus
+          ? _t('WARP+ اضافه شد', 'WARP+ added')
+          : _t('WARP اضافه شد', 'WARP added'));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _warpGenerating = false;
+        _warpProgress = _t('خطا', 'Failed');
+      });
+      _showMsg(_t('خطا: $e', 'Error: $e'));
+    }
+  }
+
   Widget _buildSshForm() {
     const color = Color(0xFF66BB6A);
     return Column(
@@ -3221,6 +3444,16 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: const Color(0xFFEF6C00),
             ),
             _buildTypeCard(
+              title: 'WARP / WARP+',
+              subtitle: _t(
+                'WireGuard رایگان کلاودفلر — تولید خودکار کلید + انتخاب بهترین edge',
+                'Cloudflare free WireGuard — auto key + best edge pick',
+              ),
+              icon: Icons.cloud_outlined,
+              type: 'warp',
+              color: const Color(0xFF1976D2),
+            ),
+            _buildTypeCard(
               title: 'SSH',
               subtitle: _t(
                 'اتصال SSH + SOCKS5 روی سرور (ssh -D)',
@@ -3469,6 +3702,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               _buildTorForm(),
             ] else if (_selectedType == 'tunnel') ...[
               _buildTunnelForm(),
+            ] else if (_selectedType == 'warp') ...[
+              _buildWarpForm(),
+              const SizedBox(height: 16),
             ] else if (_selectedType == 'ssh') ...[
               _buildSshForm(),
             ] else if (_selectedType == 'socks5') ...[
@@ -3530,6 +3766,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _hy2UpController.dispose();
     _hy2DownController.dispose();
     _hy2NameController.dispose();
+    _warpLicenseController.dispose();
     _hy2FragmentLengthController.dispose();
     _hy2FragmentIntervalController.dispose();
     _hy2PortHoppingController.dispose();
