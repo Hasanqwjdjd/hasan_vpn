@@ -68,6 +68,13 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _hy2NameController = TextEditingController();
   String _hy2Obfs = 'salamander';
   bool _hy2Insecure = false;
+  bool _hy2Fragment = false;
+  final TextEditingController _hy2FragmentLengthController =
+      TextEditingController(text: '100-200');
+  final TextEditingController _hy2FragmentIntervalController =
+      TextEditingController(text: '10-20');
+  final TextEditingController _hy2PortHoppingController =
+      TextEditingController();
 
   // SSH
   final TextEditingController _sshHostController = TextEditingController();
@@ -1764,6 +1771,14 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       if (_hy2DownController.text.trim().isNotEmpty)
         'down': _hy2DownController.text.trim(),
       'insecure': _hy2Insecure ? '1' : '0',
+      if (_hy2Fragment) 'fragment': '1',
+      if (_hy2Fragment) 'fragmentPackets': 'tlshello',
+      if (_hy2Fragment && _hy2FragmentLengthController.text.trim().isNotEmpty)
+        'fragmentLength': _hy2FragmentLengthController.text.trim(),
+      if (_hy2Fragment && _hy2FragmentIntervalController.text.trim().isNotEmpty)
+        'fragmentInterval': _hy2FragmentIntervalController.text.trim(),
+      if (_hy2PortHoppingController.text.trim().isNotEmpty)
+        'mport': _hy2PortHoppingController.text.trim(),
     };
 
     final uri = Uri(
@@ -1971,6 +1986,78 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             onChanged: (v) => setState(() => _hy2Insecure = v),
           ),
         ),
+        const SizedBox(height: 10),
+
+        // ─── Fragment (placebo برای HY2 — روی UDP اثر نداره) ───
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.surface(context),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border(context)),
+          ),
+          child: SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            activeColor: color,
+            title: Text(
+              _t('Fragment (TLS handshake)', 'Fragment (TLS handshake)'),
+              style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+            ),
+            subtitle: Text(
+              _t(
+                'برای عبور از DPI روی TCP. روی HY2 (UDP) اثر نداره ولی '
+                'برای سازگاری لینک نگه داشته می‌شه.',
+                'Helps bypass DPI on TCP. No effect on HY2 (UDP) but kept for link compatibility.',
+              ),
+              style: TextStyle(color: AppColors.muted2(context), fontSize: 10),
+            ),
+            value: _hy2Fragment,
+            onChanged: (v) => setState(() => _hy2Fragment = v),
+          ),
+        ),
+        if (_hy2Fragment) ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _tunnelField(
+                  controller: _hy2FragmentLengthController,
+                  label: _t('طول', 'Length'),
+                  hint: '100-200',
+                  color: color,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _tunnelField(
+                  controller: _hy2FragmentIntervalController,
+                  label: _t('فاصله', 'Interval'),
+                  hint: '10-20',
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ],
+
+        const SizedBox(height: 10),
+        // ─── Port Hopping ───
+        _tunnelField(
+          controller: _hy2PortHoppingController,
+          label: _t('Port Hopping (بازه‌ی پورت UDP)', 'Port Hopping (UDP range)'),
+          hint: '20000-40000 یا 443,8443,20000-30000',
+          color: color,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _t(
+            'اگه پر باشه، HY2 هر چند ثانیه پورت مبدأ رو از این بازه انتخاب می‌کنه (بهبود پایداری روی بعضی ISPها).',
+            'If set, HY2 rotates its source port within the range (may help stability on some ISPs).',
+          ),
+          style: TextStyle(
+              color: AppColors.muted2(context), fontSize: 10, height: 1.4),
+        ),
+
         const SizedBox(height: 12),
         _tunnelField(
           controller: _hy2NameController,
