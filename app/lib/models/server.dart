@@ -11,6 +11,11 @@ class TlsOptions {
   final bool browserDialer;
   final String? targetStrategy;
 
+  /// FIX (PingNG-style): چند دامنه SNI — هر اتصال یکی به‌صورت
+  /// تصادفی انتخاب می‌شه. برای عبور از فیلترینگ SNI-based.
+  /// اگه خالی باشه، از server.sniOrHost استفاده می‌شه.
+  final List<String> sniPool;
+
   const TlsOptions({
     this.fingerprint,
     this.allowInsecure = false,
@@ -23,6 +28,7 @@ class TlsOptions {
     this.dialMode,
     this.browserDialer = false,
     this.targetStrategy,
+    this.sniPool = const <String>[],
   });
 
   static const TlsOptions empty = TlsOptions();
@@ -38,7 +44,15 @@ class TlsOptions {
       (finalMask == null || finalMask!.isEmpty) &&
       (dialMode == null || dialMode!.isEmpty) &&
       !browserDialer &&
-      (targetStrategy == null || targetStrategy!.isEmpty);
+      (targetStrategy == null || targetStrategy!.isEmpty) &&
+      sniPool.isEmpty;
+
+  /// انتخاب تصادفی یه SNI از pool. null اگه pool خالیه.
+  String? randomSni() {
+    if (sniPool.isEmpty) return null;
+    if (sniPool.length == 1) return sniPool.first;
+    return sniPool[DateTime.now().microsecondsSinceEpoch % sniPool.length];
+  }
 
   TlsOptions copyWith({
     String? fingerprint,
@@ -52,6 +66,7 @@ class TlsOptions {
     String? dialMode,
     bool? browserDialer,
     String? targetStrategy,
+    List<String>? sniPool,
   }) =>
       TlsOptions(
         fingerprint: fingerprint ?? this.fingerprint,
@@ -65,6 +80,7 @@ class TlsOptions {
         dialMode: dialMode ?? this.dialMode,
         browserDialer: browserDialer ?? this.browserDialer,
         targetStrategy: targetStrategy ?? this.targetStrategy,
+        sniPool: sniPool ?? this.sniPool,
       );
 
   Map<String, dynamic> toJson() => {
@@ -85,6 +101,7 @@ class TlsOptions {
         if (browserDialer) 'browserDialer': browserDialer,
         if (targetStrategy != null && targetStrategy!.isNotEmpty)
           'targetStrategy': targetStrategy,
+        if (sniPool.isNotEmpty) 'sniPool': sniPool,
       };
 
   factory TlsOptions.fromJson(Map<String, dynamic> j) => TlsOptions(
@@ -99,6 +116,11 @@ class TlsOptions {
         dialMode: j['dialMode']?.toString(),
         browserDialer: j['browserDialer'] == true,
         targetStrategy: j['targetStrategy']?.toString(),
+        sniPool: (j['sniPool'] as List?)
+                ?.map((e) => e.toString())
+                .where((e) => e.isNotEmpty)
+                .toList() ??
+            const <String>[],
       );
 }
 

@@ -457,6 +457,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final targetStratCtrl =
         TextEditingController(text: server.tls.targetStrategy ?? '');
     final dnsCtrl = TextEditingController(text: server.dns ?? '');
+    final sniPoolCtrl =
+        TextEditingController(text: server.tls.sniPool.join(', '));
 
     String fp = server.tls.fingerprint ?? 'none';
     bool insecure = server.tls.allowInsecure;
@@ -509,6 +511,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     const SizedBox(height: 6),
                     field(_t('نام', 'Name'), nameCtrl),
                     field(_t('SNI', 'SNI'), sniCtrl),
+                    field(
+                        _t('SNI Pool (چند دامنه، جدا با کاما)',
+                            'SNI Pool (multiple, comma-separated)'),
+                        sniPoolCtrl,
+                        hint:
+                            'cloudflare.com, google.com, github.com'),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        _t(
+                          'اگه پر باشه، هر اتصال یه دامنه تصادفی از این لیست انتخاب می‌کنه (دور زدن DPI بر اساس SNI). خالی = فقط SNI بالا.',
+                          'If set, each connection picks a random domain from this list (SNI-based DPI bypass). Empty = only the SNI above.',
+                        ),
+                        style: TextStyle(
+                            color: AppColors.muted2(ctx),
+                            fontSize: 10,
+                            height: 1.4),
+                      ),
+                    ),
                     field(
                         _t('DNS سفارشی (اختیاری)', 'Custom DNS (optional)'),
                         dnsCtrl,
@@ -668,6 +689,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return s.isEmpty ? null : s;
       }
 
+      final sniPoolStr = (sniPoolCtrl.text).trim();
+      final sniPoolList = sniPoolStr
+          .split(RegExp(r'[,\n]+'))
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+
       final newTls = TlsOptions(
         fingerprint: nz(result['fingerprint']),
         allowInsecure: result['allowInsecure'] == true,
@@ -680,6 +708,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         dialMode: nz(result['dialMode']),
         browserDialer: result['browserDialer'] == true,
         targetStrategy: nz(result['targetStrategy']),
+        sniPool: sniPoolList,
       );
 
       final newDns = (result['dns'] as String?)?.trim() ?? '';
@@ -723,6 +752,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       dialModeCtrl.dispose();
       targetStratCtrl.dispose();
       dnsCtrl.dispose();
+      sniPoolCtrl.dispose();
     }
   }
 

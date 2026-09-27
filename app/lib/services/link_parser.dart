@@ -380,6 +380,14 @@ class LinkParser {
     final fp = s('fp') ?? s('fingerprint');
     final insecure = b('allowInsecure') || b('insecure') || b('skip-cert-verify');
 
+    // FIX (PingNG-style): sni-pool یا sniPool — چند دامنه با کاما جدا
+    final sniPoolRaw = s('sni-pool') ?? s('sniPool') ?? '';
+    final sniPool = sniPoolRaw
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
     return TlsOptions(
       fingerprint: fp,
       allowInsecure: insecure,
@@ -392,6 +400,7 @@ class LinkParser {
       dialMode: s('dialMode'),
       browserDialer: b('browserDialer'),
       targetStrategy: s('targetStrategy'),
+      sniPool: sniPool,
     );
   }
 

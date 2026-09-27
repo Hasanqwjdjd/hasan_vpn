@@ -207,6 +207,19 @@ class XraySettings {
       final browserDialer = tls['browserDialer'] == true;
       final targetStrategy = tls['targetStrategy']?.toString() ?? '';
 
+      // FIX (PingNG-style): اگه sniPool پر بود، یه دامنه تصادفی انتخاب کن
+      final sniPoolRaw = tls['sniPool'];
+      String? randomSni;
+      if (sniPoolRaw is List && sniPoolRaw.isNotEmpty) {
+        final pool = sniPoolRaw
+            .map((e) => e.toString())
+            .where((e) => e.isNotEmpty)
+            .toList();
+        if (pool.isNotEmpty) {
+          randomSni = pool[DateTime.now().microsecondsSinceEpoch % pool.length];
+        }
+      }
+
       _applyToOutbounds(map, (ob) {
         final stream = Map<String, dynamic>.from(
             ob['streamSettings'] as Map? ?? {});
@@ -232,7 +245,10 @@ class XraySettings {
         if (ech.isNotEmpty) ts['echConfigList'] = ech;
         if (verifyName.isNotEmpty) ts['verifyPeerCertByName'] = verifyName;
         if (pinSha.isNotEmpty) ts['pinnedPeerCertSha256'] = pinSha;
-        if (sniOverride != null && sniOverride.isNotEmpty) {
+        // اولویت: sniPool (تصادفی) > sniOverride
+        if (randomSni != null && randomSni.isNotEmpty) {
+          ts['serverName'] = randomSni;
+        } else if (sniOverride != null && sniOverride.isNotEmpty) {
           ts['serverName'] = sniOverride;
         }
         if (ts.isNotEmpty) stream['tlsSettings'] = ts;
