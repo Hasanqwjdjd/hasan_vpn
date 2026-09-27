@@ -177,6 +177,9 @@ class VpnServer {
   /// تنظیمات TLS سفارشی کاربر (fingerprint, allowInsecure, finalMask, ...)
   TlsOptions tls;
 
+  /// DNS سفارشی این سرور. null = از تنظیمات کلی استفاده کن.
+  String? dns;
+
   int? ping;
   int? jitter;
   PingKind pingKind;
@@ -196,6 +199,7 @@ class VpnServer {
     this.isPinned = false,
     this.nameOverride,
     this.tls = TlsOptions.empty,
+    this.dns,
     this.ping,
     this.jitter,
     this.pingKind = PingKind.none,
@@ -227,6 +231,7 @@ class VpnServer {
     String? nameOverride,
     bool? isPinned,
     TlsOptions? tls,
+    String? dns,
   }) =>
       VpnServer(
         id: id,
@@ -241,6 +246,7 @@ class VpnServer {
         isPinned: isPinned ?? this.isPinned,
         nameOverride: nameOverride ?? this.nameOverride,
         tls: tls ?? this.tls,
+        dns: dns ?? this.dns,
       );
 
   /// پاک‌کردن نتیجه‌ی تست قبلی.

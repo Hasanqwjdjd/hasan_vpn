@@ -456,6 +456,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         TextEditingController(text: server.tls.dialMode ?? '');
     final targetStratCtrl =
         TextEditingController(text: server.tls.targetStrategy ?? '');
+    final dnsCtrl = TextEditingController(text: server.dns ?? '');
 
     String fp = server.tls.fingerprint ?? 'none';
     bool insecure = server.tls.allowInsecure;
@@ -508,6 +509,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     const SizedBox(height: 6),
                     field(_t('نام', 'Name'), nameCtrl),
                     field(_t('SNI', 'SNI'), sniCtrl),
+                    field(
+                        _t('DNS سفارشی (اختیاری)', 'Custom DNS (optional)'),
+                        dnsCtrl,
+                        hint: '9.9.9.9 یا 9.9.9.9,1.1.1.1'),
 
                     const SizedBox(height: 8),
                     Text(_t('TLS / Fingerprint', 'TLS / Fingerprint'),
@@ -643,6 +648,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   'dialMode': dialModeCtrl.text.trim(),
                   'browserDialer': browserDialer,
                   'targetStrategy': targetStratCtrl.text.trim(),
+                  'dns': dnsCtrl.text.trim(),
                 }),
                 child: Text(_t('ذخیره', 'Save'),
                     style: const TextStyle(color: AppColors.accent)),
@@ -676,10 +682,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         targetStrategy: nz(result['targetStrategy']),
       );
 
+      final newDns = (result['dns'] as String?)?.trim() ?? '';
       final updated = server.copyWith(
         name: newName.isNotEmpty ? newName : null,
         nameOverride: newName.isNotEmpty ? newName : null,
         tls: newTls,
+        dns: newDns.isEmpty ? null : newDns,
       );
 
       // آپدیت sniOrHost (nullable final است؛ مستقیم ست می‌کنیم)
@@ -714,6 +722,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       finalMaskCtrl.dispose();
       dialModeCtrl.dispose();
       targetStratCtrl.dispose();
+      dnsCtrl.dispose();
     }
   }
 

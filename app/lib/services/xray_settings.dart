@@ -153,6 +153,35 @@ class XraySettings {
   }
 
   /// Apply settings onto a core JSON config string.
+  /// FIX: اعمال DNS مخصوص یه سرور روی کانفیگ نهایی.
+  /// اگه server.dns پر باشه، جایگزین dns.servers در کل کانفیگ می‌شه.
+  static String applyServerDns(String configJson, String? dns) {
+    if (dns == null || dns.trim().isEmpty) return configJson;
+    try {
+      final dynamic decoded = jsonDecode(configJson);
+      if (decoded is! Map) return configJson;
+      final map = Map<String, dynamic>.from(decoded);
+
+      final servers = dns
+          .split(RegExp(r'[,\s]+'))
+          .where((s) => s.trim().isNotEmpty)
+          .map((s) => s.trim())
+          .toList();
+      if (servers.isEmpty) return configJson;
+
+      final dnsBlock = Map<String, dynamic>.from(
+          map['dns'] as Map? ?? <String, dynamic>{});
+      dnsBlock['servers'] = servers;
+      dnsBlock['queryStrategy'] ??= 'UseIPv4';
+      dnsBlock['disableFallback'] ??= false;
+      map['dns'] = dnsBlock;
+
+      return jsonEncode(map);
+    } catch (_) {
+      return configJson;
+    }
+  }
+
   /// FIX: اعمال تنظیمات TLS مخصوص یه سرور روی کانفیگ نهایی.
   /// روی outbound اصلی (اولین outbound غیر-آزاد) اعمال می‌شه.
   static String applyServerTls(

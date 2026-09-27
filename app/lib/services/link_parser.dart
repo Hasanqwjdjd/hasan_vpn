@@ -153,6 +153,7 @@ class LinkParser {
 
     // FIX: خواندن فیلدهای TLS از query و پر کردن TlsOptions
     final tls = _tlsFromQuery(query);
+    final dns = (query['dns'] ?? '').trim();
 
     return VpnServer(
       id: id,
@@ -164,6 +165,7 @@ class LinkParser {
       port: port,
       sniOrHost: correctSni,
       tls: tls,
+      dns: dns.isEmpty ? null : dns,
     );
   }
 

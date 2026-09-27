@@ -478,6 +478,10 @@ class V2RayEngine {
           sniOverride: server.sniOrHost,
         );
       }
+      // FIX: اعمال DNS مخصوص سرور (اگه تنظیم شده باشه).
+      if (server.dns != null && server.dns!.isNotEmpty) {
+        config = XraySettings.applyServerDns(config, server.dns);
+      }
       config = await _applyRoutingRules(config);
       config = await _applyGeoAssetPaths(config);
 
