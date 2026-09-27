@@ -1411,20 +1411,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           V2RayEngine.isUtilitySession) {
         return;
       }
-      var alive = V2RayEngine.isConnected;
-      if (alive && _active?.isAether == true) {
-        alive = await AetherService.syncStatus();
-      }
+      // FIX: به‌جای auto-connect، فقط اگه اتصال *قبلاً* برقرار بود
+      // (یعنی _active قبلاً ست شده) sync کن. اگه کاربر دستی قطع کرده
+      // ولی V2RayEngine هنوز فکر می‌کنه وصله، auto-connect نکن.
+      final alive = V2RayEngine.isConnected;
       if (!mounted) return;
-      if (alive && !_connected) {
-        setState(() {
-          _connected = true;
-          if (_active == null && _selected != null) _active = _selected;
-          _status = _t('متصل', 'Connected');
-        });
-      } else if (!alive && _connected) {
+      if (!alive && _connected) {
+        // واقعاً قطع شد
         _markDisconnected(_t('اتصال قطع شد', 'Connection lost'));
       }
+      // نکته: دیگه هیچ auto-connect ای اینجا نداریم. کاربر خودش
+      // باید روی دکمه Connect بزنه.
     } catch (_) {}
   }
 
@@ -2281,10 +2278,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// این تضمین می‌کنه که هیچ‌وقت دو تونل همزمان فعال نباشن —
   /// مثلاً کاربر وسط Tor هست، روی یه vless می‌زنه: Tor باید بمیره.
   Future<void> _disconnectAllSessionsForNewConnect() async {
-    final st = StackTrace.current.toString().split('\n').take(4).join(' | ');
-    // ignore: unawaited_futures
-    ConnectionLogService.logError('TRACE_STACK',
-        '_disconnectAllSessionsForNewConnect START | stack: $st');
     // 1) قطع session سرویس‌های اختصاصی (هرکدوم جدا)
     try {
       if (TorSessionService.instance.anyRouting) {
@@ -2324,10 +2317,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _disconnectAll() async {
-    final st = StackTrace.current.toString().split('\n').take(4).join(' | ');
-    // ignore: unawaited_futures
-    ConnectionLogService.logError('TRACE_STACK',
-        '_disconnectAll START | stack: $st');
     await AetherService.disconnect();
     await PsiphonService.stop();
     await V2RayEngine.disconnect();

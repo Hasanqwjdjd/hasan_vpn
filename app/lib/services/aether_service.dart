@@ -70,10 +70,6 @@ class AetherService {
   }
 
   static Future<void> _stopNative() async {
-    final st = StackTrace.current.toString().split('\n').take(4).join(' | ');
-    // ignore: unawaited_futures
-    ConnectionLogService.logError('TRACE_STACK',
-        'AetherService._stopNative | stack: $st');
     try {
       await _channel.invokeMethod<bool>('stop');
     } catch (error) {
@@ -417,10 +413,6 @@ class AetherService {
   // ------------------------------------------------------------- disconnect
 
   static Future<void> disconnect() async {
-    final st = StackTrace.current.toString().split('\n').take(4).join(' | ');
-    // ignore: unawaited_futures
-    ConnectionLogService.logError('TRACE_STACK',
-        'AetherService.disconnect | stack: $st');
     try {
       await V2RayEngine.disconnect();
     } catch (_) {}

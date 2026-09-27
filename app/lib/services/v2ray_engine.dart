@@ -138,9 +138,6 @@ class V2RayEngine {
         final state = _stateOf(status).toLowerCase();
         _lastState = state;
         _sawState = true;
-        // ignore: unawaited_futures
-        ConnectionLogService.logError('TRACE_STATUS',
-            'V2Ray status=$state since-start=${_startedAt != null ? DateTime.now().difference(_startedAt!).inSeconds : "?"}s');
         debugPrint('V2Ray status: $state');
 
         // FIX1: 'idle' can be a transient state right after connect;
@@ -917,10 +914,6 @@ class V2RayEngine {
   }
 
   static Future<void> disconnect() async {
-    final st = StackTrace.current.toString().split('\n').take(4).join(' | ');
-    // ignore: unawaited_futures
-    ConnectionLogService.logError('TRACE_STACK',
-        'V2RayEngine.disconnect | stack: $st');
     try {
       await _engine.stopVless();
     } catch (_) {}

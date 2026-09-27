@@ -435,7 +435,9 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                     min: 1, max: 20),
 
                 _section(_t('رابط کاربری', 'User interface'), icon: Icons.palette_outlined),
-                _sw('showSpeedNotif', 'نمایش سرعت در اعلان',
+                // حذف شده — درخواست کاربر
+                const SizedBox.shrink(), // placeholder
+                // _sw('showSpeedNotif', 'نمایش سرعت در اعلان',
                     'Show speed in notification',
                     subFa: 'سرعت آپلود/دانلود و پینگ در اعلان اتصال',
                     subEn: 'Show upload/download speed and ping in the connection notification'),

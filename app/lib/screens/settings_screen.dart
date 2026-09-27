@@ -239,65 +239,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
 
-          // ------- اتصال هوشمند -------
-          _sectionTitle(_t('اتصال هوشمند', 'Smart connect')),
-          _card(
-            context,
-            Column(
-              children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    _t('اتصال به سریع‌ترین سرور',
-                        'Connect to fastest server'),
-                    style: TextStyle(color: AppColors.fg(context), fontSize: 14),
-                  ),
-                  subtitle: Text(
-                    _lang == 'fa'
-                        ? 'قبل از اتصال، سرور آنلاین با کمترین پینگ و jitter انتخاب می‌شود (به‌جای آخرین سرور انتخابی)'
-                        : 'Before connecting, pick the fastest online server (lowest ping + jitter) instead of the last manual selection',
-                    style: TextStyle(
-                        color: AppColors.muted2(context),
-                        fontSize: 11,
-                        height: 1.5),
-                  ),
-                  value: _connectFastest,
-                  activeColor: AppColors.accent,
-                  onChanged: (v) async {
-                    setState(() => _connectFastest = v);
-                    await SettingsService.setConnectFastest(v);
-                  },
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    _t('اتصال خودکار هنگام روشن شدن',
-                        'Auto-connect on boot'),
-                    style: TextStyle(
-                        color: AppColors.fg(context), fontSize: 14),
-                  ),
-                  subtitle: Text(
-                    _t(
-                      'بدون نیاز به تعامل کاربر پس از BOOT_COMPLETED',
-                      'No user interaction required after BOOT_COMPLETED',
-                    ),
-                    style: TextStyle(
-                        color: AppColors.muted2(context),
-                        fontSize: 11,
-                        height: 1.5),
-                  ),
-                  value: _autoConnectBoot,
-                  activeColor: AppColors.accent,
-                  onChanged: (v) async {
-                    setState(() => _autoConnectBoot = v);
-                    await SettingsService.setAutoConnectBoot(v);
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
           // ------- منابع تلگرام -------
           _sectionTitle(_t('منابع تلگرام (سرور رایگان)',
               'Telegram sources (free servers)')),

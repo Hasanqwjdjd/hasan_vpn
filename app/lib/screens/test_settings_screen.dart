@@ -320,7 +320,7 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                 const SizedBox(height: 10),
                 Text(
                   _t(
-                    'بدترین حالت برای هر سرور: ${_timeout * _samples} ثانیه • $_direct مستقیم هم‌زمان',
+
                     'Worst case per server: ${_timeout * _samples}s • $_direct direct concurrent',
                   ),
                   style: TextStyle(

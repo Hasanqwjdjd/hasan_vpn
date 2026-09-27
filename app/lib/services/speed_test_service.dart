@@ -108,7 +108,9 @@ class SpeedTestService {
     HttpClient? client;
     try {
       client = HttpClient();
-      client.findProxy = (u) => 'SOCKS 127.0.0.1:$socksPort';
+      // FIX: findProxy با SOCKS در Dart کار نمی‌کنه (Invalid proxy
+      // configuration). درخواست‌ها از tun خود VPN رد می‌شن، پس
+      // مستقیم دانلود می‌کنیم.
       client.connectionTimeout = const Duration(seconds: 15);
       client.badCertificateCallback = (_, __, ___) => true;
 
