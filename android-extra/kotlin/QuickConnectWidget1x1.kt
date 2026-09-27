@@ -82,6 +82,20 @@ class QuickConnectWidget1x1 : AppWidgetProvider() {
     }
 
     companion object {
+        /// FIX: بعد از هر connect/disconnect، همه‌ی ویجت‌ها رو refresh کن
+        /// تا رنگشون به‌روز شه.
+        fun updateAllWidgets(context: Context) {
+            try {
+                val mgr = AppWidgetManager.getInstance(context)
+                val ids = mgr.getAppWidgetIds(
+                    android.content.ComponentName(context, QuickConnectWidget1x1::class.java)
+                )
+                for (id in ids) {
+                    updateAppWidget(context, mgr, id)
+                }
+            } catch (_: Exception) {}
+        }
+
         const val ACTION_TAP = "com.hasan.hasan_vpn.WIDGET_1X1_TAP"
         const val EXTRA_TYPE = "type"
         const val EXTRA_PAYLOAD = "payload"
@@ -115,6 +129,12 @@ class QuickConnectWidget1x1 : AppWidgetProvider() {
 
             val views = RemoteViews(context.packageName, R.layout.widget_quick_connect_1x1)
             views.setTextViewText(R.id.widget_title, title)
+
+            // FIX: رنگ پس‌زمینه/حاشیه بر اساس وضعیت اتصال.
+            // فلت prefs که از Dart با FIX_VPN_FLAG ذخیره می‌شه.
+            val vpnActive = prefs.getBoolean("flutter.vpn_active", false)
+            val bgRes = if (vpnActive) R.drawable.widget_bg else R.drawable.widget_bg_gray
+            views.setInt(R.id.widget_root, "setBackgroundResource", bgRes)
 
             val tap = Intent(context, QuickConnectWidget1x1::class.java).apply {
                 action = ACTION_TAP

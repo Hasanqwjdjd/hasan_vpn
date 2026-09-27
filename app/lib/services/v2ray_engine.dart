@@ -862,6 +862,7 @@ class V2RayEngine {
 
       _connected = true;
       _current = server;
+      _notifyWidgetsStateChanged();
       return true;
     } catch (e) {
       lastError = e.toString();
@@ -913,6 +914,14 @@ class V2RayEngine {
     return false;
   }
 
+  static void _notifyWidgetsStateChanged() {
+    // FIX: بعد از هر connect/disconnect به ویجت بگو رنگش رو عوض کنه.
+    try {
+      const ch = MethodChannel('com.hasan.hasan_vpn/widget');
+      ch.invokeMethod('updateAllWidgets');
+    } catch (_) {}
+  }
+
   static Future<void> disconnect() async {
     try {
       await _engine.stopVless();
@@ -927,6 +936,7 @@ class V2RayEngine {
       await prefs.setBool('vpn_active', false);
     } catch (_) {}
     unawaited(TelemetryService.hide());
+    _notifyWidgetsStateChanged();
   }
 
   // ------------------------------------------------------------------- ping

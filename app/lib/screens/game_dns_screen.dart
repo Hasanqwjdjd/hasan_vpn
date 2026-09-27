@@ -78,6 +78,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   String? _activeId;
   List<String> _manualOrder = <String>[];
   bool _testingAll = false;
+  final ScrollController _listScrollController = ScrollController();
   int _tested = 0;
   int _total = 0;
   final Map<String, PingResult> _liveResults = {};
@@ -92,9 +93,28 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     _load();
   }
 
+  Future<void> _scrollToTop() async {
+    if (!_listScrollController.hasClients) return;
+    await _listScrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOut,
+    );
+  }
+
+  Future<void> _scrollToBottom() async {
+    if (!_listScrollController.hasClients) return;
+    await _listScrollController.animateTo(
+      _listScrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOut,
+    );
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
+    _listScrollController.dispose();
     super.dispose();
   }
 
@@ -478,6 +498,16 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
         title: Text(_t('DNS گیم', 'Game DNS')),
         actions: [
           IconButton(
+            icon: Icon(Icons.vertical_align_top, color: AppColors.fg(context)),
+            tooltip: _t('برو به اول', 'Top'),
+            onPressed: _scrollToTop,
+          ),
+          IconButton(
+            icon: Icon(Icons.vertical_align_bottom, color: AppColors.fg(context)),
+            tooltip: _t('برو به آخر', 'Bottom'),
+            onPressed: _scrollToBottom,
+          ),
+          IconButton(
             icon: Icon(_showSearch ? Icons.close : Icons.search, color: AppColors.fg(context)),
             onPressed: () => setState(() => _showSearch = !_showSearch),
           ),
@@ -514,6 +544,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
             child: visible.isEmpty
                 ? Center(child: Text(_t('چیزی پیدا نشد', 'Nothing found'), style: TextStyle(color: AppColors.muted(context))))
                 : ReorderableListView.builder(
+                    scrollController: _listScrollController,
                     buildDefaultDragHandles: false,
                     itemCount: visible.length,
                     onReorder: (oldIndex, newIndex) {

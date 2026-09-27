@@ -300,6 +300,7 @@ class MainActivity : FlutterActivity() {
         widgetChannelRef!!.setMethodCallHandler { call, result ->
             when (call.method) {
                 "updateWidgets" -> { refreshAllWidgets(); result.success(true) }
+                "updateAllWidgets" -> { QuickConnectWidget1x1.updateAllWidgets(this@MainActivity); result.success(true) }
                 "getInitialIntent" -> result.success(intentToMap(intent))
                 "getLaunchExtras" -> result.success(intentToMap(intent))
                 "moveTaskToBack" -> { moveTaskToBack(true); result.success(true) }

@@ -1220,7 +1220,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _onReorder(int oldIndex, int newIndex) async {
+    // FIX: جلوگیری از wrap-around و out-of-bounds. ReorderableGridView
+    // گاهی وقتی به انتها می‌رسه newIndex رو خارج از محدوده می‌ده.
+    if (_servers.isEmpty) return;
+    if (oldIndex < 0 || oldIndex >= _servers.length) return;
     if (newIndex > oldIndex) newIndex -= 1;
+    newIndex = newIndex.clamp(0, _servers.length - 1);
+    if (newIndex == oldIndex) return;
+
     setState(() {
       final item = _servers.removeAt(oldIndex);
       _servers.insert(newIndex, item);
@@ -3231,6 +3238,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _rebuildServerList();
   }
 
+  Future<void> _scrollToTop() async {
+    if (!_listScrollController.hasClients) return;
+    await _listScrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOut,
+    );
+  }
+
+  Future<void> _scrollToBottom() async {
+    if (!_listScrollController.hasClients) return;
+    await _listScrollController.animateTo(
+      _listScrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOut,
+    );
+  }
+
   Widget _buildTopBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(4, 6, 4, 4),
@@ -3272,6 +3297,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     color: AppColors.accent, size: 22),
                 onPressed: _jumpToSelected,
                 tooltip: _t('یافتن انتخاب‌شده', 'Find selected'),
+              ),
+              IconButton(
+                icon: Icon(Icons.vertical_align_top,
+                    color: AppColors.accent, size: 22),
+                onPressed: _scrollToTop,
+                tooltip: _t('برو به اول', 'Top'),
+              ),
+              IconButton(
+                icon: Icon(Icons.vertical_align_bottom,
+                    color: AppColors.accent, size: 22),
+                onPressed: _scrollToBottom,
+                tooltip: _t('برو به آخر', 'Bottom'),
               ),
               IconButton(
                 icon: Icon(
