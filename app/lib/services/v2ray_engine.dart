@@ -139,14 +139,20 @@ class V2RayEngine {
         _sawState = true;
         debugPrint('V2Ray status: $state');
 
-        final down = state.contains('disconnect') ||
-            state.contains('stop') ||
-            state.contains('closed') ||
-            state.contains('idle');
+        // FIX1: 'idle' can be a transient state right after connect;
+        // 'disconnecting' contains 'disconnect' but means the user is
+        // already leaving, so treat only full disconnect/stop/closed as down.
+        // Also raise the grace window from 4s to 15s — flutter_vless can
+        // report a stale 'disconnect' state just after a real connect.
+        final down = (state.contains('disconnected') ||
+            state.contains('disconnect') ||
+            state.contains('stopped') ||
+            state.contains('closed')) &&
+            !state.contains('connected');
         if (down) {
           final started = _startedAt;
           final inGrace = started != null &&
-              DateTime.now().difference(started) < const Duration(seconds: 4);
+              DateTime.now().difference(started) < const Duration(seconds: 15);
           if (!inGrace) {
             _connected = false;
             unawaited(TelemetryService.hide());

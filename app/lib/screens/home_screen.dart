@@ -1998,9 +1998,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (alive && active?.isAether == true) {
         alive = await AetherService.syncStatus();
       }
+      // FIX2: before declaring the tunnel dead, verify with a real probe.
+      // flutter_vless can transiently report 'idle'/'disconnecting' while
+      // the tunnel is actually working. A real SOCKS probe avoids
+      // disconnecting a healthy connection.
+      if (!alive) {
+        try {
+          final probe = await V2RayEngine.probeConnected();
+          if (probe.ok) {
+            alive = true;
+          }
+        } catch (_) {}
+      }
       if (!alive) {
         _deadStrikes++;
-        if (_deadStrikes >= 2) {
+        // FIX2: raised from 2 (8s) to 5 (20s) so transient flutters
+        // don't kill a working tunnel.
+        if (_deadStrikes >= 5) {
           try {
             await _disconnectAll();
           } catch (_) {}
