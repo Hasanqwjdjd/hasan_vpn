@@ -117,8 +117,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const String _userGroupsKey = 'server_groups_v1';
   static const String _userGroupsOrderKey = 'server_groups_order_v1';
   final TextEditingController _groupConfigCtrl = TextEditingController();
-  // state برای drag-reorder در حالت دوستونی
-  bool _gridDragEnabled = false;
 
   String? _selectedSubId;
   // اگر از ویجت با widget_needs_server اومده باشیم، این مقدار پر می‌شه
