@@ -15,6 +15,7 @@ class ServerTile extends StatelessWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onPin;
   final VoidCallback? onShare;
+  final VoidCallback? onCopy;
   final VoidCallback? onEdit;
   final VoidCallback? onTest;
   final VoidCallback? onHomeWidget;
@@ -29,6 +30,7 @@ class ServerTile extends StatelessWidget {
     this.onDelete,
     this.onPin,
     this.onShare,
+    this.onCopy,
     this.onEdit,
     this.onTest,
     this.onHomeWidget,
@@ -146,6 +148,16 @@ class ServerTile extends StatelessWidget {
       ),
     );
   }
+
+  // برچسب‌های منو
+  static const String _copyLabel = 'کپی / Copy';
+  static const String _shareLabel = 'اشتراک / Share';
+  static const String _pinLabel = 'سنجاق / Pin';
+  static const String _unpinLabel = 'برداشتن سنجاق / Unpin';
+  static const String _pingLabel = 'پینگ / Ping';
+  static const String _editLabel = 'ویرایش نام / Rename';
+  static const String _widgetLabel = 'ویجت / Home widget';
+  static const String _deleteLabel = 'حذف / Delete';
 
   Widget _smallIcon({
     required IconData icon,
@@ -298,26 +310,130 @@ class ServerTile extends StatelessWidget {
                         : onTest,
                   ),
 
-                if (onShare != null)
-                  _smallIcon(
-                    icon: Icons.share_outlined,
+                // FIX3: منوی سه‌نقطه — همه گزینه‌ها در یک PopupMenu.
+                // کپی/اشتراک فقط برای سرورهای خود کاربر (onCopy/onShare
+                // از home_screen فقط وقتی isDeletable=true پاس داده می‌شن).
+                PopupMenuButton<String>(
+                  icon: Icon(
+                    Icons.more_vert,
                     color: AppColors.muted(context),
-                    onPressed: onShare,
+                    size: 18,
                   ),
-
-                if (onEdit != null)
-                  _smallIcon(
-                    icon: Icons.edit_outlined,
-                    color: AppColors.muted(context),
-                    onPressed: onEdit,
-                  ),
-
-                if (onDelete != null)
-                  _smallIcon(
-                    icon: Icons.delete_outline,
-                    color: AppColors.danger,
-                    onPressed: onDelete,
-                  ),
+                  padding: EdgeInsets.zero,
+                  iconSize: 18,
+                  color: AppColors.surface(context),
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'copy':
+                        onCopy?.call();
+                        break;
+                      case 'share':
+                        onShare?.call();
+                        break;
+                      case 'edit':
+                        onEdit?.call();
+                        break;
+                      case 'pin':
+                        onPin?.call();
+                        break;
+                      case 'test':
+                        onTest?.call();
+                        break;
+                      case 'widget':
+                        onHomeWidget?.call();
+                        break;
+                      case 'delete':
+                        onDelete?.call();
+                        break;
+                    }
+                  },
+                  itemBuilder: (bCtx) => <PopupMenuEntry<String>>[
+                    if (onCopy != null)
+                      PopupMenuItem(
+                        value: 'copy',
+                        child: Row(children: [
+                          Icon(Icons.copy,
+                              size: 16, color: AppColors.fg(bCtx)),
+                          const SizedBox(width: 8),
+                          Text(_copyLabel,
+                              style: TextStyle(color: AppColors.fg(bCtx))),
+                        ]),
+                      ),
+                    if (onShare != null)
+                      PopupMenuItem(
+                        value: 'share',
+                        child: Row(children: [
+                          Icon(Icons.share_outlined,
+                              size: 16, color: AppColors.fg(bCtx)),
+                          const SizedBox(width: 8),
+                          Text(_shareLabel,
+                              style: TextStyle(color: AppColors.fg(bCtx))),
+                        ]),
+                      ),
+                    if (onPin != null)
+                      PopupMenuItem(
+                        value: 'pin',
+                        child: Row(children: [
+                          Icon(
+                            server.isPinned
+                                ? Icons.push_pin
+                                : Icons.push_pin_outlined,
+                            size: 16,
+                            color: AppColors.fg(bCtx),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            server.isPinned ? _unpinLabel : _pinLabel,
+                            style: TextStyle(color: AppColors.fg(bCtx)),
+                          ),
+                        ]),
+                      ),
+                    if (onTest != null)
+                      PopupMenuItem(
+                        value: 'test',
+                        child: Row(children: [
+                          Icon(Icons.bolt,
+                              size: 16, color: AppColors.fg(bCtx)),
+                          const SizedBox(width: 8),
+                          Text(_pingLabel,
+                              style: TextStyle(color: AppColors.fg(bCtx))),
+                        ]),
+                      ),
+                    if (onEdit != null)
+                      PopupMenuItem(
+                        value: 'edit',
+                        child: Row(children: [
+                          Icon(Icons.edit_outlined,
+                              size: 16, color: AppColors.fg(bCtx)),
+                          const SizedBox(width: 8),
+                          Text(_editLabel,
+                              style: TextStyle(color: AppColors.fg(bCtx))),
+                        ]),
+                      ),
+                    if (onHomeWidget != null)
+                      PopupMenuItem(
+                        value: 'widget',
+                        child: Row(children: [
+                          Icon(Icons.widgets_outlined,
+                              size: 16, color: AppColors.fg(bCtx)),
+                          const SizedBox(width: 8),
+                          Text(_widgetLabel,
+                              style: TextStyle(color: AppColors.fg(bCtx))),
+                        ]),
+                      ),
+                    if (onDelete != null)
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Row(children: [
+                          const Icon(Icons.delete_outline,
+                              size: 16, color: Colors.red),
+                          const SizedBox(width: 8),
+                          Text(_deleteLabel,
+                              style: TextStyle(color: Colors.red)),
+                        ]),
+                      ),
+                  ],
+                ),
               ],
             ),
           ),

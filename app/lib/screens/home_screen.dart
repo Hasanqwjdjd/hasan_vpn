@@ -2242,6 +2242,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _showMsg(_t('همه لینک‌ها کپی شد', 'All links copied'));
   }
 
+  void _copyServerLink(VpnServer server) {
+    // فقط سرورهای خود کاربر — نه built-in و نه subscription.
+    if (!server.isDeletable) {
+      _showMsg(_t('سرورهای اشتراک قابل کپی نیستند',
+          'Subscription servers cannot be copied'));
+      return;
+    }
+    Clipboard.setData(ClipboardData(text: server.shareLink));
+    _showMsg(_t('لینک کپی شد', 'Link copied'));
+  }
+
   void _shareServer(VpnServer server) {
     Navigator.push(
       context,
@@ -3157,11 +3168,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ? () => _deleteServer(server)
           : null,
       onPin: () => _togglePin(server),
-      onShare: _customServers.any((s) => s.id == server.id)
-          ? () => _shareServer(server)
-          : null,
+      // کپی/اشتراک فقط برای سرورهای خود کاربر (isDeletable=true):
+      // built-in و subscription این گزینه‌ها رو ندارن.
+      onCopy: server.isDeletable ? () => _copyServerLink(server) : null,
+      onShare: server.isDeletable ? () => _shareServer(server) : null,
       onEdit: () => _editServerName(server),
       onTest: () => _testOne(server),
+      onHomeWidget: () => _pinServerToHome(server),
     );
   }
 
