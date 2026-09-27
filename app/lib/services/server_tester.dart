@@ -291,21 +291,15 @@ class ServerTester {
     void Function()? onChanged,
     bool onlyTcp = false,
   }) async {
-    await V2RayEngine.loadDelayUrl();
-    final budget = await TestBudget.load();
-    final summary = TestSummary()..total = 1;
-
-    await _testServer(
-      server,
+    // FIX: همه‌ی مسیرهای پینگ (⚡ لایتنینگ، 3-نقطه «پینگ»، پینگ خودکار
+    // بعد از import) باید از *همون* pipeline پینگ از همه رد بشن. پس
+    // testOne رو به testAll با یه لیست تک‌عضوی route می‌کنیم.
+    return testAll(
+      <VpnServer>[server],
       session: session,
+      onChanged: onChanged,
       onlyTcp: onlyTcp,
-      gate: _Semaphore(1),
-      tcpGate: _Semaphore(1),
-      budget: budget,
-      summary: summary,
-      notify: () => onChanged?.call(),
     );
-    return summary;
   }
 
   /// MarbleNG RouteProbe.summarize: median; warm-up dropped only when samples >= 3
