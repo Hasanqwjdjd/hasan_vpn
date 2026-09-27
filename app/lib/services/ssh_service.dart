@@ -74,13 +74,8 @@ class SshService {
   }
 
   static Future<bool> ping() async {
-    final c = _client;
-    if (c == null) return false;
-    try {
-      return !c.isClosed;
-    } catch (_) {
-      return true;
-    }
+    if (_client == null || _socket == null) return false;
+    return true;
   }
 
   static Future<void> disconnect() async {
