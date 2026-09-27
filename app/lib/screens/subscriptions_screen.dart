@@ -405,6 +405,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   Future<void> _editGroup(Subscription sub) async {
     final nameCtrl = TextEditingController(text: sub.name);
     final uaCtrl = TextEditingController(text: sub.customUserAgent);
+    final overrideCtrl =
+        TextEditingController(text: sub.overrideAddress);
     final links = List<String>.from(sub.cachedLinks);
     final addedCtrl = TextEditingController();
 
@@ -457,6 +459,41 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                             color: AppColors.fg(ctx), fontSize: 12),
                         decoration: InputDecoration(
                           hintText: 'Mozilla/5.0 ...',
+                          hintStyle: TextStyle(
+                              color: AppColors.muted2(ctx), fontSize: 11),
+                          enabledBorder: OutlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: AppColors.border(ctx))),
+                          border: OutlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: AppColors.border(ctx))),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        _t('آدرس جایگزین (Override Address)',
+                            'Override Address'),
+                        style: TextStyle(
+                            color: AppColors.muted(ctx), fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _t(
+                          'اگه پر باشه، host همه‌ی کانفیگ‌های این ساب بعد از fetch به این مقدار تغییر می‌کنه. برای انتخاب IP کلودفلر (نمونه: 188.114.97.6) یا هر IP سالم.',
+                          'If set, the host of every config is replaced after each fetch. Use to force a specific Cloudflare IP (e.g. 188.114.97.6).',
+                        ),
+                        style: TextStyle(
+                            color: AppColors.muted2(ctx),
+                            fontSize: 10,
+                            height: 1.4),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: overrideCtrl,
+                        style: TextStyle(
+                            color: AppColors.fg(ctx), fontSize: 12),
+                        decoration: InputDecoration(
+                          hintText: '188.114.97.6',
                           hintStyle: TextStyle(
                               color: AppColors.muted2(ctx), fontSize: 11),
                           enabledBorder: OutlineInputBorder(
@@ -577,7 +614,9 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     final newName = nameCtrl.text.trim();
     if (newName.isNotEmpty) sub.name = newName;
     sub.customUserAgent = uaCtrl.text.trim();
+    sub.overrideAddress = overrideCtrl.text.trim();
     sub.cachedLinks = links;
+    overrideCtrl.dispose();
     sub.serverCount = links.length;
     sub.lastUpdated = DateTime.now();
     await SubscriptionService.save(_subs);

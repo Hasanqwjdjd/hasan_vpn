@@ -12,6 +12,11 @@ class Subscription {
   /// User-Agent سفارشی برای fetch. خالی = UA پیش‌فرض مرورگر.
   String customUserAgent;
 
+  /// آدرس جایگزین برای همه‌ی کانفیگ‌های این ساب (Override Address).
+  /// خالی = آدرس اصلی کانفیگ. اگه پر باشه، host همه‌ی لینک‌ها بعد از
+  /// fetch به این مقدار تغییر می‌کنه (مثلاً برای انتخاب IP کلودفلر).
+  String overrideAddress;
+
   /// آخرین خطای دریافت (اگر آخرین تلاش شکست خورد). روی دیسک ذخیره نمی‌شود؛
   /// فقط برای نمایش نوار خطا در همین اجرای برنامه است.
   String? lastError;
@@ -28,6 +33,7 @@ class Subscription {
     this.serverCount = 0,
     List<String>? cachedLinks,
     this.customUserAgent = '',
+    this.overrideAddress = '',
     this.lastError,
     this.lastErrorCode,
   }) : cachedLinks = cachedLinks ?? [];
@@ -43,6 +49,7 @@ class Subscription {
         'serverCount': serverCount,
         'cachedLinks': cachedLinks,
         if (customUserAgent.isNotEmpty) 'customUserAgent': customUserAgent,
+        if (overrideAddress.isNotEmpty) 'overrideAddress': overrideAddress,
       };
 
   factory Subscription.fromJson(Map<String, dynamic> json) => Subscription(

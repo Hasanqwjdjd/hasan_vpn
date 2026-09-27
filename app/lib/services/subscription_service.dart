@@ -337,8 +337,37 @@ class SubscriptionService {
   }
 
 
+  /// FIX: اگه ساب overrideAddress داره، آدرس host همه‌ی لینک‌ها رو
+  /// با اون جایگزین کن. برای انتخاب IP کلاودفلر و عبور از محدودیت آپلود.
+  static String _applyAddressOverride(String link, String override) {
+    if (override.trim().isEmpty) return link;
+    try {
+      final uri = Uri.parse(link);
+      if (uri.host.isEmpty) return link;
+      var newHost = override.trim();
+      int? newPort;
+      // اگه override با :port داده شده
+      final colon = newHost.lastIndexOf(':');
+      if (colon > 0 && !newHost.contains('[')) {
+        final maybePort = int.tryParse(newHost.substring(colon + 1));
+        if (maybePort != null) {
+          newPort = maybePort;
+          newHost = newHost.substring(0, colon);
+        }
+      }
+      final rebuilt = uri.replace(
+        host: newHost,
+        port: newPort,
+      );
+      return rebuilt.toString();
+    } catch (_) {
+      return link;
+    }
+  }
+
   static List<VpnServer> fromCache(Subscription subscription) {
-    return _build(subscription.cachedLinks, subscription.id);
+    return _build(subscription.cachedLinks, subscription.id,
+        overrideAddress: subscription.overrideAddress);
   }
 
   // ---------------------------------------------------------------- parsing
@@ -370,16 +399,18 @@ class SubscriptionService {
     return _build(links, subscriptionId);
   }
 
-  static List<VpnServer> _build(List<String> links, String subscriptionId) {
+  static List<VpnServer> _build(List<String> links, String subscriptionId,
+      {String overrideAddress = ''}) {
     final servers = <VpnServer>[];
     final seen = <String>{};
 
     for (final link in links) {
-      final id = LinkParser.stableId('sub', link);
+      // FIX: اعمال overrideAddress روی host قبل از parse
+      final effectiveLink = _applyAddressOverride(link, overrideAddress);
+      final id = LinkParser.stableId('sub', effectiveLink);
       if (!seen.add(id)) continue;
-      final server = LinkParser.parse(link, id: id);
+      final server = LinkParser.parse(effectiveLink, id: id);
       if (server != null) {
-        // سرورهای اشتراک قابل حذف یا اشتراک‌گذاری توسط کاربر نیستن
         server.isDeletable = false;
         servers.add(server);
       }
