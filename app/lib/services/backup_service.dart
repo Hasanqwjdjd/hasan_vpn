@@ -63,10 +63,21 @@ class BackupService {
   /// بازیابی از JSON. مقادیر جدید جایگزین قدیمی می‌شوند.
   /// برمی‌گرداند: تعداد کلیدهای بازیابی‌شده.
   static Future<int> restore(String jsonText) async {
-    final dynamic decoded = jsonDecode(jsonText);
-    if (decoded is! Map) throw 'invalid backup: not an object';
+    // FIX: try/catch typed — قبلاً jsonDecode یا throw String
+    // باعث unhandled exception در caller می‌شد.
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(jsonText);
+    } catch (e) {
+      throw FormatException('invalid backup: not valid JSON ($e)');
+    }
+    if (decoded is! Map) {
+      throw const FormatException('invalid backup: not an object');
+    }
     final data = decoded['data'];
-    if (data is! Map) throw 'invalid backup: no data';
+    if (data is! Map) {
+      throw const FormatException('invalid backup: no data field');
+    }
     final prefs = await SharedPreferences.getInstance();
     int count = 0;
     for (final entry in data.entries) {

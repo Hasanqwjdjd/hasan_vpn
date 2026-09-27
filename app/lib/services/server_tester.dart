@@ -588,6 +588,13 @@ class ServerTester {
     VpnServer? best;
     double bestScore = -1;
     for (final server in servers) {
+      // FIX: ssh/tunnel نمی‌تونن از مسیر Connect/auto-fastest وصل شن —
+      // session سرویس اختصاصی لازم دارن. اگه انتخاب شن، کاربر پیام
+      // «روی سرور ضربه بزن» می‌گیره و اتصال خودکار شکست می‌خوره.
+      if (server.protocol == VpnProtocol.ssh ||
+          server.protocol == VpnProtocol.tunnel) {
+        continue;
+      }
       final s = scoreOf(server);
       if (s < 0) continue;
       if (best == null || s > bestScore) {

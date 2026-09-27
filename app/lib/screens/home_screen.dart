@@ -432,6 +432,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     final ctrl = TextEditingController(text: server.displayName);
+    try {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -471,6 +472,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       server.nameOverride = VpnServer.sanitizeServerName(newName);
     });
+    } finally {
+      ctrl.dispose();
+    }
   }
 
   Future<void> _editAetherServer(VpnServer server) async {
@@ -481,6 +485,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     var ip = profile.ip;
     final nameCtrl = TextEditingController(text: server.displayName);
     final peerCtrl = TextEditingController(text: profile.peer);
+    try {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) {
@@ -710,6 +715,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(_t('تنظیمات Aether ذخیره شد', 'Aether saved'))),
     );
+    } finally {
+      nameCtrl.dispose();
+      peerCtrl.dispose();
+    }
   }
 
   // ----------------------------------------------------- last server
@@ -2686,6 +2695,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   onPressed: () async {
                                     final ctrl =
                                         TextEditingController(text: name);
+                                    try {
                                     final nn = await showDialog<String>(
                                       context: sCtx,
                                       builder: (d) => AlertDialog(
@@ -2727,6 +2737,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                     if (idx >= 0) workingOrder[idx] = nn;
                                     setLocal(() {});
                                     await persist();
+                                    } finally {
+                                      ctrl.dispose();
+                                    }
                                   },
                                 ),
                                 IconButton(
@@ -3552,6 +3565,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     if (!mounted) return;
     final ctrl = TextEditingController();
+    try {
     final groupName = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -3613,6 +3627,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     _showMsg(_t('$groupName: ${merged.length} سرور',
         '$groupName: ${merged.length} servers'));
+    } finally {
+      ctrl.dispose();
+    }
   }
 
   Future<void> _openTorBridgePickerForWidget(int widgetId) async {
