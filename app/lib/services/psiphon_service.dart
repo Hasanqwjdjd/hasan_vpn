@@ -51,6 +51,10 @@ class PsiphonService {
     String propagationChannelId = '',
     String egressRegion = '',
     String upstreamProxyUrl = '',
+    String mode = 'auto',
+    String cdnIps = '',
+    String cdnSni = '',
+    String cdnSets = '',
   }) {
     final base = PsiphonAuto.profiles.first;
     final profile = PsiphonProfile(
@@ -60,6 +64,10 @@ class PsiphonService {
           ? base.channelId
           : propagationChannelId,
       upstreamProxyUrl: upstreamProxyUrl,
+      mode: mode,
+      cdnIps: cdnIps,
+      cdnSni: cdnSni,
+      cdnSets: cdnSets,
     );
     return jsonEncode(
       PsiphonAuto.buildConfig(
@@ -67,6 +75,10 @@ class PsiphonService {
         region: egressRegion,
         establishTimeoutSec: 60,
         upstreamProxyUrl: upstreamProxyUrl,
+        modeOverride: mode,
+        cdnIpsOverride: cdnIps,
+        cdnSniOverride: cdnSni,
+        cdnSetsOverride: cdnSets,
       ),
     );
   }
@@ -382,11 +394,19 @@ class PsiphonService {
         final channel = uri.queryParameters['channel'] ?? '';
         final region = uri.queryParameters['region'] ?? '';
         final upstream = uri.queryParameters['upstream'] ?? '';
+        final mode = uri.queryParameters['mode'] ?? 'auto';
+        final cdnIps = uri.queryParameters['cdn_ips'] ?? '';
+        final cdnSni = uri.queryParameters['cdn_sni'] ?? '';
+        final cdnSets = uri.queryParameters['cdn_sets'] ?? '';
         return defaultConfigJson(
           sponsorId: sponsor,
           propagationChannelId: channel,
           egressRegion: region,
           upstreamProxyUrl: upstream,
+          mode: mode,
+          cdnIps: cdnIps,
+          cdnSni: cdnSni,
+          cdnSets: cdnSets,
         );
       } catch (_) {}
     }

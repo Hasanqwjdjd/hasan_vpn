@@ -17,12 +17,31 @@ class PsiphonProfile {
   ///   socks5://127.0.0.1:18000 → MasterDNS
   final String upstreamProxyUrl;
 
+  /// FIX (PingNG-style): Psiphon Mode:
+  ///   'auto'   = پیش‌فرض (بدون CDN fronting)
+  ///   'cdn'    = FRONTED-MEEK-CDN-OSSH با IP/SNI/sets سفارشی
+  ///   'direct' = CDN fronting خاموش (فقط MEEK عادی)
+  final String mode;
+
+  /// IP های سفارشی CDN (با کاما یا ; جدا).
+  final String cdnIps;
+
+  /// SNI های سفارشی CDN.
+  final String cdnSni;
+
+  /// Built-in set names (مثلاً برای انتخاب دسته‌ای از IP ها).
+  final String cdnSets;
+
   const PsiphonProfile({
     required this.id,
     required this.sponsorId,
     required this.channelId,
     this.extra = const <String, dynamic>{},
     this.upstreamProxyUrl = '',
+    this.mode = 'auto',
+    this.cdnIps = '',
+    this.cdnSni = '',
+    this.cdnSets = '',
   });
 }
 
@@ -164,6 +183,10 @@ class PsiphonAuto {
     bool emptyRemoteList = false,
     String? platformOverride,
     String upstreamProxyUrl = '',
+    String? modeOverride,
+    String? cdnIpsOverride,
+    String? cdnSniOverride,
+    String? cdnSetsOverride,
   }) {
     final map = <String, dynamic>{
       'SponsorId': profile.sponsorId,
@@ -200,6 +223,58 @@ class PsiphonAuto {
         : profile.upstreamProxyUrl;
     if (upstream.isNotEmpty) {
       map['UpstreamProxyUrl'] = upstream;
+    }
+
+    // FIX (PingNG-style): CDN Fronting.
+    // الگوی PingNG's PsiphonBridge.addCdnFrontingConfig:
+    //   - mode='direct' → CDN خاموش
+    //   - mode='cdn' یا IP/SNI/sets غیرخالی → CDN فعال
+    //   - IP ها → FrontedMeekCDNScanSpec.IPCandidates
+    //   - SNI ها → FrontedMeekCDNScanSpec.SNIServerNames
+    //   - اگه IP خالی بود یا sets پر بود → UseBuiltInSpec=true
+    //   - sets → FrontedMeekCDNScanBuiltInSets
+    //   - LimitTunnelProtocols = FRONTED-MEEK-CDN-OSSH / -HTTP-OSSH
+    final mode =
+        (modeOverride ?? profile.mode).trim().toLowerCase();
+    final cdnIps = (cdnIpsOverride ?? profile.cdnIps).trim();
+    final cdnSni = (cdnSniOverride ?? profile.cdnSni).trim();
+    final cdnSets = (cdnSetsOverride ?? profile.cdnSets).trim();
+
+    if (mode != 'direct') {
+      List<String> splitList(String raw) => raw
+          .split(RegExp(r'[,;\s\t\n\r]+'))
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+
+      final ips = splitList(cdnIps);
+      final sni = splitList(cdnSni);
+      final sets = splitList(cdnSets);
+      final cdnActive = mode == 'cdn' ||
+          ips.isNotEmpty ||
+          sni.isNotEmpty ||
+          sets.isNotEmpty;
+
+      if (cdnActive) {
+        if (ips.isNotEmpty) {
+          final spec = <String, dynamic>{
+            'IPCandidates': ips,
+            if (sni.isNotEmpty) 'SNIServerNames': sni,
+          };
+          map['FrontedMeekCDNScanSpec'] = spec;
+        }
+        if (ips.isEmpty || sets.isNotEmpty) {
+          map['FrontedMeekCDNScanUseBuiltInSpec'] = true;
+        }
+        if (sets.isNotEmpty) {
+          map['FrontedMeekCDNScanBuiltInSets'] = sets;
+        }
+        // CDN tunnel protocols
+        map['LimitTunnelProtocols'] = const [
+          'FRONTED-MEEK-CDN-OSSH',
+          'FRONTED-MEEK-CDN-HTTP-OSSH',
+        ];
+      }
     }
     return map;
   }

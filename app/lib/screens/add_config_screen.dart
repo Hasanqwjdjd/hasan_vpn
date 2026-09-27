@@ -189,6 +189,15 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       TextEditingController();
   int _psiphonMdnsMethod = 1;
 
+  // CDN Fronting (PingNG-style)
+  String _psiphonCdnMode = 'auto'; // 'auto' | 'cdn' | 'direct'
+  final TextEditingController _psiphonCdnIpsController =
+      TextEditingController();
+  final TextEditingController _psiphonCdnSniController =
+      TextEditingController();
+  final TextEditingController _psiphonCdnSetsController =
+      TextEditingController();
+
   /// کشور خروجی سایفون؛ '' = خودکار (سریع‌ترین).
   String _psiphonRegion = '';
   List<String> _psiphonRegions = PsiphonAuto.fallbackRegions;
@@ -593,6 +602,16 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       params['mdns_key'] = mk;
       params['mdns_method'] = '$_psiphonMdnsMethod';
       if (mr.isNotEmpty) params['mdns_resolvers'] = mr;
+    }
+    // CDN Fronting
+    if (_psiphonCdnMode != 'auto') params['mode'] = _psiphonCdnMode;
+    if (_psiphonCdnMode == 'cdn') {
+      final ips = _psiphonCdnIpsController.text.trim();
+      final sni = _psiphonCdnSniController.text.trim();
+      final sets = _psiphonCdnSetsController.text.trim();
+      if (ips.isNotEmpty) params['cdn_ips'] = ips;
+      if (sni.isNotEmpty) params['cdn_sni'] = sni;
+      if (sets.isNotEmpty) params['cdn_sets'] = sets;
     }
 
     final q = params.entries
@@ -1503,6 +1522,115 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   controller: _psiphonMdnsResolversController,
                   label: _t('resolverها (اختیاری)', 'Resolvers (optional)'),
                   hint: '8.8.8.8,1.1.1.1',
+                  color: teal,
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        // CDN Fronting (PingNG-style)
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.surface(context),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border(context)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _t('CDN Fronting (اختیاری)', 'CDN Fronting (optional)'),
+                style: TextStyle(
+                  color: AppColors.fg(context),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _t(
+                  'اگه Psiphon روی نت ایران بسته شده، این گزینه از CDN fronting '
+                  'استفاده می‌کنه (FRONTED-MEEK-CDN-OSSH). با IP/SNI سفارشی '
+                  'می‌تونی از یه CDN خاص استفاده کنی.',
+                  'If Psiphon is blocked, enable CDN fronting '
+                  '(FRONTED-MEEK-CDN-OSSH). Provide custom IPs/SNI to use a '
+                  'specific CDN.',
+                ),
+                style: TextStyle(
+                    color: AppColors.muted2(context),
+                    fontSize: 10,
+                    height: 1.4),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _psiphonCdnMode,
+                isExpanded: true,
+                dropdownColor: AppColors.surface(context),
+                style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: AppColors.border(context)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: AppColors.border(context)),
+                  ),
+                ),
+                items: [
+                  DropdownMenuItem(
+                      value: 'auto',
+                      child: Text(_t('خودکار (بدون CDN)',
+                          'Auto (no CDN)'))),
+                  DropdownMenuItem(
+                      value: 'cdn',
+                      child: Text(_t('CDN Fronting فعال',
+                          'CDN Fronting enabled'))),
+                  DropdownMenuItem(
+                      value: 'direct',
+                      child: Text(_t('Direct (بدون MEEK)',
+                          'Direct (no MEEK)'))),
+                ],
+                onChanged: (v) =>
+                    setState(() => _psiphonCdnMode = v ?? 'auto'),
+              ),
+              if (_psiphonCdnMode == 'cdn') ...[
+                const SizedBox(height: 10),
+                _tunnelField(
+                  controller: _psiphonCdnIpsController,
+                  label: _t('IP های CDN (با کاما)', 'CDN IPs (comma)'),
+                  hint: '1.2.3.4,5.6.7.8',
+                  color: teal,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _t(
+                    'خالی بذار → از built-in spec استفاده می‌شه (توصیه‌شده).',
+                    'Leave empty → uses built-in spec (recommended).',
+                  ),
+                  style: TextStyle(
+                      color: AppColors.muted2(context),
+                      fontSize: 10,
+                      height: 1.4),
+                ),
+                const SizedBox(height: 8),
+                _tunnelField(
+                  controller: _psiphonCdnSniController,
+                  label: _t('SNI های CDN (با کاما)', 'CDN SNIs (comma)'),
+                  hint: 'www.microsoft.com,cdn.cloudflare.net',
+                  color: teal,
+                ),
+                const SizedBox(height: 8),
+                _tunnelField(
+                  controller: _psiphonCdnSetsController,
+                  label: _t('Built-in sets (اختیاری)',
+                      'Built-in sets (optional)'),
+                  hint: 'cloudfront,akamai',
                   color: teal,
                 ),
               ],
@@ -4232,6 +4360,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _psiphonMdnsDomainController.dispose();
     _psiphonMdnsKeyController.dispose();
     _psiphonMdnsResolversController.dispose();
+    _psiphonCdnIpsController.dispose();
+    _psiphonCdnSniController.dispose();
+    _psiphonCdnSetsController.dispose();
     _nameController.dispose();
     _sniController.dispose();
     _aetherDnsController.dispose();
