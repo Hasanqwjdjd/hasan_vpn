@@ -2032,7 +2032,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await AetherService.disconnect();
     } catch (_) {}
     try {
-      await PsiphonService.disconnect();
+      await PsiphonService.stop();
     } catch (_) {}
     try {
       if (V2RayEngine.isConnected) {
