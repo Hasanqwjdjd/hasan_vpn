@@ -399,10 +399,14 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                         _set(
                             'dnsHosts',
                             'gemini.google.com:216.239.32.21,bard.google.com:216.239.32.21');
-                        _showMsg(_t(
-                            'MasterDNS اعمال شد (403 Shecan + Radar + Gemini)',
-                            'MasterDNS applied (403 Shecan + Radar + Gemini)',
-                        ));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(_t(
+                                'MasterDNS اعمال شد (403 Shecan + Radar + Gemini)',
+                                'MasterDNS applied (403 Shecan + Radar + Gemini)')),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
                       },
                       icon: const Icon(Icons.dns_outlined, size: 16),
                       label: Text(_t('اعمال MasterDNS (سرورهای ایران)',
