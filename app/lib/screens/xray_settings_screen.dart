@@ -378,9 +378,63 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                     ['udp', 'tcp', 'https', 'quic']),
                 _textField('dohUrl', 'آدرس DoH', 'DoH URL',
                     hint: 'https://cloudflare-dns.com/dns-query'),
-                _textField('directDns', 'DNS مستقیم', 'Direct DNS'),
+                _textField('directDns', 'DNS مستقیم', 'Direct DNS',
+                    subFa:
+                        'سرور DNS برای درخواست‌های مستقیم (بدون تونل). برای ایران معمولاً MasterDNS.',
+                    subEn:
+                        'DNS for direct queries (outside the tunnel). Iranian MasterDNS for IR.'),
+                // FIX: MasterDNS preset — سرورهای DNS داخلی که در ایران
+                // جواب می‌دن و برای دسترسی به سایت‌های داخلی، اپ‌های
+                // بانکی، و بعضی سرویس‌های فیلترشده (Gemini بدون VPN) مفیدن.
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        _set('dnsProtocol', 'udp');
+                        _set('directDns',
+                            '178.22.122.100,185.51.200.2,10.202.10.202,10.202.10.102');
+                        _set('dohUrl', 'https://dns.403.online/dns-query');
+                        _set(
+                            'dnsHosts',
+                            'gemini.google.com:216.239.32.21,bard.google.com:216.239.32.21');
+                        _showMsg(_t(
+                            'MasterDNS اعمال شد (403 Shecan + Radar + Gemini)',
+                            'MasterDNS applied (403 Shecan + Radar + Gemini)',
+                        ));
+                      },
+                      icon: const Icon(Icons.dns_outlined, size: 16),
+                      label: Text(_t('اعمال MasterDNS (سرورهای ایران)',
+                          'Apply MasterDNS (Iranian DNS)'),
+                          style: const TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.accent,
+                        side: const BorderSide(color: AppColors.accent),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                  child: Text(
+                    _t(
+                        'MasterDNS = 403.online + Shecan + Radar + نگاشت Gemini. برای دسترسی به سرویس‌های داخلی و AI های فیلترشده بدون VPN.',
+                        'MasterDNS = 403.online + Shecan + Radar + Gemini host mapping. For IR services and filtered AI without VPN.'),
+                    style: TextStyle(
+                        color: AppColors.muted2(context),
+                        fontSize: 10,
+                        height: 1.4),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 _textField('dnsHosts', 'نگاشت دامنه (domain:ip,...)',
-                    'DNS hosts (domain:ip,...)'),
+                    'DNS hosts (domain:ip,...)',
+                    subFa:
+                        'نگاشت دستی دامنه به IP (برای عبور از DNS قدیمی). مثلاً gemini.google.com:216.239.32.21',
+                    subEn:
+                        'Manual domain→IP mapping. e.g. gemini.google.com:216.239.32.21'),
 
                 // ---- A3 Mux ----
                 _section(_t('Mux', 'Mux'), icon: Icons.layers),
