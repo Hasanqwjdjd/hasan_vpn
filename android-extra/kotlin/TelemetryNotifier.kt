@@ -28,14 +28,8 @@ object TelemetryNotifier {
         val manager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        NotificationHelper.ensureChannel(context)
-
-        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(context, CHANNEL_ID)
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(context)
-        }
+        // FIX: builder از helper مشترک
+        val builder = NotificationHelper.builder(context)
 
         val icon = if (context.applicationInfo.icon != 0) {
             context.applicationInfo.icon
