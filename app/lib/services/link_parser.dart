@@ -18,10 +18,12 @@ class LinkParser {
     'aether',
     'custom',
     'xrayjson',
+    'ssd',
+    'vpn',
   ];
 
   static final RegExp linkRegex = RegExp(
-    r'(?:vless|vmess|trojan|ss|hysteria2|hy2|aether|custom|xrayjson)://[^\s"<>\\]+',
+    r'(?:vless|vmess|trojan|ss|ssd|vpn|hysteria2|hy2|aether|custom|xrayjson)://[^\s"<>\\]+',
     caseSensitive: false,
   );
 
@@ -55,6 +57,17 @@ class LinkParser {
       hash = (hash * 0x01000193) & 0xFFFFFFFF;
     }
     return '${prefix}_${hash.toRadixString(16)}';
+  }
+
+  /// پارس چند-سروری: برای ssd:// چند سرور برمی‌گردونه، برای بقیه تک سرور.
+  static List<VpnServer> parseMany(String rawLink, {required String id}) {
+    final link = rawLink.trim();
+    final lower = link.toLowerCase();
+    if (lower.startsWith('ssd://')) {
+      return parseSsd(link, id);
+    }
+    final one = parse(link, id: id);
+    return one == null ? <VpnServer>[] : <VpnServer>[one];
   }
 
   static VpnServer? parse(String rawLink, {required String id}) {

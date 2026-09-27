@@ -378,15 +378,13 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         final rawLink = sniOverride.isEmpty
             ? links[i]
             : LinkParser.applySniOverride(links[i], sniOverride);
-        var server = LinkParser.parse(rawLink, id: 'custom_${stamp}_$i');
-        if (server == null) continue;
-
-        if (customName.isNotEmpty && links.length == 1) {
-          server = server.copyWith(name: customName);
+        // FIX: parseMany برای ssd:// (چند سرور)
+        final servers =
+            LinkParser.parseMany(rawLink, id: 'custom_${stamp}_$i');
+        for (final server in servers) {
+          widget.onServerAdded(server);
+          added++;
         }
-
-        widget.onServerAdded(server);
-        added++;
       }
     }
 

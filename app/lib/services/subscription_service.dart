@@ -396,6 +396,28 @@ class SubscriptionService {
       links = LinkParser.extractLinks(content);
     }
 
+    // FIX: ssd:// — چند سرور. این هم برای کل content و هم لینک‌های تک است.
+    final allServers = <VpnServer>[];
+    for (final link in links) {
+      if (link.toLowerCase().startsWith('ssd://')) {
+        final servers = LinkParser.parseSsd(link, subscriptionId);
+        allServers.addAll(servers);
+      }
+    }
+
+    if (allServers.isNotEmpty) {
+      // بقیه لینک‌ها رو هم اضافه کن
+      final rest = links
+          .where((l) => !l.toLowerCase().startsWith('ssd://'))
+          .toList();
+      allServers.addAll(_build(rest, subscriptionId));
+      // اعمال override + عدم قابلیت حذف
+      for (final s in allServers) {
+        s.isDeletable = false;
+      }
+      return allServers;
+    }
+
     return _build(links, subscriptionId);
   }
 
