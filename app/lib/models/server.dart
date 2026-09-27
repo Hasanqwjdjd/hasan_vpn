@@ -149,6 +149,8 @@ enum VpnProtocol {
   amneziaWg,
   /// MasterDNS — DNS tunnel با سرور MasterDnsVPN.
   masterdns,
+  /// WARP MASQUE/H2 — Cloudflare usque client. بدون نیاز به کلید.
+  warpMasque,
 }
 
 /// idle: تست نشده | testing: در حال تست | online: سالم | offline: از کار افتاده

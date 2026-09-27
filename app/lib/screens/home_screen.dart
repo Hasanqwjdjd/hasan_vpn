@@ -23,6 +23,7 @@ import '../models/tunnel_profile.dart';
 import '../models/ssh_profile.dart';
 import '../services/ssh_session_service.dart';
 import '../services/master_dns_session_service.dart';
+import '../services/warp_masque_session_service.dart';
 import '../services/geo_assets_service.dart';
 import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
@@ -219,6 +220,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         .addListener(_onSshRoutingChanged);
     MasterDnsSessionService.instance.routingCount
         .addListener(_onMasterDnsRoutingChanged);
+    WarpMasqueSessionService.instance.routingCount
+        .addListener(_onWarpMasqueRoutingChanged);
 
     await _loadDeletedAndPinned();
     await _loadUiSettings();
@@ -1860,6 +1863,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  void _onWarpMasqueRoutingChanged() {
+    if (!mounted) return;
+    if (WarpMasqueSessionService.instance.anyRouting && _connected) {
+      setState(() {
+        _connected = false;
+        _active = null;
+        _status = _t('اتصال از طریق WARP MASQUE', 'Routing via WARP MASQUE');
+      });
+    }
+  }
+
   void _onMasterDnsRoutingChanged() {
     if (!mounted) return;
     if (MasterDnsSessionService.instance.anyRouting && _connected) {
@@ -2357,6 +2371,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       if (MasterDnsSessionService.instance.anyRouting) {
         await MasterDnsSessionService.instance.disconnect();
+      }
+    } catch (_) {}
+    try {
+      if (WarpMasqueSessionService.instance.anyRouting) {
+        await WarpMasqueSessionService.instance.disconnect();
       }
     } catch (_) {}
     // 2) قطع Aether و Psiphon و Xray (اگر قبلاً چیزی run بود)
@@ -3730,6 +3749,57 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           await SshSessionService.instance.connect(server.id, prof);
           return;
         }
+        // WARP MASQUE: routing از WarpMasqueSessionService انجام می‌شود
+        if (server.protocol == VpnProtocol.warpMasque) {
+          final n = WarpMasqueSessionService.instance.notifierFor(server.id);
+          final isOn = n.value.routingThroughVpn || n.value.running;
+          if (isOn) {
+            await WarpMasqueSessionService.instance.disconnect();
+            return;
+          }
+          if (_connected) {
+            try {
+              await _disconnectAll();
+            } catch (_) {}
+            _markDisconnected(_t('آماده', 'Ready'));
+          }
+          if (TorSessionService.instance.anyRouting) {
+            try { await TorSessionService.instance.disconnect(); } catch (_) {}
+          }
+          if (TunnelSessionService.instance.anyRouting) {
+            try { await TunnelSessionService.instance.disconnect(); } catch (_) {}
+          }
+          if (MasterDnsSessionService.instance.anyRouting) {
+            try { await MasterDnsSessionService.instance.disconnect(); } catch (_) {}
+          }
+
+          final uri = Uri.parse(server.shareLink);
+          final q = uri.queryParameters;
+          final endpoint = (q['endpoint'] ?? '').trim();
+          final sni = (q['sni'] ?? 'soft98.ir').trim();
+          final dns = (q['dns'] ?? '1.1.1.1,1.0.0.1').trim();
+          final h2 = (q['h2'] ?? '1') == '1';
+          if (endpoint.isEmpty) {
+            _showMsg(_t('WARP MASQUE: endpoint ناقصه',
+                'WARP MASQUE: endpoint missing'));
+            return;
+          }
+
+          setState(() {
+            _selected = server;
+            _status = _t('اتصال WARP MASQUE...', 'Connecting WARP MASQUE...');
+          });
+          // ignore: unawaited_futures
+          ConnectionLogService.logConnect(server.displayName);
+          await WarpMasqueSessionService.instance.connect(
+            server.id,
+            endpoint: endpoint,
+            sni: sni,
+            dns: dns,
+            http2: h2,
+          );
+          return;
+        }
         // MasterDNS: routing از MasterDnsSessionService انجام می‌شود
         if (server.protocol == VpnProtocol.masterdns) {
           final n = MasterDnsSessionService.instance
@@ -4631,6 +4701,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       MasterDnsSessionService.instance.routingCount
           .removeListener(_onMasterDnsRoutingChanged);
+    } catch (_) {}
+    try {
+      WarpMasqueSessionService.instance.routingCount
+          .removeListener(_onWarpMasqueRoutingChanged);
     } catch (_) {}
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();

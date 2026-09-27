@@ -200,6 +200,7 @@ jobs:
           cp -f android-extra/kotlin/WidgetHeadlessActivity.kt "$KT_DIR/WidgetHeadlessActivity.kt"
           cp -f android-extra/kotlin/NotificationHelper.kt "$KT_DIR/NotificationHelper.kt"
           cp -f android-extra/kotlin/MasterDnsService.kt "$KT_DIR/MasterDnsService.kt"
+          cp -f android-extra/kotlin/WarpMasqueService.kt "$KT_DIR/WarpMasqueService.kt"
           if [ -d android-extra/psiphon ] && [ "$(find android-extra/psiphon -name '*.aar' | wc -l)" -gt 0 ]; then
             echo "Using real Psiphon AAR"
             cp -f android-extra/kotlin/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
@@ -389,6 +390,17 @@ jobs:
                   1,
               )
               echo_manifest_ok = True
+          if 'WarpMasqueService' not in text:
+              text = text.replace(
+                  "</application>",
+                  '    <service\n'
+                  '        android:name="com.hasan.hasan_vpn.WarpMasqueService"\n'
+                  '        android:enabled="true"\n'
+                  '        android:exported="false"\n'
+                  '        android:foregroundServiceType="specialUse" />\n'
+                  '</application>',
+                  1,
+              )
           if 'TorForegroundService' not in text:
               svc = """    <service
                   android:name="com.hasan.hasan_vpn.TorForegroundService"

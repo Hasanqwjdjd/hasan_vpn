@@ -13,6 +13,7 @@ import '../services/psiphon_auto.dart';
 import '../services/psiphon_service.dart';
 import '../services/warp_service.dart';
 import '../services/master_dns_service.dart';
+import '../services/warp_masque_service.dart';
 import '../services/tor_sni_presets.dart';
 import '../services/xray_json.dart';
 import 'qr_scan_screen.dart';
@@ -100,6 +101,15 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _mdnsKeyController = TextEditingController();
   final TextEditingController _mdnsResolversController = TextEditingController();
   int _mdnsMethod = 1;
+
+  // WARP MASQUE
+  final TextEditingController _wmqEndpointController =
+      TextEditingController(text: WarpMasqueService.defaultEndpoint);
+  final TextEditingController _wmqSniController =
+      TextEditingController(text: WarpMasqueService.defaultSni);
+  final TextEditingController _wmqDnsController =
+      TextEditingController(text: WarpMasqueService.defaultDns);
+  bool _wmqHttp2 = true;
 
   // SOCKS5
   final TextEditingController _socks5HostController = TextEditingController();
@@ -2318,6 +2328,147 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     }
   }
 
+  Widget _buildWarpMasqueForm() {
+    const color = Color(0xFF3949AB);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.cloud_queue, color: color, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _t(
+                    'WARP MASQUE/H2 — کلاینت usque کلاودفلر. بدون نیاز به کلید، خودکار register می‌شه.',
+                    'WARP MASQUE/H2 — Cloudflare usque client. Auto-registers, no key needed.',
+                  ),
+                  style: TextStyle(
+                    color: AppColors.muted(context),
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _tunnelField(
+          controller: _wmqEndpointController,
+          label: _t('Endpoint (host:port)', 'Endpoint (host:port)'),
+          hint: '162.159.198.238:443',
+          color: color,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _t(
+            'آدرس edge کلودفلر. مثلاً 162.159.198.238:443 یا 188.114.96.1:443.',
+            'Cloudflare edge address. e.g. 162.159.198.238:443 or 188.114.96.1:443.',
+          ),
+          style: TextStyle(
+              color: AppColors.muted2(context), fontSize: 10, height: 1.4),
+        ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _wmqSniController,
+          label: _t('SNI', 'SNI'),
+          hint: 'soft98.ir',
+          color: color,
+        ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _wmqDnsController,
+          label: _t('DNS سرورها (با کاما)', 'DNS servers (comma)'),
+          hint: '1.1.1.1,1.0.0.1',
+          color: color,
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.surface(context),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border(context)),
+          ),
+          child: SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            activeColor: color,
+            title: Text(
+              _t('HTTP/2 (توصیه‌شده)', 'HTTP/2 (recommended)'),
+              style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+            ),
+            value: _wmqHttp2,
+            onChanged: (v) => setState(() => _wmqHttp2 = v),
+          ),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton.icon(
+            onPressed: _addWarpMasqueServer,
+            icon: const Icon(Icons.add),
+            label: Text(_t('افزودن سرور', 'Add Server')),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 30),
+      ],
+    );
+  }
+
+  void _addWarpMasqueServer() {
+    final endpoint = _wmqEndpointController.text.trim();
+    final sni = _wmqSniController.text.trim();
+    final dns = _wmqDnsController.text.trim();
+    if (endpoint.isEmpty) {
+      _showMsg(_t('endpoint الزامی است', 'Endpoint is required'));
+      return;
+    }
+
+    final name = _nameController.text.trim().isNotEmpty
+        ? _nameController.text.trim()
+        : 'WARP MASQUE · $endpoint';
+
+    final internal = <String, String>{
+      'endpoint': endpoint,
+      'sni': sni.isEmpty ? WarpMasqueService.defaultSni : sni,
+      'dns': dns.isEmpty ? WarpMasqueService.defaultDns : dns,
+      'h2': _wmqHttp2 ? '1' : '0',
+      'name': name,
+    };
+    final uri = Uri(
+      scheme: 'warpmasque',
+      host: 'config',
+      queryParameters: internal,
+    );
+
+    final server = LinkParser.parse(uri.toString(),
+        id: 'wmq_${DateTime.now().millisecondsSinceEpoch}');
+    if (server == null) {
+      _showMsg(_t('ساخت لینک ناموفق بود', 'Failed to build link'));
+      return;
+    }
+    widget.onServerAdded(server);
+    Navigator.pop(context);
+    _showMsg(_t('سرور WARP MASQUE اضافه شد', 'WARP MASQUE server added'));
+  }
+
   Widget _buildMasterDnsForm() {
     const color = Color(0xFF00897B);
     return Column(
@@ -3626,6 +3777,16 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: const Color(0xFF1976D2),
             ),
             _buildTypeCard(
+              title: 'WARP MASQUE/H2',
+              subtitle: _t(
+                'Cloudflare usque — SOCKS5 محلی روی MASQUE',
+                'Cloudflare usque — local SOCKS5 over MASQUE',
+              ),
+              icon: Icons.cloud_queue,
+              type: 'warpmasque',
+              color: const Color(0xFF3949AB),
+            ),
+            _buildTypeCard(
               title: 'MasterDNS',
               subtitle: _t(
                 'تونل DNS با MasterDnsVPN — سرور اختصاصی لازم داره',
@@ -3890,6 +4051,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             ] else if (_selectedType == 'masterdns') ...[
               _buildMasterDnsForm(),
               const SizedBox(height: 16),
+            ] else if (_selectedType == 'warpmasque') ...[
+              _buildWarpMasqueForm(),
+              const SizedBox(height: 16),
             ] else if (_selectedType == 'ssh') ...[
               _buildSshForm(),
             ] else if (_selectedType == 'socks5') ...[
@@ -3953,6 +4117,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _hy2NameController.dispose();
     _warpLicenseController.dispose();
     _mdnsDomainController.dispose();
+    _wmqEndpointController.dispose();
+    _wmqSniController.dispose();
+    _wmqDnsController.dispose();
     _mdnsKeyController.dispose();
     _mdnsResolversController.dispose();
     _hy2FragmentLengthController.dispose();

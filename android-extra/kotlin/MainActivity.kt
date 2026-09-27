@@ -20,11 +20,13 @@ class MainActivity : FlutterActivity() {
     private val widgetChannel = "com.hasan.hasan_vpn/widget"
     private val logsChannel = "com.hasan.hasan_vpn/logs"
     private val masterDnsChannelName = "com.hasan.hasan_vpn/masterdns"
+    private val warpMasqueChannelName = "com.hasan.hasan_vpn/warpmasque"
 
     private var widgetChannelRef: MethodChannel? = null
 
     companion object {
         @Volatile var masterDnsChannel: MethodChannel? = null
+        @Volatile var warpMasqueChannel: MethodChannel? = null
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -291,6 +293,39 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, warpMasqueChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        val endpoint = call.argument<String>("endpoint") ?: "162.159.198.238:443"
+                        val sni = call.argument<String>("sni") ?: "soft98.ir"
+                        val dns = call.argument<String>("dns") ?: "1.1.1.1,1.0.0.1"
+                        val http2 = call.argument<Boolean>("http2") ?: true
+                        try {
+                            WarpMasqueService.start(
+                                applicationContext, endpoint, sni, dns, http2,
+                            )
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("start_failed", e.message, null)
+                        }
+                    }
+                    "stop" -> {
+                        WarpMasqueService.stop(applicationContext)
+                        result.success(true)
+                    }
+                    "status" -> {
+                        result.success(mapOf("running" to WarpMasqueService.isActive()))
+                    }
+                    "cancelStartup" -> {
+                        WarpMasqueService.cancelStartup()
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+            .also { warpMasqueChannel = it }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, masterDnsChannelName)
             .setMethodCallHandler { call, result ->
