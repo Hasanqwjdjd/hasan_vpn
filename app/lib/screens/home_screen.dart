@@ -1164,6 +1164,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _syncRealConnectionState() async {
     if (!mounted || _connecting) return;
     try {
+      // FIX: اگه یه session ابزاری (Tor/Aether/Psiphon/SSH/Tunnel) داره
+      // routing می‌کنه، *هرگز* auto-connect نکن — چون V2RayEngine
+      // برای این session ها isConnected=true می‌ده ولی سرور کاربر
+      // واقعاً وصل نشده.
+      if (TorSessionService.instance.anyRouting ||
+          TunnelSessionService.instance.anyRouting ||
+          SshSessionService.instance.anyRouting ||
+          V2RayEngine.isUtilitySession) {
+        return;
+      }
       var alive = V2RayEngine.isConnected;
       if (alive && _active?.isAether == true) {
         alive = await AetherService.syncStatus();
@@ -2092,6 +2102,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _polling = true;
     try {
       final active = _active;
+      // FIX: اگه session ابزاری فعاله (Tor/Aether/Psiphon/SSH/Tunnel)،
+      // poll رو غیرفعال کن — وگرنه auto-connect و disconnect اشتباه.
+      if (TorSessionService.instance.anyRouting ||
+          TunnelSessionService.instance.anyRouting ||
+          SshSessionService.instance.anyRouting ||
+          V2RayEngine.isUtilitySession) {
+        return;
+      }
       var alive = V2RayEngine.isConnected;
       if (alive && active?.isAether == true) {
         alive = await AetherService.syncStatus();
