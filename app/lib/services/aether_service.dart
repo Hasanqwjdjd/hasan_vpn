@@ -10,6 +10,7 @@ import '../models/aether_profile.dart';
 import '../models/server.dart';
 import 'socks_probe.dart';
 import 'v2ray_engine.dart';
+import 'connection_log_service.dart';
 
 typedef AetherProgress = void Function(String message);
 
@@ -69,6 +70,8 @@ class AetherService {
   }
 
   static Future<void> _stopNative() async {
+    // ignore: unawaited_futures
+    ConnectionLogService.logError('TRACE', 'AetherService._stopNative()');
     try {
       await _channel.invokeMethod<bool>('stop');
     } catch (error) {
@@ -412,6 +415,8 @@ class AetherService {
   // ------------------------------------------------------------- disconnect
 
   static Future<void> disconnect() async {
+    // ignore: unawaited_futures
+    ConnectionLogService.logError('TRACE', 'AetherService.disconnect()');
     try {
       await V2RayEngine.disconnect();
     } catch (_) {}

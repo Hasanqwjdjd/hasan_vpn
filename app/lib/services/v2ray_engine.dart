@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'connection_log_service.dart';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -766,6 +767,8 @@ class V2RayEngine {
     } catch (e) {
       lastError = e.toString();
       debugPrint('V2Ray start error: $e');
+      // ignore: unawaited_futures
+      ConnectionLogService.logError('TRACE', 'V2Ray._startOnce THREW: $e');
       return false;
     }
   }
@@ -901,6 +904,8 @@ class V2RayEngine {
   }
 
   static Future<void> disconnect() async {
+    // ignore: unawaited_futures
+    ConnectionLogService.logError('TRACE', 'V2RayEngine.disconnect()');
     try {
       await _engine.stopVless();
     } catch (_) {}

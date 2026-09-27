@@ -8,6 +8,7 @@ import '../models/server.dart';
 import 'aether_service.dart';
 import 'psiphon_auto.dart';
 import 'v2ray_engine.dart';
+import 'connection_log_service.dart';
 
 typedef PsiphonProgress = void Function(String message);
 
@@ -82,6 +83,8 @@ class PsiphonService {
   /// توقف صریح کاربر/لایهٔ بالاتر. نسل را باطل می‌کند تا هیچ attempt
   /// در حال اجرا بعداً state را به connected برنگرداند.
   static Future<void> stop({String reason = 'explicit'}) async {
+    // ignore: unawaited_futures
+    ConnectionLogService.logError('TRACE', 'PsiphonService.stop r=\$reason');
     final gen = _connectGen;
     debugPrint('PSIPHON: stop reason=$reason gen=$gen connected=$_connected');
     try {
@@ -95,6 +98,8 @@ class PsiphonService {
   /// stop فقط وقتی مجاز است که هنوز نسل فعلی باشیم و به connected
   /// نرسیده باشیم — مگر reason صریح کاربر باشد.
   static Future<void> _stopIfStillCurrent(int gen, String reason) async {
+    // ignore: unawaited_futures
+    ConnectionLogService.logError('TRACE', 'PsiphonService._stopIfStillCurrent r=\$reason gen=\$gen');
     if (gen != _connectGen) {
       debugPrint('PSIPHON: skip stop ($reason) stale gen=$gen current=$_connectGen');
       return;

@@ -2042,6 +2042,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// این تضمین می‌کنه که هیچ‌وقت دو تونل همزمان فعال نباشن —
   /// مثلاً کاربر وسط Tor هست، روی یه vless می‌زنه: Tor باید بمیره.
   Future<void> _disconnectAllSessionsForNewConnect() async {
+    // ignore: unawaited_futures
+    ConnectionLogService.logError('TRACE',
+        'UI._disconnectAllSessionsForNewConnect initiated');
     // 1) قطع session سرویس‌های اختصاصی (هرکدوم جدا)
     try {
       if (TorSessionService.instance.anyRouting) {
@@ -2087,6 +2090,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _markDisconnected(String status) {
+    // ignore: unawaited_futures
+    ConnectionLogService.logError('TRACE',
+        'UI._markDisconnected status="$status" active=\${_active?.id} connected=\$_connected');
     if (_active != null) {
       // ignore: unawaited_futures
       ConnectionLogService.logDisconnect(_active!.displayName);
@@ -2142,6 +2148,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // FIX2: raised from 2 (8s) to 5 (20s) so transient flutters
         // don't kill a working tunnel.
         if (_deadStrikes >= 5) {
+          // ignore: unawaited_futures
+          ConnectionLogService.logError('TRACE',
+              'UI._poll dead-strikes hit threshold (5) — killing tunnel');
           try {
             await _disconnectAll();
           } catch (_) {}
