@@ -318,15 +318,6 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                 _chips(TestBudget.sampleOptions, _samples, (o) => '×$o',
                     (o) => _samples = o),
                 const SizedBox(height: 10),
-                Text(
-                  _t(
-
-                    'Worst case per server: ${_timeout * _samples}s • $_direct direct concurrent',
-                  ),
-                  style: TextStyle(
-                      color: AppColors.muted2(context), fontSize: 11),
-                ),
-                const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(_t('پشتیبان TCP', 'TCP fallback')),
