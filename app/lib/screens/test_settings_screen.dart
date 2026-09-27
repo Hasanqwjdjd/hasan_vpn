@@ -31,7 +31,7 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
   int _timeout = 10;
   int _direct = 16;
   int _samples = 1;
-  bool _tcp = true;
+  bool _tcp = false; // FIX: TCP fallback پیش‌فرض خاموش
   TestMode _mode = TestMode.balanced;
   String _delayUrl = 'http://www.gstatic.com/generate_204';
   String _connInfoUrl = 'https://api.ip.sb/geoip';

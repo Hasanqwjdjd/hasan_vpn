@@ -1596,18 +1596,24 @@ class _TorScreenState extends State<TorScreen> {
 
             // ---- پل‌های رایگان هر نوع (قابل مشاهده برای کاربر) ----
             if (TorBridges.hasFree(_bridgeType)) ...[
+              // FIX: Wrap به جای Row تا متن روی گوشی‌های باریک از کادر
+              // نزنه بیرون. فضای بین متن و دکمه‌ها با spacing مدیریت می‌شه.
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    _t(
-                      'پل‌های رایگان (${TorBridges.forType(_bridgeType, sni: _selectedSni).length})',
-                      'Free bridges (${TorBridges.forType(_bridgeType, sni: _selectedSni).length})',
-                    ),
-                    style: TextStyle(
-                      color: AppColors.muted(context),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                  Expanded(
+                    child: Text(
+                      _t(
+                        'پل‌های رایگان (${TorBridges.forType(_bridgeType, sni: _selectedSni).length})',
+                        'Free bridges (${TorBridges.forType(_bridgeType, sni: _selectedSni).length})',
+                      ),
+                      style: TextStyle(
+                        color: AppColors.muted(context),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   if (_pingingBridges)
@@ -1625,6 +1631,9 @@ class _TorScreenState extends State<TorScreen> {
                       onPressed: _pingAllBridges,
                       icon: const Icon(Icons.speed,
                           color: AppColors.accent, size: 20),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                          minWidth: 32, minHeight: 32),
                     ),
                     IconButton(
                       tooltip: _t('انتخاب خودکار بهترین پل',
@@ -1632,9 +1641,17 @@ class _TorScreenState extends State<TorScreen> {
                       onPressed: _autoDetectBestBridge,
                       icon: const Icon(Icons.auto_awesome,
                           color: AppColors.accent, size: 20),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                          minWidth: 32, minHeight: 32),
                     ),
                   ],
                   TextButton(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      minimumSize: const Size(0, 32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                     onPressed: () {
                       final pool = TorBridges.extraPool(_bridgeType);
                       if (pool.isEmpty) {
@@ -1666,6 +1683,11 @@ class _TorScreenState extends State<TorScreen> {
                     ),
                   ),
                   TextButton.icon(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      minimumSize: const Size(0, 32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                     onPressed: _settingsLocked
                         ? () => _snack(_t(
                               'اول اتصال را قطع کنید',

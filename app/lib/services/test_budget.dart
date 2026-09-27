@@ -33,7 +33,7 @@ class TestBudget {
     this.timeoutSec = 5,
     this.direct = 32,
     this.samples = 3,
-    this.tcpFallback = true,
+    this.tcpFallback = false,
     this.tcpPrecheck = true,
     this.mode = TestMode.accurate,
   });
@@ -110,7 +110,7 @@ class TestBudget {
         timeoutSec: _pick(m['timeoutSec'], timeoutOptions, 5),
         direct: _pick(m['directConcurrency'], directOptions, 16),
         samples: _pick(m['samples'], sampleOptions, 3),
-        tcpFallback: m['tcpFallback'] != false,
+        tcpFallback: m['tcpFallback'] == true, // FIX: default false
         tcpPrecheck: m['tcpPrecheck'] != false,
         mode: mode,
       );

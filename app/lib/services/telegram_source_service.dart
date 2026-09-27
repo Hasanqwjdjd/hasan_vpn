@@ -101,36 +101,12 @@ class TelegramSourceService {
     return 0;
   }
 
-  /// اگه هیچ مسیر فعالی نبود، Tor ساده رو خودکار بالا بیار.
-  /// اگه هیچ مسیر فعالی نبود، خودکار Tor رو با vanilla و بعد
-  /// webtunnel امتحان کن (توی ایران vanilla معمولاً بلاک می‌شه،
-  /// پس webtunnel به‌عنوان fallback دوم میاد).
+  /// FIX: auto-Tor کاملاً حذف شد — چون Tor خودکار می‌تونست
+  /// foreground VPN Xray رو مختل کنه و سرورهای متصل رو قطع کنه.
+  /// فقط از تونل فعال (Tor دستی یا Xray) استفاده می‌شه.
   static Future<int> _ensureSocks() async {
-    final port0 = await _detectSocksPort();
-    if (port0 > 0) return port0;
-
-    const bridgeTypes = <String>['vanilla', 'webtunnel'];
-    for (final bt in bridgeTypes) {
-      try {
-        final r = await TorService.start(bridgeType: bt);
-        if (r['ok'] != true) continue;
-        final deadline =
-            DateTime.now().add(const Duration(seconds: 60));
-        while (DateTime.now().isBefore(deadline)) {
-          await Future.delayed(const Duration(milliseconds: 900));
-          final st = await TorService.status();
-          final pct = (st['bootstrapPercent'] as num?)?.toInt() ?? 0;
-          if (pct >= 100) {
-            return (st['socksPort'] as num?)?.toInt() ?? 9050;
-          }
-          if (st['running'] != true) break;
-        }
-        try {
-          await TorService.stop();
-        } catch (_) {}
-      } catch (_) {}
-    }
-    return 0;
+    // فقط مسیر فعال موجود رو برگردون — هیچ تونل جدیدی استارت نکن.
+    return await _detectSocksPort();
   }
 
   static String _clean(String raw) {

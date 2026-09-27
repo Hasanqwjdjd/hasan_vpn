@@ -2007,6 +2007,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _t('${toDelete.length} سرور حذف شد', '${toDelete.length} servers deleted'));
   }
 
+  /// FIX: قبل از هر اتصال جدید، همه‌ی session های فعلی رو ببند.
+  /// این تضمین می‌کنه که هیچ‌وقت دو تونل همزمان فعال نباشن —
+  /// مثلاً کاربر وسط Tor هست، روی یه vless می‌زنه: Tor باید بمیره.
+  Future<void> _disconnectAllSessionsForNewConnect() async {
+    // 1) قطع session سرویس‌های اختصاصی (هرکدوم جدا)
+    try {
+      if (TorSessionService.instance.anyRouting) {
+        await TorSessionService.instance.disconnect();
+      }
+    } catch (_) {}
+    try {
+      if (TunnelSessionService.instance.anyRouting) {
+        await TunnelSessionService.instance.disconnect();
+      }
+    } catch (_) {}
+    try {
+      if (SshSessionService.instance.anyRouting) {
+        await SshSessionService.instance.disconnect();
+      }
+    } catch (_) {}
+    // 2) قطع Aether و Psiphon و Xray (اگر قبلاً چیزی run بود)
+    try {
+      await AetherService.disconnect();
+    } catch (_) {}
+    try {
+      await PsiphonService.disconnect();
+    } catch (_) {}
+    try {
+      if (V2RayEngine.isConnected) {
+        await V2RayEngine.disconnect();
+      }
+    } catch (_) {}
+    // 3) ریست state داخلی
+    if (mounted) {
+      setState(() {
+        _connected = false;
+        _active = null;
+        _livePing = null;
+      });
+    }
+  }
+
   Future<void> _disconnectAll() async {
     await AetherService.disconnect();
     await PsiphonService.stop();
@@ -2165,23 +2207,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     _cancelConnect = false;
-    // اگه Tor داره ترافیک رو روت می‌کنه، اول قطعش کن تا هم‌زمان با سرور
-    // وصل نباشه (باگ: قبلاً Tor و سرور با هم وصل می‌شدن).
-    if (TorSessionService.instance.anyRouting) {
-      try {
-        await TorSessionService.instance.disconnect();
-      } catch (_) {}
-    }
-    if (TunnelSessionService.instance.anyRouting) {
-      try {
-        await TunnelSessionService.instance.disconnect();
-      } catch (_) {}
-    }
-    if (SshSessionService.instance.anyRouting) {
-      try {
-        await SshSessionService.instance.disconnect();
-      } catch (_) {}
-    }
+
+    // FIX: قبل از اتصال جدید، *همه‌ی* session های در حال اجرا رو
+    // disconnect کن (Tor، Tunnel، SSH، Aether، Psiphon، Xray).
+    // هرگز نباید دو تونل همزمان فعال باشن.
+    await _disconnectAllSessionsForNewConnect();
+
     setState(() {
       _connecting = true;
       _livePing = null;

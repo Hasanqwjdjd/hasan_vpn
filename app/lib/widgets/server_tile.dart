@@ -205,13 +205,14 @@ class ServerTile extends StatelessWidget {
                 c ? 4 : 6),
             child: Row(
               children: [
-                // Pin فقط در حالت لیست (تک‌ستونی)
-                if (!c && onPin != null)
+                // FIX: سنجاق در هر دو حالت نمایش داده می‌شه.
+                // در حالت compact کوچیک‌تر و بدون padding اضافه.
+                if (onPin != null)
                   InkWell(
                     onTap: onPin,
                     borderRadius: BorderRadius.circular(20),
                     child: Padding(
-                      padding: const EdgeInsets.all(6),
+                      padding: EdgeInsets.all(c ? 3 : 6),
                       child: Icon(
                         server.isPinned
                             ? Icons.push_pin
@@ -219,16 +220,9 @@ class ServerTile extends StatelessWidget {
                         color: server.isPinned
                             ? AppColors.accent
                             : AppColors.muted2(context),
-                        size: 16,
+                        size: c ? 13 : 16,
                       ),
                     ),
-                  ),
-
-                if (c && server.isPinned)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 2),
-                    child: Icon(Icons.push_pin,
-                        color: AppColors.accent, size: 12),
                   ),
 
                 Text(server.flag,
@@ -359,9 +353,6 @@ class ServerTile extends StatelessWidget {
                       case 'test':
                         onTest?.call();
                         break;
-                      case 'widget':
-                        onHomeWidget?.call();
-                        break;
                       case 'delete':
                         onDelete?.call();
                         break;
@@ -427,17 +418,6 @@ class ServerTile extends StatelessWidget {
                               size: 16, color: AppColors.fg(bCtx)),
                           const SizedBox(width: 8),
                           Text(_editLabel,
-                              style: TextStyle(color: AppColors.fg(bCtx))),
-                        ]),
-                      ),
-                    if (onHomeWidget != null)
-                      PopupMenuItem(
-                        value: 'widget',
-                        child: Row(children: [
-                          Icon(Icons.widgets_outlined,
-                              size: 16, color: AppColors.fg(bCtx)),
-                          const SizedBox(width: 8),
-                          Text(_widgetLabel,
                               style: TextStyle(color: AppColors.fg(bCtx))),
                         ]),
                       ),
