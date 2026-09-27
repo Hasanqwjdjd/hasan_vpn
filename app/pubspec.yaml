@@ -4,12 +4,12 @@ publish_to: "none"
 version: 10.0.0+100
 
 environment:
-  reorderable_grid_view: ^2.2.8
   sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
+  reorderable_grid_view: ^2.2.8
   # نسخه‌ی 1.1.6 (15 سپتامبر 2026) رفتار VPN را عوض کرد؛ پین شد.
   flutter_vless: 1.1.5
   http: ^1.1.0
