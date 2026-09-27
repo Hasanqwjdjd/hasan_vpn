@@ -20,10 +20,11 @@ class LinkParser {
     'xrayjson',
     'ssd',
     'vpn',
+    'ssh',
   ];
 
   static final RegExp linkRegex = RegExp(
-    r'(?:vless|vmess|trojan|ss|ssd|vpn|hysteria2|hy2|aether|custom|xrayjson)://[^\s"<>\\]+',
+    r'(?:vless|vmess|trojan|ss|ssd|vpn|ssh|hysteria2|hy2|aether|custom|xrayjson)://[^\s"<>\\]+',
     caseSensitive: false,
   );
 
@@ -105,6 +106,8 @@ class LinkParser {
           return _parseUri(link, id, VpnProtocol.hysteria2);
         case 'vpn':
           return _parseVpnLink(link, id);
+        case 'ssh':
+          return _parseSsh(link, id);
         default:
           return null;
       }
@@ -118,6 +121,69 @@ class LinkParser {
   static final RegExp _authorityRegex = RegExp(
     r'^[a-zA-Z0-9+.-]+://(?:[^@/?#]*@)?(\[[^\]]+\]|[^:/?#\[\]]+)(?::(\d+))?',
   );
+
+  /// SSH — فرمت `ssh://user:pass@host:port?params#name` (V2Box) یا
+  /// `ssh://user@host:port` با key از query.
+  /// پارامترهای query:
+  ///   password=xxx یا pwd=xxx
+  ///   key=base64(private key PEM)
+  ///   socks=1080 (پورت SOCKS روی سرور)
+  static VpnServer? _parseSsh(String link, String id) {
+    try {
+      final uri = Uri.parse(link);
+      final host = uri.host;
+      if (host.isEmpty) return null;
+      final port = uri.hasPort ? uri.port : 22;
+      final q = uri.queryParameters;
+
+      final user = uri.userInfo.isNotEmpty
+          ? Uri.decodeComponent(uri.userInfo.split(':').first)
+          : (q['user'] ?? '');
+      final passFromUri = uri.userInfo.contains(':')
+          ? Uri.decodeComponent(uri.userInfo.split(':').sublist(1).join(':'))
+          : '';
+      final password = passFromUri.isNotEmpty
+          ? passFromUri
+          : (q['password'] ?? q['pwd'] ?? '');
+      final keyB64 = q['key'] ?? '';
+      final socksPort =
+          int.tryParse(q['socks'] ?? q['socksPort'] ?? '1080') ?? 1080;
+
+      final name = _cleanName(
+        _decode(uri.fragment),
+        fallback: 'SSH · $host',
+      );
+
+      // FIX: خروجی با فرمت داخلی SshProfile.toLink() هماهنگ بشه:
+      // ssh://config?host=...&port=...&user=...&pass=...&key=...&socks=...&name=...
+      final internal = <String, String>{
+        'host': host,
+        'port': '$port',
+        'user': user,
+        if (password.isNotEmpty) 'pass': password,
+        if (keyB64.isNotEmpty) 'key': keyB64,
+        if (socksPort != 1080) 'socks': '$socksPort',
+        if (name.isNotEmpty) 'name': name,
+      };
+      final rebuiltUri = Uri(
+        scheme: 'ssh',
+        host: 'config',
+        queryParameters: internal,
+      );
+
+      return VpnServer(
+        id: id,
+        name: name,
+        flag: guessFlag(name),
+        shareLink: rebuiltUri.toString(),
+        protocol: VpnProtocol.ssh,
+        host: host,
+        port: port,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Amnezia `vpn://` — base64 از یه JSON با containers[].awg.last_config.
   /// last_config خودش یه JSON string از interface/peer WireGuard هست.
