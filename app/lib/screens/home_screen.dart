@@ -2819,8 +2819,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                                                   final srv = _customServers.firstWhere(
                                                                     (s) => s.id == sid,
                                                                     orElse: () => VpnServer(
-                                                                      id: sid, name: sid, flag: '?', shareLink: '',
-                                                                      protocol: VpnProtocol.custom, host: '',
+                                                                      id: sid,
+                                                                      name: sid,
+                                                                      flag: '?',
+                                                                      shareLink: '',
+                                                                      protocol: VpnProtocol.custom,
+                                                                      host: '',
+                                                                      port: 0,
                                                                     ),
                                                                   );
                                                                   return ListTile(
@@ -3279,14 +3284,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                     itemCount: _servers.length,
                     onReorder: _onReorder,
-                    proxyDecorator: (child, index, animation) {
-                      return Material(
-                        color: Colors.transparent,
-                        elevation: 8,
-                        borderRadius: BorderRadius.circular(14),
-                        child: child,
-                      );
-                    },
                     itemBuilder: (context, index) {
                       final server = _servers[index];
                       return _TwoSecondDragStartListener(
