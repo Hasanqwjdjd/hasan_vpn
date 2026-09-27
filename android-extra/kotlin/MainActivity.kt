@@ -19,8 +19,13 @@ class MainActivity : FlutterActivity() {
     private val monitorChannel = "com.hasan.hasan_vpn/monitor"
     private val widgetChannel = "com.hasan.hasan_vpn/widget"
     private val logsChannel = "com.hasan.hasan_vpn/logs"
+    private val masterDnsChannelName = "com.hasan.hasan_vpn/masterdns"
 
     private var widgetChannelRef: MethodChannel? = null
+
+    companion object {
+        @Volatile var masterDnsChannel: MethodChannel? = null
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -286,6 +291,41 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, masterDnsChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        val domain = call.argument<String>("domain") ?: ""
+                        val key = call.argument<String>("key") ?: ""
+                        val method = call.argument<Int>("method") ?: 1
+                        val resolvers = call.argument<String>("resolvers") ?: ""
+                        val advanced = call.argument<String>("advanced")
+                        try {
+                            MasterDnsService.start(
+                                applicationContext, domain, key, method,
+                                resolvers, advanced,
+                            )
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("start_failed", e.message, null)
+                        }
+                    }
+                    "stop" -> {
+                        MasterDnsService.stop(applicationContext)
+                        result.success(true)
+                    }
+                    "status" -> {
+                        result.success(mapOf("running" to MasterDnsService.isActive()))
+                    }
+                    "cancelStartup" -> {
+                        MasterDnsService.cancelStartup()
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+            .also { masterDnsChannel = it }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, logsChannel)
             .setMethodCallHandler { call, result ->

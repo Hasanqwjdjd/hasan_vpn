@@ -22,6 +22,7 @@ import '../services/tunnel_session_service.dart';
 import '../models/tunnel_profile.dart';
 import '../models/ssh_profile.dart';
 import '../services/ssh_session_service.dart';
+import '../services/master_dns_session_service.dart';
 import '../services/geo_assets_service.dart';
 import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
@@ -216,6 +217,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         .addListener(_onTunnelRoutingChanged);
     SshSessionService.instance.routingCount
         .addListener(_onSshRoutingChanged);
+    MasterDnsSessionService.instance.routingCount
+        .addListener(_onMasterDnsRoutingChanged);
 
     await _loadDeletedAndPinned();
     await _loadUiSettings();
@@ -1857,6 +1860,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  void _onMasterDnsRoutingChanged() {
+    if (!mounted) return;
+    if (MasterDnsSessionService.instance.anyRouting && _connected) {
+      setState(() {
+        _connected = false;
+        _active = null;
+        _status = _t('اتصال از طریق MasterDNS', 'Routing via MasterDNS');
+      });
+    }
+  }
+
   void _onSshRoutingChanged() {
     if (!mounted) return;
     if (SshSessionService.instance.anyRouting && _connected) {
@@ -2338,6 +2352,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       if (SshSessionService.instance.anyRouting) {
         await SshSessionService.instance.disconnect();
+      }
+    } catch (_) {}
+    try {
+      if (MasterDnsSessionService.instance.anyRouting) {
+        await MasterDnsSessionService.instance.disconnect();
       }
     } catch (_) {}
     // 2) قطع Aether و Psiphon و Xray (اگر قبلاً چیزی run بود)
@@ -3711,6 +3730,58 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           await SshSessionService.instance.connect(server.id, prof);
           return;
         }
+        // MasterDNS: routing از MasterDnsSessionService انجام می‌شود
+        if (server.protocol == VpnProtocol.masterdns) {
+          final n = MasterDnsSessionService.instance
+              .notifierFor(server.id);
+          final isOn = n.value.routingThroughVpn || n.value.running;
+          if (isOn) {
+            await MasterDnsSessionService.instance.disconnect();
+            return;
+          }
+          if (_connected) {
+            try {
+              await _disconnectAll();
+            } catch (_) {}
+            _markDisconnected(_t('آماده', 'Ready'));
+          }
+          if (TorSessionService.instance.anyRouting) {
+            try {
+              await TorSessionService.instance.disconnect();
+            } catch (_) {}
+          }
+          if (TunnelSessionService.instance.anyRouting) {
+            try {
+              await TunnelSessionService.instance.disconnect();
+            } catch (_) {}
+          }
+
+          // parse masterdns:// link
+          final uri = Uri.parse(server.shareLink);
+          final q = uri.queryParameters;
+          final domain = (q['domain'] ?? server.host).trim();
+          final key = (q['key'] ?? '').trim();
+          final method = int.tryParse(q['method'] ?? '1') ?? 1;
+          final resolvers = (q['resolvers'] ?? '').trim();
+          if (domain.isEmpty || key.isEmpty) {
+            _showMsg(_t('MasterDNS: domain/key ناقصه',
+                'MasterDNS: domain/key missing'));
+            return;
+          }
+
+          setState(() {
+            _selected = server;
+            _status = _t('اتصال MasterDNS...', 'Connecting MasterDNS...');
+          });
+          // ignore: unawaited_futures
+          ConnectionLogService.logConnect(server.displayName);
+          await MasterDnsSessionService.instance.connect(
+            server.id, domain, key,
+            method: method,
+            resolvers: resolvers,
+          );
+          return;
+        }
         // تونل DNS: routing از TunnelSessionService انجام می‌شود
         if (server.protocol == VpnProtocol.tunnel) {
           final n = TunnelSessionService.instance.notifierFor(server.id);
@@ -4556,6 +4627,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       SshSessionService.instance.routingCount
           .removeListener(_onSshRoutingChanged);
+    } catch (_) {}
+    try {
+      MasterDnsSessionService.instance.routingCount
+          .removeListener(_onMasterDnsRoutingChanged);
     } catch (_) {}
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();

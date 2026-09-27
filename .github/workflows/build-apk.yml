@@ -199,6 +199,7 @@ jobs:
           cp -f android-extra/kotlin/WidgetConnectService.kt "$KT_DIR/WidgetConnectService.kt"
           cp -f android-extra/kotlin/WidgetHeadlessActivity.kt "$KT_DIR/WidgetHeadlessActivity.kt"
           cp -f android-extra/kotlin/NotificationHelper.kt "$KT_DIR/NotificationHelper.kt"
+          cp -f android-extra/kotlin/MasterDnsService.kt "$KT_DIR/MasterDnsService.kt"
           if [ -d android-extra/psiphon ] && [ "$(find android-extra/psiphon -name '*.aar' | wc -l)" -gt 0 ]; then
             echo "Using real Psiphon AAR"
             cp -f android-extra/kotlin/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
@@ -233,9 +234,16 @@ jobs:
 
       - name: Psiphon embedded server list (optional)
         run: |
+          # FIX: MasterDNS assets (config.toml + resolvers.txt)
+          ASSET_DIR="build_src/android/app/src/main/assets"
+          mkdir -p "$ASSET_DIR"
+          if [ -f android-extra/assets/masterdns/masterdns_client_config.toml ]; then
+            cp -f android-extra/assets/masterdns/masterdns_client_config.toml "$ASSET_DIR/masterdns_client_config.toml"
+            cp -f android-extra/assets/masterdns/masterdns_client_resolvers.txt "$ASSET_DIR/masterdns_client_resolvers.txt" 2>/dev/null || true
+            echo "MasterDNS assets copied"
+          fi
           if [ -f android-extra/assets/server_entries.txt ]; then
-            mkdir -p build_src/android/app/src/main/assets
-            cp -f android-extra/assets/server_entries.txt build_src/android/app/src/main/assets/server_entries.txt
+            cp -f android-extra/assets/server_entries.txt "$ASSET_DIR/server_entries.txt"
             echo "Embedded Psiphon server list included"
           else
             echo "No android-extra/assets/server_entries.txt - Psiphon will download its server list"
@@ -369,6 +377,18 @@ jobs:
           if '<queries>' not in text:
               text = text.replace("</manifest>", queries + "</manifest>", 1)
           # ثبت TorForegroundService در Manifest
+          if 'MasterDnsService' not in text:
+              text = text.replace(
+                  "</application>",
+                  '    <service\n'
+                  '        android:name="com.hasan.hasan_vpn.MasterDnsService"\n'
+                  '        android:enabled="true"\n'
+                  '        android:exported="false"\n'
+                  '        android:foregroundServiceType="specialUse" />\n'
+                  '</application>',
+                  1,
+              )
+              echo_manifest_ok = True
           if 'TorForegroundService' not in text:
               svc = """    <service
                   android:name="com.hasan.hasan_vpn.TorForegroundService"

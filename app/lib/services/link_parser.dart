@@ -21,10 +21,12 @@ class LinkParser {
     'ssd',
     'vpn',
     'ssh',
+    'masterdns',
+    'mdns',
   ];
 
   static final RegExp linkRegex = RegExp(
-    r'(?:vless|vmess|trojan|ss|ssd|vpn|ssh|hysteria2|hy2|aether|custom|xrayjson)://[^\s"<>\\]+',
+    r'(?:vless|vmess|trojan|ss|ssd|vpn|ssh|masterdns|mdns|hysteria2|hy2|aether|custom|xrayjson)://[^\s"<>\\]+',
     caseSensitive: false,
   );
 
@@ -108,6 +110,9 @@ class LinkParser {
           return _parseVpnLink(link, id);
         case 'ssh':
           return _parseSsh(link, id);
+        case 'masterdns':
+        case 'mdns':
+          return _parseMasterDns(link, id);
         default:
           return null;
       }
@@ -128,6 +133,50 @@ class LinkParser {
   ///   password=xxx یا pwd=xxx
   ///   key=base64(private key PEM)
   ///   socks=1080 (پورت SOCKS روی سرور)
+  /// MasterDNS — masterdns://config?domain=...&key=...&method=N&resolvers=...
+  static VpnServer? _parseMasterDns(String link, String id) {
+    try {
+      final uri = Uri.parse(link);
+      final q = uri.queryParameters;
+      final domain = (q['domain'] ?? '').trim();
+      final key = (q['key'] ?? '').trim();
+      if (domain.isEmpty || key.isEmpty) return null;
+      final method = int.tryParse(q['method'] ?? '1')?.clamp(0, 5) ?? 1;
+      final resolvers = (q['resolvers'] ?? '').trim();
+
+      final name = _cleanName(
+        _decode(uri.fragment),
+        fallback: 'MasterDNS · $domain',
+      );
+
+      final internal = <String, String>{
+        'domain': domain,
+        'key': key,
+        'method': '$method',
+        if (resolvers.isNotEmpty) 'resolvers': resolvers,
+        if (name.isNotEmpty) 'name': name,
+      };
+      final rebuilt = Uri(
+        scheme: 'masterdns',
+        host: 'config',
+        queryParameters: internal,
+      );
+
+      return VpnServer(
+        id: id,
+        name: name,
+        flag: '\u{1F5FA}',
+        shareLink: rebuilt.toString(),
+        protocol: VpnProtocol.masterdns,
+        host: domain,
+        port: 0,
+        sniOrHost: domain,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   static VpnServer? _parseSsh(String link, String id) {
     try {
       final uri = Uri.parse(link);

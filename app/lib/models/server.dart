@@ -147,6 +147,8 @@ enum VpnProtocol {
   /// AmneziaWG — WireGuard با obfuscation (Jc/Jmin/Jmax/S1/S2/H1..H4).
   /// link با فرمت vpn:// (base64 JSON) از Amnezia.
   amneziaWg,
+  /// MasterDNS — DNS tunnel با سرور MasterDnsVPN.
+  masterdns,
 }
 
 /// idle: تست نشده | testing: در حال تست | online: سالم | offline: از کار افتاده

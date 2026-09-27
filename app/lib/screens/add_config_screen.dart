@@ -12,6 +12,7 @@ import '../services/link_parser.dart';
 import '../services/psiphon_auto.dart';
 import '../services/psiphon_service.dart';
 import '../services/warp_service.dart';
+import '../services/master_dns_service.dart';
 import '../services/tor_sni_presets.dart';
 import '../services/xray_json.dart';
 import 'qr_scan_screen.dart';
@@ -93,6 +94,12 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _warpLicenseController = TextEditingController();
   bool _warpGenerating = false;
   String _warpProgress = '';
+
+  // MasterDNS
+  final TextEditingController _mdnsDomainController = TextEditingController();
+  final TextEditingController _mdnsKeyController = TextEditingController();
+  final TextEditingController _mdnsResolversController = TextEditingController();
+  int _mdnsMethod = 1;
 
   // SOCKS5
   final TextEditingController _socks5HostController = TextEditingController();
@@ -2311,6 +2318,171 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     }
   }
 
+  Widget _buildMasterDnsForm() {
+    const color = Color(0xFF00897B);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.travel_explore, color: color, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _t(
+                    'MasterDNS — تونل DNS با کلاینت Go. به سرور MasterDnsVPN خودت وصل می‌شه. domain/key باید از سرور بیاد.',
+                    'MasterDNS — DNS tunnel with a Go client. Needs your own MasterDnsVPN server. domain/key come from the server.',
+                  ),
+                  style: TextStyle(
+                    color: AppColors.muted(context),
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _tunnelField(
+          controller: _mdnsDomainController,
+          label: _t('دامنه تونل (DOMAINS)', 'Tunnel domain (DOMAINS)'),
+          hint: 'v.domain.com',
+          color: color,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _t(
+            'دامنه‌ای که سرور MasterDnsVPN مدیریت می‌کنه (باید دقیقاً با تنظیمات سرور یکی باشه).',
+            'The domain handled by your MasterDnsVPN server (must exactly match).',
+          ),
+          style: TextStyle(
+              color: AppColors.muted2(context), fontSize: 10, height: 1.4),
+        ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _mdnsKeyController,
+          label: _t('کلید رمزنگاری (ENCRYPTION_KEY)',
+              'Encryption key (ENCRYPTION_KEY)'),
+          hint: 'shared secret from server',
+          color: color,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          _t('روش رمزنگاری', 'Encryption method'),
+          style: TextStyle(
+              color: AppColors.muted(context),
+              fontSize: 12,
+              fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: AppColors.surface(context),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border(context)),
+          ),
+          child: DropdownButton<int>(
+            value: _mdnsMethod,
+            isExpanded: true,
+            dropdownColor: AppColors.surface(context),
+            underline: const SizedBox.shrink(),
+            style: TextStyle(color: AppColors.fg(context), fontSize: 13),
+            items: const [
+              DropdownMenuItem(value: 0, child: Text('0 — None')),
+              DropdownMenuItem(value: 1, child: Text('1 — XOR')),
+              DropdownMenuItem(value: 2, child: Text('2 — ChaCha20')),
+              DropdownMenuItem(value: 3, child: Text('3 — AES-128-GCM')),
+              DropdownMenuItem(value: 4, child: Text('4 — AES-192-GCM')),
+              DropdownMenuItem(value: 5, child: Text('5 — AES-256-GCM')),
+            ],
+            onChanged: (v) => setState(() => _mdnsMethod = v ?? 1),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _mdnsResolversController,
+          label: _t('resolverها (اختیاری)', 'Resolvers (optional)'),
+          hint: '8.8.8.8\n1.1.1.1',
+          color: color,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _t(
+            'اگه خالی باشه، لیست پیش‌فرض داخلی (Cloudflare/Google) استفاده می‌شه. هر خط یکی.',
+            'If empty, default (Cloudflare/Google) is used. One per line.',
+          ),
+          style: TextStyle(
+              color: AppColors.muted2(context), fontSize: 10, height: 1.4),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton.icon(
+            onPressed: _addMasterDnsServer,
+            icon: const Icon(Icons.add),
+            label: Text(_t('افزودن سرور', 'Add Server')),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 30),
+      ],
+    );
+  }
+
+  void _addMasterDnsServer() {
+    final domain = _mdnsDomainController.text.trim();
+    final key = _mdnsKeyController.text.trim();
+    final resolvers = _mdnsResolversController.text.trim();
+
+    if (domain.isEmpty || key.isEmpty) {
+      _showMsg(_t('دامنه و کلید الزامی است', 'Domain and key are required'));
+      return;
+    }
+
+    final name = _nameController.text.trim().isNotEmpty
+        ? _nameController.text.trim()
+        : 'MasterDNS · $domain';
+
+    final internal = <String, String>{
+      'domain': domain,
+      'key': key,
+      'method': '$_mdnsMethod',
+      if (resolvers.isNotEmpty) 'resolvers': resolvers,
+      'name': name,
+    };
+    final uri = Uri(
+      scheme: 'masterdns',
+      host: 'config',
+      queryParameters: internal,
+    );
+
+    final server = LinkParser.parse(uri.toString(), id: 'mdns_${DateTime.now().millisecondsSinceEpoch}');
+    if (server == null) {
+      _showMsg(_t('ساخت لینک ناموفق بود', 'Failed to build link'));
+      return;
+    }
+    widget.onServerAdded(server);
+    Navigator.pop(context);
+    _showMsg(_t('سرور MasterDNS اضافه شد', 'MasterDNS server added'));
+  }
+
   Widget _buildSshForm() {
     const color = Color(0xFF66BB6A);
     return Column(
@@ -3454,6 +3626,16 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: const Color(0xFF1976D2),
             ),
             _buildTypeCard(
+              title: 'MasterDNS',
+              subtitle: _t(
+                'تونل DNS با MasterDnsVPN — سرور اختصاصی لازم داره',
+                'DNS tunnel with MasterDnsVPN — needs your own server',
+              ),
+              icon: Icons.travel_explore,
+              type: 'masterdns',
+              color: const Color(0xFF00897B),
+            ),
+            _buildTypeCard(
               title: 'SSH',
               subtitle: _t(
                 'اتصال SSH + SOCKS5 روی سرور (ssh -D)',
@@ -3705,6 +3887,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             ] else if (_selectedType == 'warp') ...[
               _buildWarpForm(),
               const SizedBox(height: 16),
+            ] else if (_selectedType == 'masterdns') ...[
+              _buildMasterDnsForm(),
+              const SizedBox(height: 16),
             ] else if (_selectedType == 'ssh') ...[
               _buildSshForm(),
             ] else if (_selectedType == 'socks5') ...[
@@ -3767,6 +3952,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _hy2DownController.dispose();
     _hy2NameController.dispose();
     _warpLicenseController.dispose();
+    _mdnsDomainController.dispose();
+    _mdnsKeyController.dispose();
+    _mdnsResolversController.dispose();
     _hy2FragmentLengthController.dispose();
     _hy2FragmentIntervalController.dispose();
     _hy2PortHoppingController.dispose();
