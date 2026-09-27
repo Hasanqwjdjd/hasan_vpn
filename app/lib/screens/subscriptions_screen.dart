@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -25,6 +27,8 @@ class SubscriptionsScreen extends StatefulWidget {
 
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   late List<Subscription> _subs;
+  Map<String, List<String>> _userGroups = <String, List<String>>{};
+  List<String> _userGroupsOrder = <String>[];
   final Set<String> _loading = {};
 
   bool get _isFa => widget.language == 'fa';
@@ -34,6 +38,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   void initState() {
     super.initState();
     _subs = List.from(widget.subscriptions);
+    _loadUserGroups();
   }
 
   Future<void> _addSubFromRaw(String raw) async {
@@ -772,6 +777,85 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
   }
 
+  Future<void> _loadUserGroups() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('server_groups_v1') ?? '{}';
+      final order =
+          prefs.getStringList('server_groups_order_v1') ?? <String>[];
+      final dec = jsonDecode(raw);
+      final m = <String, List<String>>{};
+      if (dec is Map) {
+        dec.forEach((k, v) {
+          if (v is List) {
+            m[k.toString()] = v.map((e) => e.toString()).toList();
+          }
+        });
+      }
+      for (final k in m.keys) {
+        if (!order.contains(k)) order.add(k);
+      }
+      if (mounted) {
+        setState(() {
+          _userGroups = m;
+          _userGroupsOrder = order;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _showGroupsDialog() async {
+    await _loadUserGroups();
+    if (!mounted) return;
+    if (_userGroups.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_t('هنوز گروهی نساخته‌اید', 'No groups yet')),
+      ));
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        backgroundColor: AppColors.surface(dCtx),
+        title: Row(
+          children: [
+            const Icon(Icons.folder_outlined, color: AppColors.accent),
+            const SizedBox(width: 8),
+            Text(_t('گروه‌ها', 'Groups'),
+                style: TextStyle(color: AppColors.fg(dCtx))),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: _userGroupsOrder
+                .where((g) => _userGroups.containsKey(g))
+                .map((g) => ListTile(
+                      leading: const Icon(Icons.folder,
+                          color: AppColors.accent, size: 20),
+                      title: Text(g,
+                          style: TextStyle(color: AppColors.fg(dCtx))),
+                      subtitle: Text(
+                        '${(_userGroups[g] ?? const <String>[]).length} '
+                        '${_t('سرور', 'servers')}',
+                        style: TextStyle(
+                            color: AppColors.muted2(dCtx), fontSize: 11),
+                      ),
+                    ))
+                .toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx),
+            child: Text(_t('بستن', 'Close')),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg(context),
@@ -783,6 +867,10 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             style: TextStyle(color: AppColors.fg(context))),
         centerTitle: true,
         actions: [
+          IconButton(
+              tooltip: _t('گروه‌ها', 'Groups'),
+              onPressed: _showGroupsDialog,
+              icon: Icon(Icons.folder_outlined, color: AppColors.fg(context))),
           IconButton(
               tooltip: _t('اسکن QR', 'Scan QR'),
               onPressed: () async {

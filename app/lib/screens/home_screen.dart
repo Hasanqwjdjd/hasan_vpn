@@ -3264,6 +3264,267 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _addSelectedToGroup() async {
+    await _openGroupMembersEditor();
+  }
+
+  Future<void> _openGroupMembersEditor() async {
+    final allServers = <VpnServer>[
+      ..._customServers,
+      ...widget.extraServers,
+      ..._freeServers,
+    ];
+    if (allServers.isEmpty) {
+      _showMsg(_t('سروری برای گروه‌بندی نیست', 'No servers to group'));
+      return;
+    }
+
+    // انتخاب اولیه: اگه کاربر قبلاً چند سرور رو انتخاب کرده بود،
+    // به‌عنوان پیش‌فرض tick بزن. وگرنه اگه گروهی وجود داره، اولین
+    // گروه رو باز کن.
+    final preselected = Set<String>.from(_selectedIds);
+    String? selectedGroup = (preselected.isEmpty && _userGroupsOrder.isNotEmpty)
+        ? _userGroupsOrder.first
+        : null;
+    String newGroupName = '';
+    final editingIds = <String>{...preselected};
+    if (selectedGroup != null) {
+      editingIds.clear();
+      editingIds.addAll(_userGroups[selectedGroup] ?? const <String>[]);
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (bsCtx) {
+        return StatefulBuilder(builder: (sCtx, setLocal) {
+          Future<void> save() async {
+            final name = selectedGroup ?? newGroupName.trim();
+            if (name.isEmpty) {
+              _showMsg(_t('اسم گروه رو وارد کن', 'Enter group name'));
+              return;
+            }
+            final updated = <String, List<String>>{};
+            _userGroups.forEach((k, v) => updated[k] = List<String>.from(v));
+            updated[name] = editingIds.toList();
+            final order = List<String>.from(_userGroupsOrder);
+            if (!order.contains(name)) order.add(name);
+            await prefs.setString(_userGroupsKey, jsonEncode(updated));
+            await prefs.setStringList(_userGroupsOrderKey, order);
+            if (!mounted) return;
+            setState(() {
+              _userGroups = updated;
+              _userGroupsOrder = order;
+              _selectionMode = false;
+              _selectedIds.clear();
+            });
+            _rebuildServerList();
+            if (sCtx.mounted) Navigator.pop(sCtx);
+            _showMsg(_t('$name: ${editingIds.length} سرور',
+                '$name: ${editingIds.length} servers'));
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.folder_outlined,
+                          color: AppColors.accent),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _t('مدیریت اعضای گروه', 'Edit group members'),
+                          style: TextStyle(
+                              color: AppColors.fg(sCtx),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close,
+                            color: AppColors.muted2(sCtx)),
+                        onPressed: () => Navigator.pop(sCtx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _t('گروه رو انتخاب کن یا جدید بساز',
+                        'Pick a group or create new'),
+                    style: TextStyle(
+                        color: AppColors.muted2(sCtx), fontSize: 11),
+                  ),
+                  const SizedBox(height: 8),
+                  // ---- chip ها ----
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: <Widget>[
+                      ..._userGroupsOrder
+                          .where((g) => _userGroups.containsKey(g))
+                          .map((g) => ChoiceChip(
+                                label: Text(g),
+                                selected: selectedGroup == g,
+                                selectedColor:
+                                    AppColors.accent.withOpacity(0.25),
+                                labelStyle: TextStyle(
+                                    color: selectedGroup == g
+                                        ? AppColors.accent
+                                        : AppColors.fg(sCtx),
+                                    fontSize: 12),
+                                onSelected: (_) {
+                                  setLocal(() {
+                                    selectedGroup = g;
+                                    editingIds.clear();
+                                    editingIds.addAll(
+                                        _userGroups[g] ?? const <String>[]);
+                                  });
+                                },
+                              )),
+                      ChoiceChip(
+                        label: Text(_t('+ گروه جدید', '+ New group')),
+                        selected: selectedGroup == null,
+                        selectedColor:
+                            AppColors.accent.withOpacity(0.25),
+                        labelStyle: TextStyle(
+                            color: selectedGroup == null
+                                ? AppColors.accent
+                                : AppColors.fg(sCtx),
+                            fontSize: 12),
+                        onSelected: (_) {
+                          setLocal(() {
+                            selectedGroup = null;
+                            editingIds.clear();
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  if (selectedGroup == null) ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      onChanged: (v) => newGroupName = v,
+                      style: TextStyle(color: AppColors.fg(sCtx)),
+                      decoration: InputDecoration(
+                        labelText: _t('نام گروه جدید', 'New group name'),
+                        labelStyle:
+                            TextStyle(color: AppColors.muted2(sCtx)),
+                        filled: true,
+                        fillColor: AppColors.bg(sCtx),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  // ---- انتخاب سرور ----
+                  Row(
+                    children: [
+                      Text(
+                        _t('انتخاب سرورها', 'Select servers'),
+                        style: TextStyle(
+                            color: AppColors.muted(sCtx),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${editingIds.length}/${allServers.length}',
+                        style: TextStyle(
+                            color: AppColors.accent, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Flexible(
+                    child: Container(
+                      constraints: const BoxConstraints(maxHeight: 320),
+                      decoration: BoxDecoration(
+                        color: AppColors.bg(sCtx),
+                        borderRadius: BorderRadius.circular(10),
+                        border:
+                            Border.all(color: AppColors.border(sCtx)),
+                      ),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: allServers.length,
+                        itemBuilder: (_, i) {
+                          final s = allServers[i];
+                          return CheckboxListTile(
+                            dense: true,
+                            controlAffinity:
+                                ListTileControlAffinity.leading,
+                            activeColor: AppColors.accent,
+                            value: editingIds.contains(s.id),
+                            title: Text(
+                              s.displayName,
+                              style: TextStyle(
+                                  color: AppColors.fg(sCtx),
+                                  fontSize: 13),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              s.host,
+                              style: TextStyle(
+                                  color: AppColors.muted2(sCtx),
+                                  fontSize: 10),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onChanged: (v) {
+                              setLocal(() {
+                                if (v == true) {
+                                  editingIds.add(s.id);
+                                } else {
+                                  editingIds.remove(s.id);
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: save,
+                      icon: const Icon(Icons.save_outlined),
+                      label: Text(_t('ذخیره', 'Save')),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        });
+      },
+    );
+  }
+
+  Future<void> _unused_oldAddToGroup() async {
     final ids = _selectedIds.toList();
     if (ids.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
