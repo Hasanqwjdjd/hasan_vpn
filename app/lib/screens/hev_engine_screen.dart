@@ -207,9 +207,18 @@ class _HevEngineScreenState extends State<HevEngineScreen> {
                 SwitchListTile(
                   title: Text(_t('multi-queue', 'multi-queue'),
                       style: TextStyle(color: AppColors.fg(context))),
+                  subtitle: Text(
+                      _t(
+                          'استفاده از چند صف TUN — سرعت بالاتر روی پردازنده‌های چندهسته‌ای.',
+                          'Multiple TUN queues — better speed on multi-core CPUs.'),
+                      style: TextStyle(
+                          color: AppColors.muted(context), fontSize: 12)),
                   value: _multiQueue,
                   onChanged: (v) => setState(() => _multiQueue = v),
                 ),
+                Text(_t('پاسخ ICMP', 'ICMP reply'),
+                    style: TextStyle(color: AppColors.muted(context), fontSize: 12)),
+                const SizedBox(height: 4),
                 DropdownButtonFormField<String>(
                   value: _icmp,
                   dropdownColor: AppColors.elevated(context),
@@ -224,6 +233,18 @@ class _HevEngineScreenState extends State<HevEngineScreen> {
                   onChanged: (v) {
                     if (v != null) setState(() => _icmp = v);
                   },
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    _t(
+                        'reply = تونل به پینگ (ping) جواب می‌ده. برای بعضی بازی‌ها و ابزارها لازمه.',
+                        'reply = tunnel answers ICMP pings. Needed by some games/tools.'),
+                    style: TextStyle(
+                        color: AppColors.muted2(context),
+                        fontSize: 11,
+                        height: 1.4),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(_t('SOCKS5', 'SOCKS5'),
@@ -248,15 +269,39 @@ class _HevEngineScreenState extends State<HevEngineScreen> {
                     if (v != null) setState(() => _udp = v);
                   },
                 ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    _t(
+                        'نوع پروتکل برای UDP forwarding. udp معمولاً بهتره؛ tcp اگه نتت UDP رو محدود می‌کنه.',
+                        'Protocol for UDP forwarding. udp usually best; use tcp if your ISP throttles UDP.'),
+                    style: TextStyle(
+                        color: AppColors.muted2(context),
+                        fontSize: 11,
+                        height: 1.4),
+                  ),
+                ),
                 SwitchListTile(
                   title: Text('pipeline',
                       style: TextStyle(color: AppColors.fg(context))),
+                  subtitle: Text(
+                      _t(
+                          'ارسال درخواست‌های SOCKS5 پشت سر هم بدون انتظار برای پاسخ. سرعت بالاتر روی پینگ زیاد.',
+                          'Pipeline SOCKS5 requests without waiting for replies. Faster on high-latency links.'),
+                      style: TextStyle(
+                          color: AppColors.muted(context), fontSize: 12)),
                   value: _pipeline,
                   onChanged: (v) => setState(() => _pipeline = v),
                 ),
                 SwitchListTile(
                   title: Text('tcp-fastopen',
                       style: TextStyle(color: AppColors.fg(context))),
+                  subtitle: Text(
+                      _t(
+                          'ارسال داده همراه SYN — کاهش زمان اتصال. سرور باید پشتیبانی کنه.',
+                          'Send data with SYN — faster handshake. Server must support TFO.'),
+                      style: TextStyle(
+                          color: AppColors.muted(context), fontSize: 12)),
                   value: _tcpFastopen,
                   onChanged: (v) => setState(() => _tcpFastopen = v),
                 ),
