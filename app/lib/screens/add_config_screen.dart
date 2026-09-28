@@ -2910,6 +2910,147 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     }
   }
 
+  /// دیالوگ دستی برای ساخت WARP Plus از دو لینک vpn:// آماده.
+  Future<void> _showManualPlusChainDialog() async {
+    // ریست controllers
+    _warpPlusOuterLinkCtrl.clear();
+    _warpPlusInnerLinkCtrl.clear();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          return AlertDialog(
+            backgroundColor: AppColors.surface(ctx),
+            title: Text(
+              _t('WARP+ 2-hop دستی', 'Manual WARP+ 2-hop'),
+              style: TextStyle(color: AppColors.fg(ctx), fontSize: 15),
+            ),
+            content: SingleChildScrollView(
+              child: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _t(
+                        'دو لینک vpn:// که خودت ساختی رو پیست کن. اولی outer (dialer)، دومی inner (exit با license).',
+                        'Paste two vpn:// links you built. First is outer (dialer), second is inner (exit with license).',
+                      ),
+                      style: TextStyle(
+                          color: AppColors.muted2(ctx),
+                          fontSize: 11,
+                          height: 1.4),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _warpPlusOuterLinkCtrl,
+                      maxLines: 3,
+                      style: TextStyle(
+                          color: AppColors.fg(ctx), fontSize: 11),
+                      decoration: InputDecoration(
+                        labelText: _t('لینک Outer', 'Outer link'),
+                        hintText: 'vpn://...',
+                        hintStyle: TextStyle(
+                            color: AppColors.muted2(ctx), fontSize: 11),
+                        labelStyle: TextStyle(
+                            color: AppColors.muted(ctx), fontSize: 12),
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _warpPlusInnerLinkCtrl,
+                      maxLines: 3,
+                      style: TextStyle(
+                          color: AppColors.fg(ctx), fontSize: 11),
+                      decoration: InputDecoration(
+                        labelText: _t('لینک Inner', 'Inner link'),
+                        hintText: 'vpn://...',
+                        hintStyle: TextStyle(
+                            color: AppColors.muted2(ctx), fontSize: 11),
+                        labelStyle: TextStyle(
+                            color: AppColors.muted(ctx), fontSize: 12),
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(
+                  _t('انصراف', 'Cancel'),
+                  style: TextStyle(color: AppColors.muted(ctx)),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  final o = _warpPlusOuterLinkCtrl.text.trim();
+                  final i = _warpPlusInnerLinkCtrl.text.trim();
+                  if (o.isEmpty || i.isEmpty) {
+                    _showMsg(_t(
+                        'هر دو لینک را پیست کن', 'Paste both links'));
+                    return;
+                  }
+                  if (!o.startsWith('vpn://') ||
+                      !i.startsWith('vpn://')) {
+                    _showMsg(_t(
+                      'هر دو لینک باید vpn:// باشند',
+                      'Both links must start with vpn://',
+                    ));
+                    return;
+                  }
+                  Navigator.pop(ctx, true);
+                },
+                child: Text(
+                  _t('ساخت', 'Build'),
+                  style: const TextStyle(color: AppColors.accent),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (result != true) return;
+    if (!mounted) return;
+
+    final outer = _warpPlusOuterLinkCtrl.text.trim();
+    final inner = _warpPlusInnerLinkCtrl.text.trim();
+
+    final built = WarpService.buildPlusChainFromLinks(
+      outerVpnLink: outer,
+      innerVpnLink: inner,
+    );
+
+    if (built.server == null) {
+      _showMsg(_t(
+        'ساخت ناموفق: ${built.error ?? "unknown"}',
+        'Build failed: ${built.error ?? "unknown"}',
+      ));
+      return;
+    }
+
+    widget.onServerAdded(built.server!);
+    if (!mounted) return;
+    Navigator.pop(context);
+    _showMsg(_t(
+      'WARP+ 2-hop دستی اضافه شد',
+      'Manual WARP+ 2-hop added',
+    ));
+  }
+
   Widget _buildWarpMasqueForm() {
     const color = Color(0xFF3949AB);
     return Column(
