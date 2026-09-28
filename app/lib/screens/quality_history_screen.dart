@@ -78,6 +78,78 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
     }
   }
 
+  Future<void> _exportToClipboard() async {
+    try {
+      final json = await QualityHistoryService.export();
+      final samples = QualityHistoryService.cached;
+      if (samples.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_t('تاریخچه خالی است', 'History is empty')),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+      await Clipboard.setData(ClipboardData(text: json));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_t(
+            'تاریخچه (' + samples.length.toString() + ' نمونه) کپی شد',
+            'History (' + samples.length.toString() + ' samples) copied',
+          )),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_t('خطا: ' + e.toString(), 'Error: ' + e.toString())),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _importFromClipboard() async {
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = data?.text?.trim() ?? '';
+      if (text.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_t('کلیپ‌بورد خالی است', 'Clipboard is empty')),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+      final n = await QualityHistoryService.import(text);
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(n > 0
+              ? _t(n.toString() + ' نمونه اضافه شد', n.toString() + ' samples imported')
+              : _t('نمونه جدیدی نبود', 'No new samples')),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_t('خطا: ' + e.toString(), 'Error: ' + e.toString())),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final stats = QualityHistoryService.stats(_filtered);
