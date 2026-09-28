@@ -178,10 +178,17 @@ class FlutterVlessPlugin : FlutterPlugin, ActivityAware, PluginRegistry.Activity
                     return
                 }
                 
-                executor.execute {
-                    val delay = XrayCoreManager.getServerDelay(currentActivity, configJson, url)
+                delayExecutor.execute {
+                    val delay = try {
+                        XrayCoreManager.getServerDelay(currentActivity, configJson, url)
+                    } catch (e: Exception) {
+                        android.util.Log.e("FlutterVlessPlugin", "getServerDelay failed", e)
+                        -1L
+                    }
                     currentActivity.runOnUiThread {
-                        result.success(delay)
+                        try {
+                            result.success(delay)
+                        } catch (_: Throwable) {}
                     }
                 }
             }
