@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/app_colors.dart';
+import '../services/mtu_probe.dart';
 import '../services/server_health.dart';
+import '../services/xray_settings.dart';
 
 /// صفحه‌ی «سلامت سرورها» — dashboard وضعیت همه سرورها.
 class ServerHealthScreen extends StatefulWidget {
@@ -17,6 +19,11 @@ class ServerHealthScreen extends StatefulWidget {
 class _ServerHealthScreenState extends State<ServerHealthScreen> {
   String _t(String fa, String en) =>
       widget.language.startsWith('fa') ? fa : en;
+
+  /// MTU های probe شده per-server.id
+  final Map<String, int> _mtuCache = {};
+  /// نشانگر فعال بودن probe هر سرور
+  final Set<String> _mtuProbing = {};
 
   List<ServerHealth> _all = const [];
   List<ServerHealth> _filtered = const [];
@@ -51,9 +58,18 @@ class _ServerHealthScreenState extends State<ServerHealthScreen> {
         return (a.lastPingMs ?? 99999)
             .compareTo(b.lastPingMs ?? 99999);
       });
+      // load cached MTU per server
+      final mtuCache = <String, int>{};
+      for (final h in list) {
+        final v = await MtuProbe.load(h.server.id);
+        if (v != null) mtuCache[h.server.id] = v;
+      }
       if (!mounted) return;
       setState(() {
         _all = list;
+        _mtuCache
+          ..clear()
+          ..addAll(mtuCache);
         _counts = ServerHealthCalculator.countByTier(list);
         _applyFilter();
         _loading = false;
@@ -130,6 +146,55 @@ class _ServerHealthScreenState extends State<ServerHealthScreen> {
         return _t('مشکل‌دار', 'Critical');
       case HealthTier.untested:
         return _t('تست نشده', 'Untested');
+    }
+  }
+
+  Future<void> _runMtuProbe(ServerHealth h) async {
+    if (_mtuProbing.contains(h.server.id)) return;
+    setState(() => _mtuProbing.add(h.server.id));
+    try {
+      final mtu = await MtuProbe.probePath();
+      if (!mounted) return;
+      if (mtu == null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_t(
+            'پاسخی از سرور probe نیامد. مسیر ممکن است همهٔ UDP را ببندد.',
+            'No probe answer. The path may block all UDP.',
+          )),
+        ));
+        return;
+      }
+      await MtuProbe.save(h.server.id, mtu);
+      if (!mounted) return;
+      setState(() => _mtuCache[h.server.id] = mtu);
+      final mss = MtuProbe.mssFromMtu(mtu);
+      final currentMss =
+          (await XraySettings.get<int>('mssClampValue')) ?? 0;
+      final currentEnabled =
+          (await XraySettings.get<bool>('mssClampEnable')) ?? false;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_t(
+          'MTU=$mtu  →  MSS توصیه: $mss  (فعلی: $currentMss، فعال: $currentEnabled)',
+          'MTU=$mtu  ->  suggested MSS: $mss  (current: $currentMss, enabled: $currentEnabled)',
+        )),
+        action: SnackBarAction(
+          label: _t('اعمال', 'Apply'),
+          onPressed: () async {
+            await XraySettings.set('mssClampEnable', true);
+            await XraySettings.set('mssClampValue', mss);
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(_t('MSS $mss اعمال شد',
+                  'MSS $mss applied')),
+            ));
+          },
+        ),
+      ));
+    } finally {
+      if (mounted) {
+        setState(() => _mtuProbing.remove(h.server.id));
+      }
     }
   }
 
@@ -425,6 +490,37 @@ class _ServerHealthScreenState extends State<ServerHealthScreen> {
               ],
             ),
           ),
+          // MTU probe button + result
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_mtuCache.containsKey(h.server.id))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    'MTU ${_mtuCache[h.server.id]}',
+                    style: TextStyle(
+                      color: AppColors.accent,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              _mtuProbing.contains(h.server.id)
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : IconButton(
+                      icon: const Icon(Icons.speed, size: 20),
+                      tooltip: _t('اندازه‌گیری MTU مسیر',
+                          'Measure path MTU'),
+                      onPressed: () => _runMtuProbe(h),
+                    ),
+            ],
+          ),
+          const SizedBox(width: 6),
           // tier label
           Text(
             _tierLabel(h.tier),
