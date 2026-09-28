@@ -102,6 +102,11 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _warpCustomEndpointCtrl = TextEditingController();
   // WARP Plus دستی: کلید outer و inner به‌شکل vpn:// link
   final TextEditingController _warpPlusOuterLinkCtrl = TextEditingController();
+  // لیست داینامیک hop ها (2-8)
+  final List<TextEditingController> _warpPlusHopCtrls = [
+    TextEditingController(),
+    TextEditingController(),
+  ];
   final TextEditingController _warpPlusInnerLinkCtrl = TextEditingController();
 
 
@@ -2910,11 +2915,20 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     }
   }
 
-  /// دیالوگ دستی برای ساخت WARP Plus از دو لینک vpn:// آماده.
+  /// دیالوگ دستی برای ساخت WARP Plus از ۲ تا ۸ لینک vpn://.
+  ///
+  /// اولین = outer (dialer)، آخرین = inner (exit). hop های میانی اختیاری.
   Future<void> _showManualPlusChainDialog() async {
-    // ریست controllers
-    _warpPlusOuterLinkCtrl.clear();
-    _warpPlusInnerLinkCtrl.clear();
+    // مقدار اولیه ۲ تا controller
+    for (final c in _warpPlusHopCtrls) {
+      c.clear();
+    }
+    while (_warpPlusHopCtrls.length < 2) {
+      _warpPlusHopCtrls.add(TextEditingController());
+    }
+    while (_warpPlusHopCtrls.length > 2) {
+      _warpPlusHopCtrls.removeLast().dispose();
+    }
 
     final result = await showDialog<bool>(
       context: context,
@@ -2923,20 +2937,22 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
           return AlertDialog(
             backgroundColor: AppColors.surface(ctx),
             title: Text(
-              _t('WARP+ 2-hop دستی', 'Manual WARP+ 2-hop'),
+              _t('WARP+ chain دستی (۲-۸ hop)',
+                  'Manual WARP+ chain (2-8 hops)'),
               style: TextStyle(color: AppColors.fg(ctx), fontSize: 15),
             ),
-            content: SingleChildScrollView(
-              child: SizedBox(
-                width: double.maxFinite,
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 450,
+              child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       _t(
-                        'دو لینک vpn:// که خودت ساختی رو پیست کن. اولی outer (dialer)، دومی inner (exit با license).',
-                        'Paste two vpn:// links you built. First is outer (dialer), second is inner (exit with license).',
+                        'لینک‌های vpn:// رو به ترتیب بذار. اولی outer (dialer)، آخرین inner (exit با license).',
+                        'Paste vpn:// links in order. First is outer (dialer), last is inner (exit with license).',
                       ),
                       style: TextStyle(
                           color: AppColors.muted2(ctx),
@@ -2944,43 +2960,79 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                           height: 1.4),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: _warpPlusOuterLinkCtrl,
-                      maxLines: 3,
-                      style: TextStyle(
-                          color: AppColors.fg(ctx), fontSize: 11),
-                      decoration: InputDecoration(
-                        labelText: _t('لینک Outer', 'Outer link'),
-                        hintText: 'vpn://...',
-                        hintStyle: TextStyle(
-                            color: AppColors.muted2(ctx), fontSize: 11),
-                        labelStyle: TextStyle(
-                            color: AppColors.muted(ctx), fontSize: 12),
-                        isDense: true,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
+                    for (var i = 0; i < _warpPlusHopCtrls.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _warpPlusHopCtrls[i],
+                                maxLines: 2,
+                                style: TextStyle(
+                                    color: AppColors.fg(ctx),
+                                    fontSize: 10),
+                                decoration: InputDecoration(
+                                  labelText: i == 0
+                                      ? _t('hop ۱ (outer)',
+                                          'hop 1 (outer)')
+                                      : i == _warpPlusHopCtrls.length - 1
+                                          ? _t(
+                                              'hop ${i + 1} (inner / exit)',
+                                              'hop ${i + 1} (inner / exit)')
+                                          : _t('hop ${i + 1} (middle)',
+                                              'hop ${i + 1} (middle)'),
+                                  hintText: 'vpn://...',
+                                  hintStyle: TextStyle(
+                                      color: AppColors.muted2(ctx),
+                                      fontSize: 10),
+                                  labelStyle: TextStyle(
+                                      color: AppColors.muted(ctx),
+                                      fontSize: 11),
+                                  isDense: true,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (_warpPlusHopCtrls.length > 2)
+                              IconButton(
+                                icon: Icon(Icons.close,
+                                    size: 18,
+                                    color: AppColors.danger),
+                                tooltip: _t('حذف hop', 'Remove hop'),
+                                onPressed: () {
+                                  setLocal(() {
+                                    _warpPlusHopCtrls
+                                        .removeAt(i)
+                                        .dispose();
+                                  });
+                                },
+                              ),
+                          ],
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _warpPlusInnerLinkCtrl,
-                      maxLines: 3,
-                      style: TextStyle(
-                          color: AppColors.fg(ctx), fontSize: 11),
-                      decoration: InputDecoration(
-                        labelText: _t('لینک Inner', 'Inner link'),
-                        hintText: 'vpn://...',
-                        hintStyle: TextStyle(
-                            color: AppColors.muted2(ctx), fontSize: 11),
-                        labelStyle: TextStyle(
-                            color: AppColors.muted(ctx), fontSize: 12),
-                        isDense: true,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
+                    const SizedBox(height: 4),
+                    if (_warpPlusHopCtrls.length < 8)
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          setLocal(() {
+                            _warpPlusHopCtrls
+                                .add(TextEditingController());
+                          });
+                        },
+                        icon: const Icon(Icons.add, size: 16),
+                        label: Text(
+                          _t('افزودن hop میانی', 'Add middle hop'),
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.accent,
+                          side: BorderSide(color: AppColors.accent),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -2995,20 +3047,27 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               ),
               TextButton(
                 onPressed: () {
-                  final o = _warpPlusOuterLinkCtrl.text.trim();
-                  final i = _warpPlusInnerLinkCtrl.text.trim();
-                  if (o.isEmpty || i.isEmpty) {
+                  final links = _warpPlusHopCtrls
+                      .map((c) => c.text.trim())
+                      .toList();
+                  final nonEmpty = links
+                      .where((l) => l.isNotEmpty)
+                      .toList();
+                  if (nonEmpty.length < 2) {
                     _showMsg(_t(
-                        'هر دو لینک را پیست کن', 'Paste both links'));
-                    return;
-                  }
-                  if (!o.startsWith('vpn://') ||
-                      !i.startsWith('vpn://')) {
-                    _showMsg(_t(
-                      'هر دو لینک باید vpn:// باشند',
-                      'Both links must start with vpn://',
+                      'حداقل ۲ لینک لازم است',
+                      'At least 2 links required',
                     ));
                     return;
+                  }
+                  for (var i = 0; i < nonEmpty.length; i++) {
+                    if (!nonEmpty[i].startsWith('vpn://')) {
+                      _showMsg(_t(
+                        'hop ${i + 1} باید vpn:// باشد',
+                        'hop ${i + 1} must start with vpn://',
+                      ));
+                      return;
+                    }
                   }
                   Navigator.pop(ctx, true);
                 },
@@ -3026,12 +3085,14 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     if (result != true) return;
     if (!mounted) return;
 
-    final outer = _warpPlusOuterLinkCtrl.text.trim();
-    final inner = _warpPlusInnerLinkCtrl.text.trim();
+    final links = _warpPlusHopCtrls
+        .map((c) => c.text.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
 
-    final built = WarpService.buildPlusChainFromLinks(
-      outerVpnLink: outer,
-      innerVpnLink: inner,
+    final built = WarpService.buildNhopChainFromLinks(
+      vpnLinks: links,
+      name: 'WARP+ manual ${links.length}-hop',
     );
 
     if (built.server == null) {
@@ -3046,8 +3107,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     if (!mounted) return;
     Navigator.pop(context);
     _showMsg(_t(
-      'WARP+ 2-hop دستی اضافه شد',
-      'Manual WARP+ 2-hop added',
+      'WARP+ chain (${links.length} hop) اضافه شد',
+      'WARP+ chain (${links.length} hops) added',
     ));
   }
 
@@ -4816,6 +4877,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _warpCustomEndpointCtrl.dispose();
     _warpPlusOuterLinkCtrl.dispose();
     _warpPlusInnerLinkCtrl.dispose();
+    for (final c in _warpPlusHopCtrls) {
+      c.dispose();
+    }
     _linkController.dispose();
     _psiphonSponsorController.dispose();
     _psiphonChannelController.dispose();
