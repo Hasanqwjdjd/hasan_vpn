@@ -307,6 +307,14 @@ class MainActivity : FlutterActivity() {
                         val http2 = call.argument<Boolean>("http2") ?: true
                         val desyncEnabled = call.argument<Boolean>("desyncEnabled") ?: false
                         val desyncPort = call.argument<Int>("desyncSocksPort") ?: 0
+                        // set progress bridge
+                        WarpMasqueService.setProgressCallback { map ->
+                            runOnUiThread {
+                                try {
+                                    warpMasqueChannel?.invokeMethod("onProgress", map)
+                                } catch (_: Throwable) {}
+                            }
+                        }
                         try {
                             WarpMasqueService.start(
                                 applicationContext, endpoint, endpointCandidates,
@@ -318,6 +326,7 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     "stop" -> {
+                        WarpMasqueService.setProgressCallback(null)
                         WarpMasqueService.stop(applicationContext)
                         result.success(true)
                     }
