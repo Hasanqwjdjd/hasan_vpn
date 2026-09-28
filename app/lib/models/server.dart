@@ -223,6 +223,10 @@ class VpnServer {
   /// که روی UDP کار می‌کنن لازمه.
   bool pingNgUdpDesync;
 
+  /// حالت WARPSCOUT scan که این سرور با آن ساخته شده:
+  /// Fast / Medium / Slow / Custom. null = سرور غیر-WARP.
+  String? warpEndpointMode;
+
   int? ping;
   int? jitter;
   PingKind pingKind;
@@ -246,6 +250,7 @@ class VpnServer {
     this.pingNgProfile,
     this.pingNgArgs,
     this.pingNgUdpDesync = false,
+    this.warpEndpointMode,
     this.ping,
     this.jitter,
     this.pingKind = PingKind.none,
@@ -281,6 +286,7 @@ class VpnServer {
     String? pingNgProfile,
     String? pingNgArgs,
     bool? pingNgUdpDesync,
+    String? warpEndpointMode,
   }) =>
       VpnServer(
         id: id,
@@ -299,6 +305,7 @@ class VpnServer {
         pingNgProfile: pingNgProfile ?? this.pingNgProfile,
         pingNgArgs: pingNgArgs ?? this.pingNgArgs,
         pingNgUdpDesync: pingNgUdpDesync ?? this.pingNgUdpDesync,
+        warpEndpointMode: warpEndpointMode ?? this.warpEndpointMode,
       );
 
   /// پاک‌کردن نتیجه‌ی تست قبلی.

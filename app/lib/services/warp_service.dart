@@ -216,6 +216,7 @@ class WarpService {
         host: host,
         port: port,
         isDeletable: true,
+        warpEndpointMode: mode.label,
       );
 
       return (server: server, error: null);
@@ -660,6 +661,7 @@ class WarpService {
         host: host,
         port: port,
         isDeletable: true,
+        warpEndpointMode: mode.label,
       );
       return (server: server, error: null);
     } catch (e) {
