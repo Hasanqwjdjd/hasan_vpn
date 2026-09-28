@@ -1,3 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
 /// پل‌های پیشنهادی برای هر نوع مخفی‌سازی — mobile-first.
 /// موبایل ایران سخت‌تر از WiFi است ولی با webtunnel / snowflake / meek
 /// هنوز قابل تلاش است. پل‌های obfs4 ثابت ممکن است روی Irancell/MCI
@@ -64,7 +71,192 @@ class TorBridges {
   /// اضافه کند.
   static const List<String> dnstt = <String>[];
 
+  // ── داینامیک: fetch از moat API torproject.org + کش ────
+  static const String _moatUrl =
+      'https://bridges.torproject.org/moat/circumvention/request';
+  static const String _moatVersion = '0.1.0';
+  static const String _cacheKey = 'tor_bridges_dynamic_v1';
+  static const Duration _cacheTtl = Duration(hours: 12);
+
+  /// cache در memory تا برایType سریع جواب بده.
+  static final Map<String, List<String>> _memoryCache = {};
+
+  /// آخرین زمان موفق fetch به‌ازای هر نوع.
+  static final Map<String, DateTime> _memoryStamp = {};
+
+  /// خواندن از SharedPreferences در اولین استفاده.
+  static bool _loadedFromDisk = false;
+
+  static Future<void> _ensureLoaded() async {
+    if (_loadedFromDisk) return;
+    _loadedFromDisk = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_cacheKey);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      final stamp = DateTime.tryParse(decoded['stamp']?.toString() ?? '');
+      if (stamp == null || DateTime.now().difference(stamp) > _cacheTtl) return;
+      final bridges = decoded['bridges'];
+      if (bridges is! Map) return;
+      for (final entry in bridges.entries) {
+        final key = entry.key.toString();
+        final value = entry.value;
+        if (value is List) {
+          _memoryCache[key] = value.map((e) => e.toString()).toList();
+          _memoryStamp[key] = stamp;
+        }
+      }
+    } catch (e) {
+      debugPrint('tor_bridges: load cache failed: $e');
+    }
+  }
+
+  static Future<void> _persistCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stamp = DateTime.now();
+      final body = <String, dynamic>{
+        'stamp': stamp.toIso8601String(),
+        'bridges': _memoryCache,
+      };
+      await prefs.setString(_cacheKey, jsonEncode(body));
+    } catch (e) {
+      debugPrint('tor_bridges: persist cache failed: $e');
+    }
+  }
+
+  /// fetch پل‌های تازه از moat API Tor Project.
+  ///
+  /// ورودی: نوع پل ('obfs4', 'snowflake', 'meek_lite', 'conjure')
+  /// خروجی: لیست bridge strings یا null در صورت شکست.
+  static Future<List<String>?> fetchDynamic(
+    String bridgeType, {
+    String country = 'ir',
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    // type های پشتیبانی‌شده توسط moat API
+    const supported = {'obfs4', 'snowflake', 'meek_lite', 'conjure', 'webtunnel'};
+    if (!supported.contains(bridgeType)) return null;
+
+    await _ensureLoaded();
+
+    try {
+      final body = jsonEncode(<String, dynamic>{
+        'country': country.toLowerCase(),
+        'transports': [bridgeType],
+        'type': 'moat',
+        'version': _moatVersion,
+      });
+      final resp = await http
+          .post(
+            Uri.parse(_moatUrl),
+            headers: <String, String>{
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: body,
+          )
+          .timeout(timeout);
+
+      if (resp.statusCode != 200) {
+        debugPrint(
+            'tor_bridges: fetch $bridgeType failed HTTP ${resp.statusCode}');
+        return null;
+      }
+
+      final decoded = jsonDecode(resp.body);
+      if (decoded is! Map) return null;
+      final settings = decoded['settings'];
+      if (settings is! Map) return null;
+      final bridges = settings['bridges'];
+      if (bridges is! Map) return null;
+
+      // bridges.bridge_strings یا bridges.bridges
+      final strings = bridges['bridge_strings'] ?? bridges['bridges'];
+      if (strings is! List || strings.isEmpty) return null;
+
+      final list = strings
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      if (list.isEmpty) return null;
+
+      _memoryCache[bridgeType] = list;
+      _memoryStamp[bridgeType] = DateTime.now();
+      // ignore: unawaited_futures
+      _persistCache();
+      debugPrint('tor_bridges: fetched ${list.length} $bridgeType bridges');
+      return list;
+    } catch (e) {
+      debugPrint('tor_bridges: fetch $bridgeType error: $e');
+      return null;
+    }
+  }
+
+  /// fetch چند نوع با هم.
+  static Future<Map<String, List<String>>> fetchMany(
+    Iterable<String> types, {
+    String country = 'ir',
+  }) async {
+    final out = <String, List<String>>{};
+    for (final t in types) {
+      final r = await fetchDynamic(t, country: country);
+      if (r != null && r.isNotEmpty) out[t] = r;
+    }
+    return out;
+  }
+
+  /// پاک کردن کش (برای دکمه Refresh).
+  static Future<void> clearCache() async {
+    _memoryCache.clear();
+    _memoryStamp.clear();
+    _loadedFromDisk = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_cacheKey);
+    } catch (_) {}
+  }
+
+  /// آخرین زمان موفق fetch برای این نوع (null = کش نداریم).
+  static DateTime? lastFetch(String bridgeType) => _memoryStamp[bridgeType];
+
+  /// آیا کش تازه داریم؟
+  static bool hasFreshCache(String bridgeType) {
+    final s = _memoryStamp[bridgeType];
+    if (s == null) return false;
+    return DateTime.now().difference(s) <= _cacheTtl;
+  }
+
+  /// نسخه sync — اول dynamic cache در memory، بعد fallback به static.
+  /// اگه هنوز fetch نکردی، این تابع static برمی‌گردونه؛ بعد از
+  /// `await fetchDynamic(...)` نسخه تازه رو می‌بینی.
   static List<String> forType(String bridgeType, {String? sni}) {
+    final cached = _memoryCache[bridgeType];
+    if (cached != null && cached.isNotEmpty) {
+      return List<String>.from(cached);
+    }
+    return _staticForType(bridgeType, sni: sni);
+  }
+
+  /// نسخه async — اگه کش تازه داری همون، وگرنه fetch می‌کنه.
+  static Future<List<String>> forTypeAsync(
+    String bridgeType, {
+    String? sni,
+    String country = 'ir',
+    bool forceRefresh = false,
+  }) async {
+    await _ensureLoaded();
+    if (!forceRefresh && hasFreshCache(bridgeType)) {
+      return List<String>.from(_memoryCache[bridgeType]!);
+    }
+    final fresh = await fetchDynamic(bridgeType, country: country);
+    if (fresh != null && fresh.isNotEmpty) return fresh;
+    return _staticForType(bridgeType, sni: sni);
+  }
+
+  static List<String> _staticForType(String bridgeType, {String? sni}) {
     switch (bridgeType) {
       case 'webtunnel':
         return List<String>.from(webtunnel);
