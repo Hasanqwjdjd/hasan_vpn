@@ -328,6 +328,33 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        val desyncCh = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, desyncChannelName)
+        desyncCh.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        val args = call.argument<List<String>>("args") ?: emptyList()
+                        val port = call.argument<Int>("port") ?: 0
+                        val actualPort = DesyncEngine.start(args, port)
+                        if (actualPort > 0) {
+                            result.success(actualPort)
+                        } else {
+                            result.error("start_failed", DesyncEngine.getLastError() ?: "unknown", null)
+                        }
+                    }
+                    "stop" -> {
+                        DesyncEngine.stop()
+                        result.success(true)
+                    }
+                    "status" -> {
+                        result.success(mapOf(
+                            "running" to DesyncEngine.isActive(),
+                            "port" to DesyncEngine.activePort(),
+                        ))
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         val mdnsCh = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, masterDnsChannelName)
         masterDnsChannel = mdnsCh
         mdnsCh.setMethodCallHandler { call, result ->
