@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import 'v2ray_engine.dart';
@@ -197,6 +198,43 @@ class DesyncTuner {
     return out;
   }
 
+  /// کش per-server: هر سرور بهترین args خودش رو یاد می‌گیره.
+  static String _cacheKey(VpnServer server) =>
+      'desync_tuner_winner_${server.id}';
+
+  /// ذخیره args برنده برای این سرور (تا اجرای بعدی سریع‌تر بشه).
+  static Future<void> _saveWinner(VpnServer server, String args) async {
+    if (args.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = _cacheKey(server);
+      // نگه داشتن ۵ تا آخرین برنده (round-robin)
+      final list = prefs.getStringList(key) ?? <String>[];
+      list.remove(args);
+      list.insert(0, args);
+      if (list.length > 5) list.removeRange(5, list.length);
+      await prefs.setStringList(key, list);
+    } catch (_) {}
+  }
+
+  /// دریافت args های ذخیره‌شده برای این سرور (برای priority).
+  static Future<List<String>> _loadCachedWinners(VpnServer server) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getStringList(_cacheKey(server)) ?? <String>[];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// پاک کردن کش این سرور (برای تست از صفر).
+  static Future<void> clearCacheFor(VpnServer server) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_cacheKey(server));
+    } catch (_) {}
+  }
+
   /// تست همه‌ی candidate ها روی سرور فعلی. مثل FinalMaskFinder.
   ///
   /// نکته: `V2RayEngine.connect` خودش desync رو راه می‌ندازه چون
@@ -215,7 +253,17 @@ class DesyncTuner {
     _running = true;
 
     final results = <DesyncResult>[];
-    // basic همیشه اجرا می‌شه. advanced فقط اگه provider در طول اسکن true بشه.
+    // ۱) cached winners از اجرای قبلی این سرور
+    final cachedArgs = await _loadCachedWinners(server);
+    final cachedCandidates = cachedArgs
+        .map((a) => DesyncCandidate(
+              label: 'cached (server)',
+              method: 'Custom',
+              args: a,
+            ))
+        .toList();
+
+    // ۲) basic همیشه اجرا می‌شه. advanced فقط اگه provider در طول اسکن true بشه.
     final basicCandidates = generateCandidates(advanced: false, udpOnly: udpOnly);
     final advancedOnly = <DesyncCandidate>[];
     {
@@ -224,19 +272,24 @@ class DesyncTuner {
         if (!seen.contains(c.args)) advancedOnly.add(c);
       }
     }
-    final totalHint = basicCandidates.length + advancedOnly.length;
+    // cached اول، بعد basic
+    final combinedBasic = <DesyncCandidate>[
+      ...cachedCandidates,
+      ...basicCandidates,
+    ];
+    final totalHint = combinedBasic.length + advancedOnly.length;
 
     try {
       for (var i = 0; i < totalHint; i++) {
         if (isCancelled?.call() == true) break;
-        final bool isAdvancedPhase = i >= basicCandidates.length;
+        final bool isAdvancedPhase = i >= combinedBasic.length;
         // در فاز advanced، اگه کاربر تیک رو نزد، رد کن
         if (isAdvancedPhase && (advancedProvider?.call() != true)) {
           continue;
         }
         final c = isAdvancedPhase
-            ? advancedOnly[i - basicCandidates.length]
-            : basicCandidates[i];
+            ? advancedOnly[i - combinedBasic.length]
+            : combinedBasic[i];
         onProgress?.call(i + 1, totalHint, c);
 
         final testServer = server.copyWith(
@@ -297,9 +350,13 @@ class DesyncTuner {
       final working = results.where((r) => r.ok).toList()
         ..sort((a, b) => a.ms.compareTo(b.ms));
       if (working.isEmpty) return null;
+      final best = working.first;
       debugPrint('DesyncTuner: ${results.length} tested, ${working.length} ok, '
-          'best=${working.first.candidate.label} ${working.first.ms}ms');
-      return working.first;
+          'best=${best.candidate.label} ${best.ms}ms');
+      // یادداشت برنده برای اجرای بعدی
+      // ignore: unawaited_futures
+      _saveWinner(server, best.candidate.args);
+      return best;
     } finally {
       _running = false;
     }
