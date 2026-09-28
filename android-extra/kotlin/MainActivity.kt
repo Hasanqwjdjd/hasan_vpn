@@ -304,9 +304,12 @@ class MainActivity : FlutterActivity() {
                         val sni = call.argument<String>("sni") ?: "soft98.ir"
                         val dns = call.argument<String>("dns") ?: "1.1.1.1,1.0.0.1"
                         val http2 = call.argument<Boolean>("http2") ?: true
+                        val desyncEnabled = call.argument<Boolean>("desyncEnabled") ?: false
+                        val desyncPort = call.argument<Int>("desyncSocksPort") ?: 0
                         try {
                             WarpMasqueService.start(
                                 applicationContext, endpoint, sni, dns, http2,
+                                desyncEnabled, desyncPort,
                             )
                             result.success(true)
                         } catch (e: Exception) {

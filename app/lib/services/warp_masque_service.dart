@@ -49,6 +49,8 @@ class WarpMasqueService {
     String sni = defaultSni,
     String dns = defaultDns,
     bool http2 = true,
+    bool desyncEnabled = false,
+    int desyncSocksPort = 0,
     Duration timeout = const Duration(seconds: 90),
   }) async {
     _ensureListener();
@@ -60,6 +62,8 @@ class WarpMasqueService {
         'sni': sni.trim(),
         'dns': dns.trim(),
         'http2': http2,
+        'desyncEnabled': desyncEnabled,
+        'desyncSocksPort': desyncSocksPort,
       });
       if (ok != true) {
         lastError = 'start() returned false';
