@@ -20,6 +20,7 @@ import '../services/warp_masque_service.dart';
 import '../services/mdns_settings.dart';
 import '../services/tor_sni_presets.dart';
 import '../services/xray_json.dart';
+import 'free_config_screen.dart';
 import 'qr_scan_screen.dart';
 import 'tor_screen.dart';
 
@@ -393,6 +394,21 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         _sniEnabled = true; // اگر از دیالوگ انتخاب شد، سوئیچ هم روشن بماند
       });
     }
+  }
+
+  Future<void> _openFreeConfigWizard() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FreeConfigScreen(
+          language: widget.language,
+          onImport: (servers) {
+            for (final s in servers) {
+              widget.onServerAdded(s);
+            }
+          },
+        ),
+      ),
+    );
   }
 
   void _addFromLink() {
@@ -4712,6 +4728,47 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Free configs (BackPack/MLM-derived two-stage funnel)
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _openFreeConfigWizard,
+                icon: const Icon(Icons.bolt, size: 20),
+                label: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _t('دریافت کانفیگ رایگان', 'Get free configs'),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      _t('کانفیگ‌های آنلاین و تست‌شده',
+                          'Online configs, tested for real'),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7C3AED),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  alignment: Alignment.centerLeft,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
             // Type selection
             Text(
               _t('نوع کانفیگ', 'Config Type'),
