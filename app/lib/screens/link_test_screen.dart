@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/server.dart';
 import '../services/app_colors.dart';
 import '../services/link_test.dart';
 import '../services/server_health.dart';
@@ -18,7 +19,7 @@ class _LinkTestScreenState extends State<LinkTestScreen> {
   String _t(String fa, String en) =>
       widget.language.startsWith('fa') ? fa : en;
 
-  List<dynamic> _servers = const [];
+  List<VpnServer> _servers = const [];
   List<LinkTestResult> _results = const [];
   bool _loading = true;
   bool _running = false;
@@ -62,9 +63,8 @@ class _LinkTestScreenState extends State<LinkTestScreen> {
       _total = _servers.length;
     });
     try {
-      final servers = _servers.cast<dynamic>();
       final results = await LinkTest.runMany(
-        servers.map((e) => e as dynamic).toList().cast(),
+        _servers,
         samples: LinkTest.defaultSamples,
         workers: 4,
         isCancelled: () => _cancel,
