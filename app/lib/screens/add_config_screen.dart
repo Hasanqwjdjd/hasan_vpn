@@ -2434,6 +2434,83 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         ),
         const SizedBox(height: 14),
 
+        // ── Endpoint scan mode (WARPSCOUT-style) ────
+        Text(
+          _t('حالت اسکن endpoint', 'Endpoint scan mode'),
+          style: TextStyle(
+              color: AppColors.fg(context),
+              fontSize: 12,
+              fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _t(
+            'WARPSCOUT-style: با handshake واقعی WireGuard سریع‌ترین edge رو پیدا می‌کنه.',
+            'WARPSCOUT-style: uses a real WireGuard handshake to find the fastest edge.',
+          ),
+          style: TextStyle(
+              color: AppColors.muted2(context), fontSize: 10, height: 1.4),
+        ),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<WarpEndpointMode>(
+          value: _warpMode,
+          dropdownColor: AppColors.elevated(context),
+          style: TextStyle(color: AppColors.fg(context), fontSize: 12),
+          decoration: InputDecoration(
+            labelText: _t('حالت', 'Mode'),
+            labelStyle:
+                TextStyle(color: AppColors.muted(context), fontSize: 11),
+            isDense: true,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          items: WarpEndpointMode.values
+              .map((m) => DropdownMenuItem(
+                    value: m,
+                    child: Text(_warpModeLabel(m)),
+                  ))
+              .toList(),
+          onChanged: _warpGenerating
+              ? null
+              : (v) {
+                  if (v == null) return;
+                  setState(() => _warpMode = v);
+                },
+        ),
+        if (_warpMode == WarpEndpointMode.custom) ...[
+          const SizedBox(height: 6),
+          TextField(
+            controller: _warpCustomEndpointCtrl,
+            enabled: !_warpGenerating,
+            style: TextStyle(color: AppColors.fg(context), fontSize: 12),
+            decoration: InputDecoration(
+              hintText: '188.114.96.206:878',
+              hintStyle:
+                  TextStyle(color: AppColors.muted2(context), fontSize: 11),
+              filled: true,
+              fillColor: AppColors.surface(context),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              isDense: true,
+              labelText: _t('endpoint سفارشی', 'Custom endpoint'),
+              labelStyle:
+                  TextStyle(color: AppColors.muted(context), fontSize: 11),
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Text(
+          _t(
+            'اندازه pool: ${WarpEndpointTester.poolSize(_warpMode)} endpoint',
+            'Pool size: ${WarpEndpointTester.poolSize(_warpMode)} endpoints',
+          ),
+          style: TextStyle(
+              color: AppColors.muted2(context), fontSize: 10),
+        ),
+        const SizedBox(height: 14),
+
         SizedBox(
           width: double.infinity,
           height: 48,
