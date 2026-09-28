@@ -4,67 +4,81 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// پشتیبان‌گیری و بازیابی کل داده‌های اپ به‌صورت JSON.
 ///
-/// شامل: subscriptions, custom servers, xray settings, routing rules,
-/// pinned/manual order, per-app configs, و بقیه. از prefs کلون می‌گیرد
-/// و در یک فایل ذخیره می‌کند — کاربر می‌تواند به یک دستگاه دیگر منتقل کند.
+/// از SharedPreferences خودکار discovery می‌کنه — یعنی هر کلید جدیدی که
+/// در آینده اضافه بشه، بدون تغییر این فایل backup می‌شه. فقط چند کلید
+/// ephemeral/cache استثنا می‌شن.
 class BackupService {
   BackupService._();
 
-  /// کلیدهایی که پشتیبان‌گیری می‌شوند.
-  static const List<String> _keys = <String>[
-    'subscriptions_v3',
-    'custom_servers_v1',
-    'server_groups_v1',
-    'manual_order',
-    'manual_order_v1',
-    'pinned',
-    'pinned_v1',
-    'deleted_ids',
-    'deleted_ids_v1',
-    'custom_sub_tags_v1',
-    'dns_manual_order_v1',
-    'xray_core_settings_v2',
-    'routing_rules_v1',
-    'routing_domain_strategy_v1',
-    'test_settings_v1',
-    'telemetry_live_v1',
-    'settings_last_server_v1',
-    'settings_theme_mode_v1',
-    'settings_language_v1',
-    'settings_font_scale_v1',
-    'settings_auto_connect_boot_v1',
-    'settings_connect_fastest_v1',
-    'telegram_channels_v1',
-    'tor_bridge_type',
-    'tor_custom_bridges',
-    'tor_sni',
-    'tor_sni_enabled',
-    'per_app_proxy_mode_v1',
-    'per_app_blocked_apps_v1',
+  /// کلیدهایی که در backup نمیان (cache / ephemeral / حجیم).
+  static const List<String> _excludePrefixes = <String>[
+    'quick_export_servers_v1', // کش export
+    'pingng_diagnostic_log', // log تشخیصی (حجیم)
+    'PINGNG_DIAGNOSTIC_LOG',
+    'widget_', // اسلات‌های ویجت (per-device)
+    'server_geo_', // کش geo (فقط برای نمایش)
+    'server_flag_', // کش flag
+    'quick_home_widgets_v1', // اسلات‌های ویجت
+    'telegram_last_error', // خطا (گذرا)
+    'warp_health_endpoint_v1_', // endpoint health (per-server، از prefs read می‌شه)
+    'final_mask_winners_', // کش برنده‌ها (خودکار بازسازی می‌شه)
+    'desync_tuner_winner_', // کش برنده desync
+    'warp_scout_last_fast_v1', // کش endpoint (خودکار بازسازی)
+    'warp_scout_last_slow_v1',
+    'warp_scout_last_fast_ms',
+    'warp_scout_last_slow_ms',
   ];
 
-  /// خروجی JSON از همه کلیدها. مقادیر با پیشوند "flutter." ذخیره می‌شوند،
-  /// ولی ما بدون پیشوند برمی‌گردانیم.
-  static Future<String> export() async {
+  /// کلیدهایی که به‌طور پیش‌فرض exclude می‌شن مگر includeLogs=true.
+  static const List<String> _logKeys = <String>[
+    'connection_log_v1',
+    'quality_history_v1',
+  ];
+
+  /// خروجی JSON از همه کلیدهای قابل backup.
+  ///
+  /// [includeLogs] اگه true باشه، لاگ‌های بزرگ (connection log + quality
+  /// history) هم شامل می‌شن. پیش‌فرض false چون می‌تونه فایل رو بزرگ کنه.
+  static Future<String> export({bool includeLogs = false}) async {
     final prefs = await SharedPreferences.getInstance();
     final map = <String, dynamic>{};
-    for (final k in _keys) {
-      final v = prefs.get('flutter.$k') ?? prefs.get(k);
-      if (v != null) map[k] = v;
+
+    for (final k in prefs.getKeys()) {
+      // فقط کلیدهای flutter. (namespace Dart)
+      String bare;
+      if (k.startsWith('flutter.')) {
+        bare = k.substring('flutter.'.length);
+      } else {
+        // کلیدهای native — فقط اگه صریحاً در includeLogs باشن یا مهم باشن
+        continue;
+      }
+
+      // exclude prefix ها
+      if (_excludePrefixes.any((p) => bare.startsWith(p))) continue;
+
+      // log keys فقط با includeLogs
+      if (!includeLogs && _logKeys.contains(bare)) continue;
+
+      final v = prefs.get(k);
+      if (v != null) map[bare] = v;
     }
+
     final payload = <String, dynamic>{
-      '_version': 1,
+      '_version': 2,
       '_exportedAt': DateTime.now().toIso8601String(),
+      '_app': 'Hasan VPN',
+      '_includeLogs': includeLogs,
+      '_count': map.length,
       'data': map,
     };
     return const JsonEncoder.withIndent('  ').convert(payload);
   }
 
   /// بازیابی از JSON. مقادیر جدید جایگزین قدیمی می‌شوند.
+  ///
+  /// پشتیبانی از نسخه ۱ (که فقط لیست ثابت داشت) و نسخه ۲ (auto-discover).
   /// برمی‌گرداند: تعداد کلیدهای بازیابی‌شده.
   static Future<int> restore(String jsonText) async {
-    // FIX: try/catch typed — قبلاً jsonDecode یا throw String
-    // باعث unhandled exception در caller می‌شد.
     final dynamic decoded;
     try {
       decoded = jsonDecode(jsonText);
@@ -79,23 +93,24 @@ class BackupService {
       throw const FormatException('invalid backup: no data field');
     }
     final prefs = await SharedPreferences.getInstance();
-    int count = 0;
+    var count = 0;
     for (final entry in data.entries) {
       final k = entry.key.toString();
       final v = entry.value;
-      // همه‌ی مقادیر رو با پیشوند flutter. بنویس تا با Dart هم‌خوانی داشته باشه.
+      // حذف پیشوند flutter. اگه دوباره داشت
+      final bare = k.startsWith('flutter.') ? k : k;
       try {
         if (v is String) {
-          await prefs.setString('flutter.$k', v);
+          await prefs.setString('flutter.$bare', v);
         } else if (v is int) {
-          await prefs.setInt('flutter.$k', v);
+          await prefs.setInt('flutter.$bare', v);
         } else if (v is double) {
-          await prefs.setDouble('flutter.$k', v);
+          await prefs.setDouble('flutter.$bare', v);
         } else if (v is bool) {
-          await prefs.setBool('flutter.$k', v);
+          await prefs.setBool('flutter.$bare', v);
         } else if (v is List) {
           await prefs.setStringList(
-            'flutter.$k',
+            'flutter.$bare',
             v.map((e) => e.toString()).toList(),
           );
         }
@@ -105,8 +120,33 @@ class BackupService {
     return count;
   }
 
+  /// تعداد کلیدهای قابل backup.
+  static Future<int> backupableKeyCount({bool includeLogs = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    var count = 0;
+    for (final k in prefs.getKeys()) {
+      if (!k.startsWith('flutter.')) continue;
+      final bare = k.substring('flutter.'.length);
+      if (_excludePrefixes.any((p) => bare.startsWith(p))) continue;
+      if (!includeLogs && _logKeys.contains(bare)) continue;
+      count++;
+    }
+    return count;
+  }
+
+  /// تعداد کلیدها با پیشوند flutter.
   static Future<int> totalKeyCount() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getKeys().where((k) => k.startsWith('flutter.')).length;
+  }
+
+  /// مجموع بایت تقریبی — برای هشدار به کاربر.
+  static Future<int> estimatedBytes({bool includeLogs = false}) async {
+    try {
+      final json = await export(includeLogs: includeLogs);
+      return json.length;
+    } catch (_) {
+      return 0;
+    }
   }
 }
