@@ -211,7 +211,9 @@ class WarpService {
 
   /// اعمال license (برای WARP Plus).
   static Future<({bool ok, String? error})> applyLicense(
-      String license) async {
+      String license, {
+      String? proxySocksPort,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final deviceId = prefs.getString(_prefsKeyDeviceId);
@@ -221,6 +223,7 @@ class WarpService {
       final r = await _apiPut(
         '/reg/$deviceId/account',
         {'license': license.trim()},
+        proxySocksPort: proxySocksPort,
       );
       if (r.statusCode == 200) {
         await prefs.setString(_prefsKeyLicense, license.trim());
@@ -337,7 +340,11 @@ class WarpService {
 
       if (license != null && license.isNotEmpty) {
         try {
-          await _apiPut('/reg/$deviceId/account', {'license': license});
+          await _apiPut(
+            '/reg/$deviceId/account',
+            {'license': license},
+            proxySocksPort: proxySocksPort,
+          );
         } catch (_) {}
       }
 
@@ -385,18 +392,37 @@ class WarpService {
 
   static Future<http.Response> _apiPut(
     String path,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, {
+    String? proxySocksPort,
+  }) async {
     final url = Uri.parse('$_apiBase$path');
+    final headers = {
+      'Content-Type': 'application/json; charset=UTF-8',
+      'User-Agent': _apiUserAgent,
+      'CF-Client-Version': 'a-6.30.1',
+      'Accept': 'application/json',
+    };
+
+    if (proxySocksPort != null && proxySocksPort.isNotEmpty) {
+      final client = HttpClient();
+      client.findProxy = (u) => 'SOCKS 127.0.0.1:$proxySocksPort';
+      client.badCertificateCallback = (_, __, ___) => true;
+      try {
+        final req = await client.putUrl(url);
+        headers.forEach((k, v) => req.headers.set(k, v));
+        req.write(jsonEncode(body));
+        final res = await req.close();
+        final text = await res.transform(utf8.decoder).join();
+        client.close(force: true);
+        return http.Response(text, res.statusCode);
+      } catch (e) {
+        client.close(force: true);
+        rethrow;
+      }
+    }
+
     return await http
-        .put(url,
-            headers: {
-              'Content-Type': 'application/json; charset=UTF-8',
-              'User-Agent': _apiUserAgent,
-              'CF-Client-Version': 'a-6.30.1',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode(body))
+        .put(url, headers: headers, body: jsonEncode(body))
         .timeout(const Duration(seconds: 20));
   }
 
@@ -443,12 +469,20 @@ class WarpService {
   /// فعال‌سازی WARP Plus با license + endpoint scanner.
   static Future<({VpnServer? server, String? error})> generatePlus({
     required String license,
+    String? proxySocksPort,
     void Function(String msg)? onProgress,
   }) async {
-    final lic = await applyLicense(license);
+    final lic = await applyLicense(
+      license,
+      proxySocksPort: proxySocksPort,
+    );
     if (!lic.ok) {
       return (server: null, error: lic.error ?? 'license failed');
     }
-    return generate(plus: true, onProgress: onProgress);
+    return generate(
+      plus: true,
+      proxySocksPort: proxySocksPort,
+      onProgress: onProgress,
+    );
   }
 }

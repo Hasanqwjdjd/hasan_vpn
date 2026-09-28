@@ -12,6 +12,7 @@ import '../services/link_parser.dart';
 import '../services/psiphon_auto.dart';
 import '../services/psiphon_service.dart';
 import '../services/warp_service.dart';
+import '../services/v2ray_engine.dart';
 import '../services/master_dns_service.dart';
 import '../services/warp_masque_service.dart';
 import '../services/tor_sni_presets.dart';
@@ -2568,15 +2569,37 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       _warpProgress = _t('شروع...', 'Starting...');
     });
 
+    // FIX: اگه یه VPN فعال هست (Xray/Tor/WARP MASQUE/...)، از پورت SOCKS
+    // محلی برای register استفاده کن. بدون این، Cloudflare API روی نت
+    // ایران فیلتره و register شکست می‌خوره.
+    String? proxyPort;
+    try {
+      final p = V2RayEngine.localSocksPort;
+      if (V2RayEngine.isConnected && p > 0) {
+        proxyPort = '$p';
+      }
+    } catch (_) {}
+
+    if (plus && proxyPort == null) {
+      _showMsg(_t(
+        'برای WARP Plus باید اول یه VPN (WARP/Tor/vless) وصل باشی تا register از داخلش رد شه.',
+        'For WARP Plus you must connect a VPN first (WARP/Tor/vless) so register goes through it.',
+      ));
+      setState(() => _warpGenerating = false);
+      return;
+    }
+
     try {
       final result = plus
           ? await WarpService.generatePlus(
               license: _warpLicenseController.text.trim(),
+              proxySocksPort: proxyPort,
               onProgress: (m) {
                 if (mounted) setState(() => _warpProgress = m);
               },
             )
           : await WarpService.generate(
+              proxySocksPort: proxyPort,
               onProgress: (m) {
                 if (mounted) setState(() => _warpProgress = m);
               },
