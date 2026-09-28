@@ -629,6 +629,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final sniPoolCtrl =
         TextEditingController(text: server.tls.sniPool.join(', '));
 
+    String pingNgProfile = server.pingNgProfile ?? 'Off';
+    final pingNgArgsCtrl =
+        TextEditingController(text: server.pingNgArgs ?? '');
+
     String fp = server.tls.fingerprint ?? 'none';
     bool insecure = server.tls.allowInsecure;
     bool browserDialer = server.tls.browserDialer;
@@ -838,6 +842,73 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                     field('dialMode', dialModeCtrl),
                     field('targetStrategy', targetStratCtrl, hint: 'AsIs'),
+
+                    const SizedBox(height: 12),
+                    Text(_t('PingNG Desync (دور زدن DPI)', 'PingNG Desync (DPI bypass)'),
+                        style: TextStyle(
+                            color: AppColors.accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        _t(
+                          'Split/Disorder/FakeSNI روی ClientHello — بدون root. موتور native داخل libPingNG.so اجرا می‌شه و ترافیک از یک SOCKS5 لوکال رد می‌شه.',
+                          'Split/Disorder/FakeSNI on ClientHello — no root required. A native engine inside libPingNG.so exposes a local SOCKS5 that Xray dials through.',
+                        ),
+                        style: TextStyle(
+                            color: AppColors.muted2(ctx),
+                            fontSize: 10,
+                            height: 1.4),
+                      ),
+                    ),
+                    DropdownButtonFormField<String>(
+                      value: pingNgProfile,
+                      dropdownColor: AppColors.elevated(ctx),
+                      style: TextStyle(color: AppColors.fg(ctx), fontSize: 13),
+                      decoration: InputDecoration(
+                        labelText: _t('حالت Desync', 'Desync mode'),
+                        labelStyle:
+                            TextStyle(color: AppColors.muted(ctx), fontSize: 12),
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'Off', child: Text('Off')),
+                        DropdownMenuItem(value: 'Light', child: Text('Light')),
+                        DropdownMenuItem(value: 'Balanced', child: Text('Balanced')),
+                        DropdownMenuItem(value: 'Severe', child: Text('Severe')),
+                        DropdownMenuItem(value: 'Adaptive', child: Text('Adaptive')),
+                        DropdownMenuItem(value: 'Custom', child: Text('Custom')),
+                      ],
+                      onChanged: (v) =>
+                          setLocal(() => pingNgProfile = v ?? 'Off'),
+                    ),
+                    if (pingNgProfile == 'Custom') ...[
+                      const SizedBox(height: 6),
+                      field(
+                        _t('آرگومان سفارشی ciadpi', 'Custom ciadpi arguments'),
+                        pingNgArgsCtrl,
+                        maxLines: 3,
+                        hint: '--proto=tls --split 1+s --tlsrec 1+s --disorder 3+s --fake -1 --ttl 8',
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          _t(
+                            'فرمت ciadpi: --split، --split-range، --disorder، --fake، --oob، --disoob، --tlsrec، --tls-sni، --ttl، --delay-range و ...',
+                            'ciadpi grammar: --split, --split-range, --disorder, --fake, --oob, --disoob, --tlsrec, --tls-sni, --ttl, --delay-range, ...',
+                          ),
+                          style: TextStyle(
+                              color: AppColors.muted2(ctx),
+                              fontSize: 10,
+                              height: 1.4),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -863,6 +934,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   'dialMode': dialModeCtrl.text.trim(),
                   'browserDialer': browserDialer,
                   'targetStrategy': targetStratCtrl.text.trim(),
+                  'pingNgProfile': pingNgProfile,
+                  'pingNgArgs': pingNgProfile == 'Custom'
+                      ? pingNgArgsCtrl.text.trim()
+                      : null,
                   'dns': dnsCtrl.text.trim(),
                 }),
                 child: Text(_t('ذخیره', 'Save'),
@@ -906,11 +981,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
 
       final newDns = (result['dns'] as String?)?.trim() ?? '';
+      final newPingProfile = (result['pingNgProfile'] as String?)?.trim();
+      final newPingArgs = (result['pingNgArgs'] as String?)?.trim();
+
       final updated = server.copyWith(
         name: newName.isNotEmpty ? newName : null,
         nameOverride: newName.isNotEmpty ? newName : null,
         tls: newTls,
         dns: newDns.isEmpty ? null : newDns,
+        pingNgProfile: (newPingProfile == null || newPingProfile.isEmpty)
+            ? 'Off'
+            : newPingProfile,
+        pingNgArgs: (newPingArgs == null || newPingArgs.isEmpty)
+            ? null
+            : newPingArgs,
       );
 
       // آپدیت sniOrHost (nullable final است؛ مستقیم ست می‌کنیم)
@@ -947,6 +1031,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       targetStratCtrl.dispose();
       dnsCtrl.dispose();
       sniPoolCtrl.dispose();
+      pingNgArgsCtrl.dispose();
     }
   }
 
