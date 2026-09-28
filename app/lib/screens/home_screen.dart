@@ -2376,6 +2376,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  /// callback زنده‌ی اسکن MASQUE — status رو از داخل دیالوگ آپدیت می‌کنه.
+  void _onMasqueScanProgress() {
+    if (!mounted) return;
+    // فقط وقتی در حال اتصال هستیم
+    if (!_connecting) return;
+    final s = WarpMasqueService.scanProgress.value;
+    if (s.phase.isEmpty) return;
+    final detail = s.endpoint.isNotEmpty
+        ? '${s.phase} · ${s.endpoint}${s.ms > 0 ? " · ${s.ms}ms" : ""}'
+        : s.phase;
+    if (detail == _status) return;
+    setState(() => _status = detail);
+  }
+
   void _onWarpMasqueRoutingChanged() {
     if (!mounted) return;
     if (WarpMasqueSessionService.instance.anyRouting && _connected) {
@@ -5435,6 +5449,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _autoFastestTimer?.cancel();
+    try {
+      WarpMasqueService.scanProgress.removeListener(_onMasqueScanProgress);
+    } catch (_) {}
     ConnectivityWatcher.instance.stop();
     try {
       TorSessionService.instance.routingCount
