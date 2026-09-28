@@ -12,6 +12,7 @@ import '../services/link_parser.dart';
 import '../services/psiphon_auto.dart';
 import '../services/psiphon_service.dart';
 import '../services/warp_service.dart';
+import '../services/warp_endpoint_tester.dart';
 import '../services/v2ray_engine.dart';
 import '../services/master_dns_service.dart';
 import '../services/warp_masque_service.dart';
@@ -96,6 +97,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _warpLicenseController = TextEditingController();
   bool _warpGenerating = false;
   String _warpProgress = '';
+  WarpEndpointMode _warpMode = WarpEndpointMode.fast;
+  final TextEditingController _warpCustomEndpointCtrl = TextEditingController();
 
   // MasterDNS
   final TextEditingController _mdnsDomainController = TextEditingController();
@@ -2575,6 +2578,19 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
+  String _warpModeLabel(WarpEndpointMode mode) {
+    switch (mode) {
+      case WarpEndpointMode.fast:
+        return _t('Fast (~3 ثانیه)', 'Fast (~3s)');
+      case WarpEndpointMode.medium:
+        return _t('Medium (~15 ثانیه)', 'Medium (~15s)');
+      case WarpEndpointMode.slow:
+        return _t('Slow (~60 ثانیه)', 'Slow (~60s)');
+      case WarpEndpointMode.custom:
+        return _t('Custom (دستی)', 'Custom (manual)');
+    }
+  }
+
   Future<void> _generateWarp({bool plus = false}) async {
     if (_warpGenerating) return;
 
@@ -2612,6 +2628,17 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     }
 
     try {
+      final custom = _warpMode == WarpEndpointMode.custom
+          ? _warpCustomEndpointCtrl.text.trim()
+          : null;
+      if (_warpMode == WarpEndpointMode.custom &&
+          (custom == null || custom.isEmpty)) {
+        _showMsg(_t('endpoint سفارشی رو وارد کن',
+            'Enter a custom endpoint'));
+        setState(() => _warpGenerating = false);
+        return;
+      }
+
       final result = plus
           ? await WarpService.generatePlus(
               license: _warpLicenseController.text.trim(),
@@ -2622,6 +2649,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             )
           : await WarpService.generate(
               proxySocksPort: proxyPort,
+              mode: _warpMode,
+              customEndpoint: custom,
               onProgress: (m) {
                 if (mounted) setState(() => _warpProgress = m);
               },
@@ -2688,9 +2717,22 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     }
 
     try {
+      final custom = _warpMode == WarpEndpointMode.custom
+          ? _warpCustomEndpointCtrl.text.trim()
+          : null;
+      if (_warpMode == WarpEndpointMode.custom &&
+          (custom == null || custom.isEmpty)) {
+        _showMsg(_t('endpoint سفارشی رو وارد کن',
+            'Enter a custom endpoint'));
+        setState(() => _warpGenerating = false);
+        return;
+      }
+
       final result = await WarpService.generatePlusChain(
         license: lic,
         proxySocksPort: proxyPort,
+        mode: _warpMode,
+        customEndpoint: custom,
         onProgress: (m) {
           if (mounted) setState(() => _warpProgress = m);
         },
@@ -4465,6 +4507,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
 
   @override
   void dispose() {
+    _warpCustomEndpointCtrl.dispose();
     _linkController.dispose();
     _psiphonSponsorController.dispose();
     _psiphonChannelController.dispose();
