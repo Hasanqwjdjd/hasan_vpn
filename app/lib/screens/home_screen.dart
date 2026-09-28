@@ -4309,36 +4309,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           final desyncOn = PingNgArgs.isEnabled(server.pingNgProfile);
           int desyncPort = 0;
           if (desyncOn) {
-            final args = PingNgArgs.build(
-              profile: server.pingNgProfile,
-              customArgs: server.pingNgArgs,
-              port: 0,
-            );
-            if (args != null && args.isNotEmpty) {
-              try {
-                final probe = await ServerSocket.bind(
-                    InternetAddress.loopbackIPv4, 0);
-                desyncPort = probe.port;
-                await probe.close();
-                final base = <String>[];
-                for (var i = 0; i < args.length; i++) {
-                  if (args[i] == '--port' && i + 1 < args.length) {
-                    base.add('--port');
-                    base.add(desyncPort.toString());
-                    i++;
-                  } else {
-                    base.add(args[i]);
-                  }
-                }
+            try {
+              final probe = await ServerSocket.bind(
+                  InternetAddress.loopbackIPv4, 0);
+              final candidatePort = probe.port;
+              await probe.close();
+              final args = PingNgArgs.build(
+                profile: server.pingNgProfile,
+                customArgs: server.pingNgArgs,
+                port: candidatePort,
+                udpDesync: server.pingNgUdpDesync,
+              );
+              if (args != null && args.isNotEmpty) {
                 final bound = await DesyncService.start(
-                  args: base,
-                  port: desyncPort,
+                  args: args,
+                  port: candidatePort,
                 );
-                if (bound == null) desyncPort = 0;
-              } catch (e) {
-                debugPrint('desync-for-masque failed: $e');
-                desyncPort = 0;
+                if (bound != null) desyncPort = bound;
               }
+            } catch (e) {
+              debugPrint('desync-for-masque failed: $e');
+              desyncPort = 0;
             }
           }
 
