@@ -103,6 +103,17 @@ class XraySettings {
     'httpInbound': false,
     'httpPort': 10809,
     'socksPort': 10808,
+
+    // ---- TCP MSS clamp (BackPack-derived) ----
+    // Some paths drop packets larger than their real MTU without sending
+    // the ICMP that would say so: the handshake fits, so the tunnel looks
+    // healthy while every large transfer stalls on the first full segment.
+    // Setting tcpMss on Xray's sockopt makes the kernel advertise a smaller
+    // MSS so the peer sends smaller segments. Off by default - only set it
+    // when something measured the path and told you to.
+    //   value: 0 = auto (mtu - 40 for IPv4). Valid range 524-1460.
+    'mssClampEnable': false,
+    'mssClampValue': 0,
   };
 
   static Future<Map<String, dynamic>> load() async {
@@ -564,7 +575,36 @@ class XraySettings {
         });
       }
 
-      if (settings['fragmentEnable'] == true) {
+      // TCP MSS clamp (BackPack-derived). Applies only to TCP-segment
+    // transports - a datagram transport (kcp/quic) sizes its packets
+    // with its own MTU and must not be clamped here.
+    if (settings['mssClampEnable'] == true) {
+      final rawMss = (settings['mssClampValue'] as num?)?.toInt() ?? 0;
+      final mtuNow = (settings['mtu'] as num?)?.toInt() ?? 1500;
+      int mss = rawMss;
+      if (mss <= 0) {
+        // Auto: MTU minus 40 (IPv4 header 20 + TCP header 20).
+        mss = mtuNow - 40;
+      }
+      if (mss < 524) mss = 524;
+      if (mss > 1460) mss = 1460;
+      _applyToOutbounds(map, (ob) {
+        final stream = Map<String, dynamic>.from(
+            ob['streamSettings'] as Map? ?? {});
+        final network = (stream['network']?.toString() ?? 'tcp')
+            .toLowerCase();
+        // Skip datagram transports - they are sized by KCP/QUIC MTU,
+        // not by a TCP MSS clamp.
+        if (network == 'kcp' || network == 'quic') return;
+        final sockopt =
+            Map<String, dynamic>.from(stream['sockopt'] as Map? ?? {});
+        sockopt['tcpMss'] = mss;
+        stream['sockopt'] = sockopt;
+        ob['streamSettings'] = stream;
+      });
+    }
+
+    if (settings['fragmentEnable'] == true) {
         final frag = <String, dynamic>{
           'packets': settings['fragmentPackets']?.toString() ?? 'tlshello',
           'length': settings['fragmentLength']?.toString() ?? '100-200',

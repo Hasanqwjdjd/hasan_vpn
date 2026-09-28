@@ -323,6 +323,19 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                         'اندازهٔ بستهٔ شبکه. ۱۴۰۰–۱۵۰۰ معمولاً پایدار؛ کمتر برای نت‌های PPTP یا همراه‌های محدودکننده.',
                     subEn:
                         'Packet size. 1400–1500 usually stable; lower for PPTP/restricted mobile nets.'),
+                _sw('mssClampEnable', 'محدودسازی MSS (TCP)',
+                    'TCP MSS clamp',
+                    subFa:
+                        'برای مسیرهایی که پکت بزرگ را بی‌صدا دور می‌ریزند: handshake رد می‌شود ولی هر دانلود واقعی روی اولین سگمنت کامل گیر می‌کند. مقدار باید روی هر دو طرف یکی باشد.',
+                    subEn:
+                        'For paths that silently drop large packets: handshake passes, every real transfer stalls on the first full segment. Set the same value on both ends.'),
+                _numField('mssClampValue', 'مقدار MSS (۰=خودکار)',
+                    'MSS value (0=auto)',
+                    min: 0, max: 1460,
+                    subFa:
+                        '۰ یعنی auto: MTU منهای ۴۰. محدودهٔ معتبر ۵۲۴ تا ۱۴۶۰.',
+                    subEn:
+                        '0 means auto: MTU minus 40. Valid range is 524 to 1460.'),
                 _sw('useHevTun', 'استفاده از Hev TUN', 'Use Hev TUN',
                     subFa: 'hev-socks5-tunnel به‌جای xray TUN',
                     subEn: 'hev-socks5-tunnel instead of xray TUN'),
