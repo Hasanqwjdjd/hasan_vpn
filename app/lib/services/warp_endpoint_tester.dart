@@ -273,9 +273,14 @@ class WarpEndpointTester {
         ratePerSecond = 3500;
         break;
       case WarpEndpointMode.slow:
+        // Slow: نمونه‌گیری هوشمند — همون کاری که PingNG WARPSCOUT می‌کنه:
+        // ۱. ابتدا نمونه‌ای از hosts×extended ports
+        // ۲. اگه پورتی جواب داد، extended sweep فقط برای همون پورت
+        // ۳. اگه پورتی جواب نداد، همه ports از زیرمجموعه محدود
         pool = WarpEndpointScanner.buildPool(
           subnets: _primarySubnets,
           ports: [..._primaryPorts, ..._extendedPorts],
+          sampleHostsPerSubnet: 64,
         );
         workers = 256;
         timeoutMs = 350;
