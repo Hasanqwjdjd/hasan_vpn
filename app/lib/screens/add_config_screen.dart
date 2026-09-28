@@ -100,6 +100,10 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   String _warpProgress = '';
   WarpEndpointMode _warpMode = WarpEndpointMode.fast;
   final TextEditingController _warpCustomEndpointCtrl = TextEditingController();
+  // WARP Plus دستی: کلید outer و inner به‌شکل vpn:// link
+  final TextEditingController _warpPlusOuterLinkCtrl = TextEditingController();
+  final TextEditingController _warpPlusInnerLinkCtrl = TextEditingController();
+
 
   // MasterDNS
   final TextEditingController _mdnsDomainController = TextEditingController();
@@ -2634,6 +2638,28 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
           ),
         ),
 
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          height: 46,
+          child: OutlinedButton.icon(
+            onPressed: _warpGenerating
+                ? null
+                : () => _showManualPlusChainDialog(),
+            icon: const Icon(Icons.build_circle_outlined, size: 18),
+            label: Text(
+                _t('WARP+ 2-hop دستی (با کلید خودت)',
+                    'WARP+ 2-hop manual (own keys)')),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: color,
+              side: BorderSide(color: color),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+
         const SizedBox(height: 14),
         Center(
           child: TextButton.icon(
@@ -4647,6 +4673,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   @override
   void dispose() {
     _warpCustomEndpointCtrl.dispose();
+    _warpPlusOuterLinkCtrl.dispose();
+    _warpPlusInnerLinkCtrl.dispose();
     _linkController.dispose();
     _psiphonSponsorController.dispose();
     _psiphonChannelController.dispose();
