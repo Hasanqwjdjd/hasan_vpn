@@ -327,7 +327,7 @@ class WarpShareCodec {
         'c': payloads.length.toString(),
       };
       for (var i = 0; i < payloads.length; i++) {
-        q['h\${i}'] = _b64(payloads[i]);
+        q['h${i}'] = _b64(payloads[i]);
       }
       return Uri(
         scheme: 'hasan-warp',
@@ -349,7 +349,7 @@ class WarpShareCodec {
       final count = int.tryParse(countStr) ?? 0;
       if (count < 2 || count > 8) return null;
       for (var i = 0; i < count; i++) {
-        final payload = _unb64(q['h\${i}'] ?? '');
+        final payload = _unb64(q['h${i}'] ?? '');
         if (payload == null) return null;
         final link = _wgPayloadToVpnLink(payload);
         if (link == null) return null;
