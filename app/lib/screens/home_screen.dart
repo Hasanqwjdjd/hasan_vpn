@@ -4835,6 +4835,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           final dns = (q['dns'] ?? '1.1.1.1,1.0.0.1').trim();
           final h2 = (q['h2'] ?? '1') == '1';
           final candidates = (q['candidates'] ?? q['cn'] ?? '').trim();
+          final deviceName = (q['device'] ?? q['dn'] ?? 'Hasan-VPN').trim();
           if (endpoint.isEmpty) {
             _showMsg(_t('WARP MASQUE: endpoint ناقصه',
                 'WARP MASQUE: endpoint missing'));
@@ -4886,6 +4887,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             http2: h2,
             desyncEnabled: desyncPort > 0,
             desyncSocksPort: desyncPort,
+            deviceName: deviceName.isEmpty ? 'Hasan-VPN' : deviceName,
           );
           return;
         }

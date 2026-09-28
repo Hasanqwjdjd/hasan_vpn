@@ -77,6 +77,7 @@ class WarpMasqueSessionService {
     bool http2 = true,
     bool desyncEnabled = false,
     int desyncSocksPort = 0,
+    String deviceName = 'Hasan-VPN',
   }) async {
     if (_activeServerId != null && _activeServerId != serverId) {
       await disconnect();
@@ -99,6 +100,7 @@ class WarpMasqueSessionService {
       http2: http2,
       desyncEnabled: desyncEnabled,
       desyncSocksPort: desyncSocksPort,
+      deviceName: deviceName,
     );
 
     if (!ok) {

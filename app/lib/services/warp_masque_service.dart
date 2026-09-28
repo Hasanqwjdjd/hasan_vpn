@@ -105,6 +105,7 @@ class WarpMasqueService {
     bool http2 = true,
     bool desyncEnabled = false,
     int desyncSocksPort = 0,
+    String deviceName = 'Hasan-VPN',
     Duration timeout = const Duration(seconds: 90),
   }) async {
     _ensureListener();
@@ -120,6 +121,7 @@ class WarpMasqueService {
         'http2': http2,
         'desyncEnabled': desyncEnabled,
         'desyncSocksPort': desyncSocksPort,
+        'deviceName': deviceName.trim(),
       });
       if (ok != true) {
         lastError = 'start() returned false';
