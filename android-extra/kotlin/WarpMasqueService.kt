@@ -520,18 +520,81 @@ class WarpMasqueService : Service() {
     }
 
     /** یک warmup SOCKS5 CONNECT که handshake واقعی رو ایجاد می‌کند. */
+    /**
+     * Warmup + real HTTP probe از داخل MASQUE.
+     *
+     * برخلاف نسخه قبلی که فقط CONNECT می‌زد، این نسخه یک درخواست HTTP
+     * واقعی به cp.cloudflare.com می‌فرسته و منتظر 204 می‌مونه. اگه
+     * data-plane کار نکنه، response نمی‌رسه و endpoint رد می‌شه.
+     */
     private fun openWarmupSocks(port: Int): Socket? = runCatching {
-        Socket().also { s ->
-            s.soTimeout = 2500
+        val s = Socket()
+        try {
+            s.soTimeout = 3000
             s.connect(InetSocketAddress("127.0.0.1", port), 2500)
             val i = s.getInputStream()
             val o = s.getOutputStream()
+
+            // ۱) SOCKS5 greeting
             o.write(byteArrayOf(0x05, 0x01, 0x00)); o.flush()
             val hello = ByteArray(2); readFully(i, hello)
             check(hello[0].toInt() == 5 && hello[1].toInt() == 0)
-            // CONNECT به 1.1.1.1:443
-            o.write(byteArrayOf(0x05, 0x01, 0x00, 0x01, 1, 1, 1, 1, 0x01, 0xBB.toByte()))
-            o.flush()
+
+            // ۲) CONNECT به cp.cloudflare.com:80 (hostname نه IP)
+            val host = "cp.cloudflare.com"
+            val hostBytes = host.toByteArray(Charsets.US_ASCII)
+            val req = ByteArray(7 + hostBytes.size)
+            req[0] = 0x05; req[1] = 0x01; req[2] = 0x00
+            req[3] = 0x03 // domain
+            req[4] = hostBytes.size.toByte()
+            System.arraycopy(hostBytes, 0, req, 5, hostBytes.size)
+            req[5 + hostBytes.size] = 0x00  // port hi
+            req[6 + hostBytes.size] = 0x50  // port lo = 80
+            o.write(req); o.flush()
+
+            // ۳) SOCKS5 reply
+            val rep = ByteArray(4); readFully(i, rep)
+            check(rep[0].toInt() == 5 && rep[1].toInt() == 0) {
+                "SOCKS5 CONNECT failed: ${rep[1].toInt() and 0xff}"
+            }
+            val addrLen = when (rep[3].toInt() and 0xff) {
+                0x01 -> 4
+                0x04 -> 16
+                0x03 -> i.read().also { check(it >= 0) }
+                else -> error("bad addr type")
+            }
+            // skip bnd.addr + port
+            var skip = addrLen + 2
+            while (skip > 0) {
+                val n = i.read(ByteArray(skip), 0, skip)
+                if (n <= 0) error("EOF while skipping bnd.addr")
+                skip -= n
+            }
+
+            // ۴) HTTP GET — واقعی
+            val http = "GET /generate_204 HTTP/1.1\r\n" +
+                "Host: $host\r\n" +
+                "User-Agent: HasanVPN-MASQUE-Probe/1.0\r\n" +
+                "Accept: */*\r\n" +
+                "Connection: close\r\n\r\n"
+            o.write(http.toByteArray(Charsets.US_ASCII)); o.flush()
+
+            // ۵) خواندن اولین بایت‌ها از پاسخ
+            val buf = ByteArray(64)
+            val n = i.read(buf, 0, buf.size)
+            check(n > 0) { "no HTTP response" }
+            val head = String(buf, 0, n, Charsets.ISO_8859_1)
+            // پاسخ معتبر باید با HTTP/ شروع بشه
+            check(head.startsWith("HTTP/")) {
+                "not HTTP: ${head.take(40)}"
+            }
+            Log.i(TAG, "MASQUE HTTP probe OK on port $port: ${head.take(40)}")
+
+            s.soTimeout = 0  // ریست برای استفاده بعدی
+            s
+        } catch (e: Throwable) {
+            runCatching { s.close() }
+            throw e
         }
     }.getOrNull()
 
