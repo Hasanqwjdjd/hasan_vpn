@@ -31,6 +31,210 @@ class _ConnectionLogScreenState extends State<ConnectionLogScreen> {
     return _entries.where((e) => e.type == _filterType).toList();
   }
 
+  /// آمار خلاصه از لاگ.
+  _ConnectionStats get _stats {
+    var connectCount = 0;
+    var disconnectCount = 0;
+    var errorCount = 0;
+    final durations = <Duration>[];
+    DateTime? lastConnect;
+
+    // _entries new به old مرتب شدن (اول جدیدترین)
+    // برای محاسبه duration باید از قدیم به جدید iterate کنیم
+    final sorted = List<ConnectionLogEntry>.from(_entries)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    for (final e in sorted) {
+      switch (e.type) {
+        case 'connect':
+          connectCount++;
+          lastConnect = e.timestamp;
+          break;
+        case 'disconnect':
+          disconnectCount++;
+          if (lastConnect != null) {
+            durations.add(e.timestamp.difference(lastConnect));
+            lastConnect = null;
+          }
+          break;
+        case 'error':
+          errorCount++;
+          break;
+      }
+    }
+
+    Duration? avgDuration;
+    Duration? maxDuration;
+    if (durations.isNotEmpty) {
+      var totalMs = 0;
+      var maxMs = 0;
+      for (final d in durations) {
+        totalMs += d.inMilliseconds;
+        if (d.inMilliseconds > maxMs) maxMs = d.inMilliseconds;
+      }
+      avgDuration = Duration(milliseconds: totalMs ~/ durations.length);
+      maxDuration = Duration(milliseconds: maxMs);
+    }
+
+    return _ConnectionStats(
+      total: _entries.length,
+      connectCount: connectCount,
+      disconnectCount: disconnectCount,
+      errorCount: errorCount,
+      sessionsCompleted: durations.length,
+      avgDuration: avgDuration,
+      maxDuration: maxDuration,
+    );
+  }
+
+  Widget _buildStatsCard() {
+    if (_entries.isEmpty) return const SizedBox.shrink();
+    final stats = _stats;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.analytics_outlined,
+                  color: AppColors.accent, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                _t('آمار اتصال', 'Connection stats'),
+                style: TextStyle(
+                  color: AppColors.fg(context),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _statChip(
+                _t('کل', 'Total'),
+                '${stats.total}',
+                AppColors.muted(context),
+              ),
+              _statChip(
+                _t('اتصال', 'Connect'),
+                '${stats.connectCount}',
+                AppColors.accent,
+              ),
+              _statChip(
+                _t('قطع', 'Disconnect'),
+                '${stats.disconnectCount}',
+                AppColors.warn,
+              ),
+              if (stats.errorCount > 0)
+                _statChip(
+                  _t('خطا', 'Errors'),
+                  '${stats.errorCount}',
+                  AppColors.danger,
+                ),
+            ],
+          ),
+          if (stats.avgDuration != null) ...[
+            const SizedBox(height: 10),
+            Divider(color: AppColors.border(context), height: 1),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _durationCell(
+                    _t('میانگین session', 'Avg session'),
+                    _formatDuration(stats.avgDuration!),
+                  ),
+                ),
+                Expanded(
+                  child: _durationCell(
+                    _t('بلندترین', 'Longest'),
+                    _formatDuration(stats.maxDuration ?? Duration.zero),
+                  ),
+                ),
+                Expanded(
+                  child: _durationCell(
+                    _t('سشن‌ها', 'Sessions'),
+                    '${stats.sessionsCompleted}',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _statChip(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.4), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$label: ',
+            style: TextStyle(color: AppColors.muted2(context), fontSize: 10),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _durationCell(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            color: AppColors.fg(context),
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style:
+              TextStyle(color: AppColors.muted2(context), fontSize: 10),
+        ),
+      ],
+    );
+  }
+
+  String _formatDuration(Duration d) {
+    if (d.inHours > 0) {
+      return '${d.inHours}h ${d.inMinutes % 60}m';
+    }
+    if (d.inMinutes > 0) {
+      return '${d.inMinutes}m ${d.inSeconds % 60}s';
+    }
+    return '${d.inSeconds}s';
+  }
+
   Widget _buildFilterRow() {
     final filterLabels = <String, String>{
       'all': _t('همه', 'All'),
@@ -192,6 +396,7 @@ class _ConnectionLogScreenState extends State<ConnectionLogScreen> {
                   )
                 : Column(
                     children: [
+                      _buildStatsCard(),
                       _buildFilterRow(),
                       Expanded(
                         child: ListView.builder(
@@ -287,4 +492,25 @@ class _ConnectionLogScreenState extends State<ConnectionLogScreen> {
       ),
     );
   }
+
+
+class _ConnectionStats {
+  final int total;
+  final int connectCount;
+  final int disconnectCount;
+  final int errorCount;
+  final int sessionsCompleted;
+  final Duration? avgDuration;
+  final Duration? maxDuration;
+
+  const _ConnectionStats({
+    required this.total,
+    required this.connectCount,
+    required this.disconnectCount,
+    required this.errorCount,
+    required this.sessionsCompleted,
+    this.avgDuration,
+    this.maxDuration,
+  });
+}
 }
