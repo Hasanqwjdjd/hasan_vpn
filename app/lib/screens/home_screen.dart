@@ -249,6 +249,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WarpScoutScheduler.instance.onRescanNeeded = _onSchedulerRescan;
     // ignore: unawaited_futures
     WarpScoutScheduler.instance.restore();
+    // Batch test auto-run
+    _maybeAutoBatchOnStart();
 
     await _loadDeletedAndPinned();
     await _loadUiSettings();
@@ -2843,6 +2845,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     });
     _savePings();
+  }
+
+  /// اگه کاربر auto-batch رو فعال کرده، بعد از ۵ ثانیه اجرا کن.
+  Future<void> _maybeAutoBatchOnStart() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool('batch_auto_v1') ?? false;
+      if (!enabled) return;
+      // تأخیر تا UI کامپایل بشه
+      await Future<void>.delayed(const Duration(seconds: 5));
+      if (!mounted) return;
+      if (_batchRunning) return;
+      // ignore: unawaited_futures
+      _runWarpBatchTest();
+    } catch (_) {}
   }
 
   /// تست دسته‌ای چند سرور WARP/WARP+/MASQUE به‌صورت موازی.
