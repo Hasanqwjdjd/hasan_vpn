@@ -471,6 +471,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     String currentLabel = '';
     bool cancelled = false;
     bool advanced = false;
+    bool udpOnly = false;
 
     Future<void> showProgressDialog() async {
       if (!mounted) return;
@@ -576,6 +577,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ],
                     ),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: udpOnly,
+                          onChanged: (v) {
+                            setDlg(() => udpOnly = v ?? false);
+                          },
+                          activeColor: AppColors.accent,
+                        ),
+                        Expanded(
+                          child: Text(
+                            _t('حالت UDP (Hysteria2/QUIC)',
+                                'UDP mode (Hysteria2/QUIC)'),
+                            style: TextStyle(
+                                color: AppColors.muted2(dCtx), fontSize: 11),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -606,6 +626,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         server,
         advancedProvider: () => advanced,
         isCancelled: () => cancelled,
+        udpOnly: udpOnly,
         onProgress: (idx, t, c) {
           currentIdx = idx;
           total = t;
