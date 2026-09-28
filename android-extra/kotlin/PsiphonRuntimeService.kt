@@ -426,7 +426,7 @@ class PsiphonRuntimeService : Service() {
         return root.toString()
     }
 
-    private fun applyTunnelProtocolMode(root: JsonObject, mode: String) {
+    private fun applyTunnelProtocolMode(root: JSONObject, mode: String) {
         val normalized = mode.trim().lowercase(Locale.ROOT)
         val protocols = when (normalized) {
             "cdn" -> CDN_TUNNEL_PROTOCOLS
@@ -438,7 +438,7 @@ class PsiphonRuntimeService : Service() {
     }
 
     private fun addCdnFrontingConfig(
-        root: JsonObject,
+        root: JSONObject,
         mode: String,
         cdnIps: String,
         cdnSni: String,
