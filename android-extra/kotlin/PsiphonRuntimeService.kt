@@ -64,6 +64,7 @@ class PsiphonRuntimeService : Service() {
         const val EXTRA_STATE = "psiphon_state"
         const val EXTRA_SOCKS_PORT = "psiphon_socks_port"
         const val EXTRA_MESSAGE = "psiphon_message"
+        const val EXTRA_CONFIG_JSON = "psiphon_config_json"
 
         // Psiphon is always chained through Hasan's local HTTP upstream.
         val CHAINED_TUNNEL_PROTOCOLS = listOf(
@@ -109,8 +110,9 @@ class PsiphonRuntimeService : Service() {
                 val cdnSni = intent.getStringExtra(EXTRA_CDN_SNI).orEmpty()
                 val cdnSets = intent.getStringExtra(EXTRA_CDN_SETS).orEmpty()
                 val upstreamPort = intent.getIntExtra(EXTRA_UPSTREAM_PORT, 0)
-                if (guid.isNotBlank() && upstreamPort in 1..65535) {
-                    startRuntime(guid, region, mode, cdnIps, cdnSni, cdnSets, upstreamPort)
+                val configJson = intent.getStringExtra(EXTRA_CONFIG_JSON).orEmpty()
+                if (guid.isNotBlank()) {
+                    startRuntime(guid, region, mode, cdnIps, cdnSni, cdnSets, upstreamPort, configJson)
                 } else {
                     emit(PsiphonStatus.FAILED, guid, message = "Invalid Psiphon startup parameters")
                     stopSelf(startId)
@@ -139,6 +141,7 @@ class PsiphonRuntimeService : Service() {
         cdnSni: String,
         cdnSets: String,
         upstreamPort: Int,
+        configJson: String,
     ) {
         if (tunnel != null || starting.get()) {
             stopRuntime()
@@ -149,7 +152,7 @@ class PsiphonRuntimeService : Service() {
         emit(PsiphonStatus.CONNECTING, guid)
         Thread {
             try {
-                startInternal(guid, region, mode, cdnIps, cdnSni, cdnSets, upstreamPort)
+                startInternal(guid, region, mode, cdnIps, cdnSni, cdnSets, upstreamPort, configJson)
             } catch (error: Throwable) {
                 val cause = unwrapInvocation(error)
                 Log.e(TAG, "Psiphon start failed", cause)
@@ -170,6 +173,7 @@ class PsiphonRuntimeService : Service() {
         cdnSni: String,
         cdnSets: String,
         upstreamPort: Int,
+        configJson: String,
     ) {
         bindToUnderlyingNetwork()
         cleanupStaleRuntimeDirectories()
@@ -195,7 +199,11 @@ class PsiphonRuntimeService : Service() {
 
         val tunnelClass = loader.loadClass("ca.psiphon.PsiphonTunnel")
         val hostClass = loader.loadClass("ca.psiphon.PsiphonTunnel\$HostService")
-        val config = buildConfig(region, mode, cdnIps, cdnSni, cdnSets, upstreamPort)
+        val config = if (configJson.isNotBlank()) {
+            mergeRuntimePaths(configJson, upstreamPort)
+        } else {
+            buildConfig(region, mode, cdnIps, cdnSni, cdnSets, upstreamPort)
+        }
         val entries = assets.open(ENTRIES_ASSET).bufferedReader().use { it.readText() }
         val host = Proxy.newProxyInstance(
             loader,
