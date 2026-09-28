@@ -201,6 +201,10 @@ jobs:
           cp -f android-extra/kotlin/NotificationHelper.kt "$KT_DIR/NotificationHelper.kt"
           cp -f android-extra/kotlin/MasterDnsService.kt "$KT_DIR/MasterDnsService.kt"
           cp -f android-extra/kotlin/WarpMasqueService.kt "$KT_DIR/WarpMasqueService.kt"
+          cp -f android-extra/kotlin/DesyncEngine.kt "$KT_DIR/DesyncEngine.kt"
+          CORE_DIR="build_src/android/app/src/main/kotlin/com/v2ray/ang/core"
+          mkdir -p "$CORE_DIR"
+          cp -f android-extra/kotlin/PingNGProxy.kt "$CORE_DIR/PingNGProxy.kt"
           if [ -d android-extra/psiphon ] && [ "$(find android-extra/psiphon -name '*.aar' | wc -l)" -gt 0 ]; then
             echo "Using real Psiphon AAR"
             cp -f android-extra/kotlin/PsiphonService.kt "$KT_DIR/PsiphonService.kt"

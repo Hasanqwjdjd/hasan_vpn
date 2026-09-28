@@ -21,6 +21,7 @@ class MainActivity : FlutterActivity() {
     private val logsChannel = "com.hasan.hasan_vpn/logs"
     private val masterDnsChannelName = "com.hasan.hasan_vpn/masterdns"
     private val warpMasqueChannelName = "com.hasan.hasan_vpn/warpmasque"
+    private val desyncChannelName = "com.hasan.hasan_vpn/desync"
 
     private var widgetChannelRef: MethodChannel? = null
 
