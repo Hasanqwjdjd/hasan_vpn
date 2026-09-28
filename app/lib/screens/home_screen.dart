@@ -32,6 +32,8 @@ import '../services/warp_masque_session_service.dart';
 import '../services/warp_masque_service.dart';
 import '../services/warp_service.dart';
 import '../services/warp_endpoint_health_monitor.dart';
+import '../services/connection_quality.dart';
+import '../widgets/quality_badge.dart';
 import '../services/warp_cache_codec.dart';
 import '../services/geo_assets_service.dart';
 import '../services/xray_settings.dart';
@@ -120,6 +122,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _autoReconnectRunning = false;
   bool _autoFailoverRunning = false;
   bool _autoFailoverEnabled = false;
+  final QualityMonitor _qualityMonitor = QualityMonitor();
   DateTime? _lastConnectTime;
   VoidCallback? _finalMaskDialogRefresh;
   List<String> _manualOrder = <String>[];
@@ -3188,6 +3191,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         active.status = ServerStatus.online;
       }
     });
+    // افزودن نمونه به مانیتور کیفیت
+    if (result.ok) {
+      _qualityMonitor.addSample(
+        pingMs: result.ms,
+        jitterMs: result.jitter ?? 0,
+      );
+    }
     await _savePings();
   }
 
@@ -4583,13 +4593,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     if (_connected && _livePing != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 2),
-                        child: Text(
-                          '$_livePing ms',
-                          style: const TextStyle(
-                            color: AppColors.accent,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '$_livePing ms',
+                              style: const TextStyle(
+                                color: AppColors.accent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            ValueListenableBuilder<QualityScore?>(
+                              valueListenable: _qualityMonitor.latest,
+                              builder: (_, score, __) => QualityBadge(
+                                score: score,
+                                compact: true,
+                                language: widget.language,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     Icon(
@@ -5795,6 +5819,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       WarpEndpointHealthMonitor.instance.onRecovered = null;
       WarpEndpointHealthMonitor.instance.stop();
     } catch (_) {}
+    _qualityMonitor.reset();
     ConnectivityWatcher.instance.stop();
     try {
       TorSessionService.instance.routingCount
