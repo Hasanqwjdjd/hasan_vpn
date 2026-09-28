@@ -597,7 +597,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       best = await DesyncTuner.findBest(
         server,
-        advanced: advanced,
+        advancedProvider: () => advanced,
         isCancelled: () => cancelled,
         onProgress: (idx, t, c) {
           currentIdx = idx;

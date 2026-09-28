@@ -182,20 +182,36 @@ class DesyncTuner {
     void Function(int index, int total, DesyncCandidate c)? onProgress,
     void Function(DesyncResult r)? onResult,
     bool stopOnFirstWorking = false,
-    bool advanced = false,
+    bool Function()? advancedProvider,
     bool Function()? isCancelled,
   }) async {
     if (_running) return null;
     _running = true;
 
     final results = <DesyncResult>[];
-    final candidates = generateCandidates(advanced: advanced);
+    // basic همیشه اجرا می‌شه. advanced فقط اگه provider در طول اسکن true بشه.
+    final basicCandidates = generateCandidates(advanced: false);
+    final advancedOnly = <DesyncCandidate>[];
+    {
+      final seen = basicCandidates.map((c) => c.args).toSet();
+      for (final c in generateCandidates(advanced: true)) {
+        if (!seen.contains(c.args)) advancedOnly.add(c);
+      }
+    }
+    final totalHint = basicCandidates.length + advancedOnly.length;
 
     try {
-      for (var i = 0; i < candidates.length; i++) {
+      for (var i = 0; i < totalHint; i++) {
         if (isCancelled?.call() == true) break;
-        final c = candidates[i];
-        onProgress?.call(i + 1, candidates.length, c);
+        final bool isAdvancedPhase = i >= basicCandidates.length;
+        // در فاز advanced، اگه کاربر تیک رو نزد، رد کن
+        if (isAdvancedPhase && (advancedProvider?.call() != true)) {
+          continue;
+        }
+        final c = isAdvancedPhase
+            ? advancedOnly[i - basicCandidates.length]
+            : basicCandidates[i];
+        onProgress?.call(i + 1, totalHint, c);
 
         final testServer = server.copyWith(
           pingNgProfile: 'Custom',
