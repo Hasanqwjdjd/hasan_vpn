@@ -45,6 +45,7 @@ import '../services/geo_assets_service.dart';
 import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
 import '../services/exit_ip_service.dart';
+import '../services/geo_flag.dart';
 import '../services/psiphon_service.dart';
 import '../services/link_parser.dart';
 import '../services/xray_json.dart';
@@ -3455,10 +3456,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         socksPort: V2RayEngine.localSocksPort,
       );
       if (!mounted || !_connected) return;
-      if (info != null && force) {
+      if (info == null) return;
+
+      // آپدیت flag + نام سرور بر اساس کشور خروجی
+      final active = _active;
+      if (active != null && info.country != null &&
+          info.country!.isNotEmpty) {
+        final newFlag = GeoFlag.fromName(info.country);
+        final farsi = GeoFlag.farsiName(info.country);
+        // flag فقط اگه تغییر کرده
+        if (newFlag != '🌐' && active.flag != newFlag) {
+          setState(() {
+            active.flag = newFlag;
+            final si = _servers.indexWhere((s) => s.id == active.id);
+            if (si >= 0) _servers[si].flag = newFlag;
+            final ci = _customServers.indexWhere((s) => s.id == active.id);
+            if (ci >= 0) _customServers[ci].flag = newFlag;
+          });
+          // ignore: unawaited_futures
+          _saveCustomServers();
+        }
+        // ذخیره country در prefs برای نمایش بعدی
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('server_geo_${active.id}', farsi);
+          await prefs.setString('server_flag_${active.id}', newFlag);
+        } catch (_) {}
+      }
+
+      if (force) {
+        final geoLabel = info.country != null
+            ? ' · ${GeoFlag.farsiName(info.country)}'
+            : '';
         _showMsg(_t(
-          'IP خروجی: ${info.ip}',
-          'Exit IP: ${info.ip}',
+          'IP خروجی: ${info.ip}$geoLabel',
+          'Exit IP: ${info.ip}$geoLabel',
         ));
       }
     } catch (e) {
