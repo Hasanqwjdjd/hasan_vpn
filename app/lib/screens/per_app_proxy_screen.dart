@@ -349,6 +349,123 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
     );
   }
 
+  void _onBulkAction(String action) async {
+    var filtered = _apps.where((a) {
+      if (_appFilter == 'user') return a['isSystem'] != true;
+      if (_appFilter == 'system') return a['isSystem'] == true;
+      return true;
+    }).toList();
+    if (_q.isNotEmpty) {
+      final q = _q.toLowerCase();
+      filtered = filtered.where((a) {
+        final l = '${a['label']} ${a['package']}'.toLowerCase();
+        return l.contains(q);
+      }).toList();
+    }
+    final visiblePkgs = filtered
+        .map((a) => a['package']?.toString() ?? '')
+        .where((p) => p.isNotEmpty)
+        .toList();
+
+    setState(() {
+      switch (action) {
+        case 'select_visible':
+          _selected.addAll(visiblePkgs);
+          break;
+        case 'clear_visible':
+          _selected.removeAll(visiblePkgs);
+          break;
+        case 'invert_visible':
+          for (final p in visiblePkgs) {
+            if (_selected.contains(p)) {
+              _selected.remove(p);
+            } else {
+              _selected.add(p);
+            }
+          }
+          break;
+        case 'clear_all':
+          _selected.clear();
+          break;
+      }
+    });
+    await SettingsService.setBlockedApps(_selected.toList()..sort());
+    if (!mounted) return;
+    _showMsg(_t('ذخیره شد', 'Saved'));
+  }
+
+  void _showMsg(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  Widget _filterChip(String key, String label, IconData icon) {
+    final active = _appFilter == key;
+    return ChoiceChip(
+      avatar: Icon(
+        icon,
+        size: 16,
+        color: active ? Colors.black : AppColors.fg(context),
+      ),
+      label: Text(
+        label,
+        style: TextStyle(
+          color: active ? Colors.black : AppColors.fg(context),
+          fontSize: 11,
+        ),
+      ),
+      selected: active,
+      selectedColor: AppColors.accent,
+      backgroundColor: AppColors.surface(context),
+      side: BorderSide(color: AppColors.border(context)),
+      onSelected: (_) => setState(() => _appFilter = key),
+    );
+  }
+
+  Widget _sortChip() {
+    final label = switch (_sort) {
+      'za' => 'Z→A',
+      'selected_first' => _t('انتخاب‌شده اول', 'Selected first'),
+      _ => 'A→Z',
+    };
+    return PopupMenuButton<String>(
+      color: AppColors.surface(context),
+      onSelected: (v) => setState(() => _sort = v),
+      child: Chip(
+        avatar: Icon(
+          Icons.sort,
+          size: 16,
+          color: AppColors.fg(context),
+        ),
+        label: Text(
+          label,
+          style: TextStyle(color: AppColors.fg(context), fontSize: 11),
+        ),
+        backgroundColor: AppColors.surface(context),
+        side: BorderSide(color: AppColors.border(context)),
+      ),
+      itemBuilder: (bCtx) => [
+        PopupMenuItem(
+          value: 'az',
+          child: Text(_t('حروف A→Z', 'A → Z')),
+        ),
+        PopupMenuItem(
+          value: 'za',
+          child: Text(_t('حروف Z→A', 'Z → A')),
+        ),
+        PopupMenuItem(
+          value: 'selected_first',
+          child: Text(_t('انتخاب‌شده اول', 'Selected first')),
+        ),
+      ],
+    );
+  }
+
   Widget _modeCard(BuildContext context, String key, String tFa, String tEn,
       String sFa, String sEn) {
     final active = _mode == key;
