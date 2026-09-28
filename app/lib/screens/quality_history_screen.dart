@@ -405,6 +405,147 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
     );
   }
 
+  Widget _buildInsightsSection() {
+    final ins = _insights;
+    if (ins.isEmpty) return const SizedBox.shrink();
+
+    // بهترین ساعت
+    final best = QualityInsights.bestHour(ins);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (best != null)
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.accent.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: AppColors.accent.withOpacity(0.4), width: 1),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.tips_and_updates,
+                    color: AppColors.accent, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _t(
+                      'بهترین زمان: ساعت ' + best.hour.toString() + ':00 با میانگین ' + best.avgScore.toString(),
+                      'Best time: ' + best.hour.toString() + ':00 with avg ' + best.avgScore.toString(),
+                    ),
+                    style: TextStyle(
+                        color: AppColors.fg(context),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (ins.protocolBuckets.isNotEmpty)
+          _buildBucketList(
+            title: _t('بر اساس پروتکل', 'By protocol'),
+            buckets: ins.protocolBuckets.values
+                .map((v) => v.first)
+                .toList(),
+          ),
+        if (ins.countryBuckets.isNotEmpty)
+          _buildBucketList(
+            title: _t('بر اساس کشور', 'By country'),
+            buckets: ins.countryBuckets.values
+                .map((v) => v.first)
+                .toList(),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildBucketList({
+    required String title,
+    required List<InsightBucket> buckets,
+  }) {
+    if (buckets.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.surface(context),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border(context)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                color: AppColors.fg(context),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...buckets.take(8).map((b) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 90,
+                        child: Text(
+                          b.label,
+                          style: TextStyle(
+                              color: AppColors.fg(context),
+                              fontSize: 11),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(3),
+                          child: LinearProgressIndicator(
+                            value: (b.avgScore / 100).clamp(0.0, 1.0),
+                            backgroundColor:
+                                AppColors.border(context),
+                            color: _scoreColor(b.avgScore),
+                            minHeight: 6,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 55,
+                        child: Text(
+                          b.avgScore.toString() + ' · ' + b.count.toString(),
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            color: AppColors.muted2(context),
+                            fontSize: 10.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _scoreColor(int score) {
+    if (score >= 85) return AppColors.accent;
+    if (score >= 70) return const Color(0xFF8BC34A);
+    if (score >= 50) return AppColors.warn;
+    if (score >= 30) return const Color(0xFFFF7043);
+    return AppColors.danger;
+  }
+
   Widget _buildStatsRow(QualityStats stats) {
     Widget cell(String label, String value) => Expanded(
           child: Container(
