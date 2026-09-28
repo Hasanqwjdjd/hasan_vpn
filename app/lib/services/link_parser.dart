@@ -466,6 +466,15 @@ class LinkParser {
     final tls = _tlsFromQuery(query);
     final dns = (query['dns'] ?? '').trim();
 
+    // Multi-address failover pool (BackPack-derived).
+    // "bk=host1:port1,host2:port2" — additional addresses for the same server.
+    final bkRaw = (query['bk'] ?? query['backup'] ?? '').trim();
+    final backups = bkRaw
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+
     return VpnServer(
       id: id,
       name: name,
@@ -477,6 +486,7 @@ class LinkParser {
       sniOrHost: correctSni,
       tls: tls,
       dns: dns.isEmpty ? null : dns,
+      backupAddresses: backups,
     );
   }
 
