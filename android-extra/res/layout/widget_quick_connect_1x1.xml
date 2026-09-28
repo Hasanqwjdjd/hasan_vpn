@@ -32,4 +32,16 @@
         android:ellipsize="end"
         android:visibility="gone"
         android:text="" />
+
+    <TextView
+        android:id="@+id/widget_timer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textColor="#B0B7C3"
+        android:textSize="9sp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:visibility="gone"
+        android:text="" />
 </LinearLayout>

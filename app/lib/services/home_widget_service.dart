@@ -60,6 +60,31 @@ class HomeWidgetService {
     }
   }
 
+  /// ذخیره timestamp شروع اتصال — برای timer در ویجت.
+  static Future<void> setConnectedStart(DateTime at) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        'widget_connect_start_ms',
+        at.millisecondsSinceEpoch,
+      );
+      try {
+        await _channel.invokeMethod('updateWidgets');
+      } catch (_) {}
+    } catch (_) {}
+  }
+
+  /// پاک کردن timestamp اتصال (بعد از disconnect).
+  static Future<void> clearConnectedStart() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('widget_connect_start_ms');
+      try {
+        await _channel.invokeMethod('updateWidgets');
+      } catch (_) {}
+    } catch (_) {}
+  }
+
   /// ذخیره امتیاز کیفیت در prefs — برای نمایش در ویجت.
   static Future<void> setQuality(int score, String emoji) async {
     try {

@@ -136,6 +136,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   DateTime? _lastConnectTime;
   // Smart Resume: true = کاربر خودش دستی قطع کرد (auto-reconnect نشه)
   bool _manualDisconnect = false;
+  Timer? _widgetTimerRefresh;
   bool _smartResumeEnabled = true;
   VoidCallback? _finalMaskDialogRefresh;
   List<String> _manualOrder = <String>[];
@@ -2557,6 +2558,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// شروع refresh دوره‌ای ویجت (هر ۳۰ ثانیه).
+  void _startWidgetTimerRefresh() {
+    _widgetTimerRefresh?.cancel();
+    _widgetTimerRefresh = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) {
+        if (!mounted || !_connected) return;
+        // ignore: unawaited_futures
+        HomeWidgetService.setConnectedStart(
+          _lastConnectTime ?? DateTime.now(),
+        );
+      },
+    );
+  }
+
+  void _stopWidgetTimerRefresh() {
+    _widgetTimerRefresh?.cancel();
+    _widgetTimerRefresh = null;
+  }
+
   /// callback کیفیت پایین — هشدار + لرزش کوتاه.
   void _onLowQuality(int score) {
     if (!mounted) return;
@@ -3487,9 +3508,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       WarpEndpointHealthMonitor.instance.stop();
     } catch (_) {}
-    // پاک کردن quality widget
+    // پاک کردن quality widget + timer
+    _stopWidgetTimerRefresh();
     // ignore: unawaited_futures
     HomeWidgetService.clearQuality();
+    // ignore: unawaited_futures
+    HomeWidgetService.clearConnectedStart();
     _autoFailoverEnabled = false;
     if (!mounted) return;
     setState(() {
@@ -3841,6 +3865,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _pollTick = 0;
       if (connected) _lastConnectTime = DateTime.now();
       if (connected) _manualDisconnect = false;
+      if (connected) {
+        // widget timer start + refresh دوره‌ای
+        // ignore: unawaited_futures
+        HomeWidgetService.setConnectedStart(DateTime.now());
+        _startWidgetTimerRefresh();
+      }
       setState(() {
         _connected = connected;
         _connecting = false;

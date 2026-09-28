@@ -102,6 +102,18 @@ class QuickConnectWidget1x1 : AppWidgetProvider() {
         const val EXTRA_TITLE = "title"
         const val EXTRA_WIDGET_ID = "widget_id"
 
+        /** فرمت مدت زمان به شکل 1h23m یا 45m12s یا 8s. */
+        fun formatDuration(sec: Long): String {
+            val h = sec / 3600
+            val m = (sec % 3600) / 60
+            val s = sec % 60
+            return when {
+                h > 0 -> "${h}h ${m}m"
+                m > 0 -> "${m}m ${s}s"
+                else -> "${s}s"
+            }
+        }
+
         fun updateAppWidget(
             context: Context,
             appWidgetManager: AppWidgetManager,
@@ -156,6 +168,18 @@ class QuickConnectWidget1x1 : AppWidgetProvider() {
                 views.setTextColor(R.id.widget_quality, qColor)
             } else {
                 views.setViewVisibility(R.id.widget_quality, android.view.View.GONE)
+            }
+
+            // Timer — از prefs (timestamp شروع اتصال)
+            // flutter.widget_connect_start_ms  (long, epoch millis)
+            val connectStart = prefs.getLong("flutter.widget_connect_start_ms", 0L)
+            if (vpnActive && connectStart > 0L) {
+                val elapsedSec = ((System.currentTimeMillis() - connectStart) / 1000L).coerceAtLeast(0L)
+                val timerText = formatDuration(elapsedSec)
+                views.setTextViewText(R.id.widget_timer, timerText)
+                views.setViewVisibility(R.id.widget_timer, android.view.View.VISIBLE)
+            } else {
+                views.setViewVisibility(R.id.widget_timer, android.view.View.GONE)
             }
 
             val tap = Intent(context, QuickConnectWidget1x1::class.java).apply {
