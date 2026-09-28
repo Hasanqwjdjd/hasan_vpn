@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'xray_settings.dart';
+import 'connection_quality.dart';
 
 /// Live speed / status notification (Dart side).
 ///
@@ -18,6 +19,9 @@ class TelemetryService {
 
   static bool enabled = false;
   static int? livePing;
+  /// آخرین امتیاز کیفیت — از home_screen ست می‌شه.
+  static int? lastQualityScore;
+  static String? lastQualityEmoji;
   static bool _shown = false;
   static DateTime _last = DateTime.fromMillisecondsSinceEpoch(0);
   static String? _lastServer;
@@ -64,6 +68,17 @@ class TelemetryService {
     }
   }
 
+  /// ست کردن امتیاز کیفیت — از home_screen بعد از هر probe.
+  /// اگه notification فعال باشه، متن رو با badge جدید دوباره می‌سازه.
+  static void setQuality(int? score, String? emoji) {
+    lastQualityScore = score;
+    lastQualityEmoji = emoji;
+    // re-render اگه notif فعاله
+    if (_shown && (enabled || lastQualityScore != null)) {
+      onSpeed(down: 0, up: 0, force: true);
+    }
+  }
+
   static Future<void> _call(String method, [Map<String, dynamic>? args]) async {
     try {
       await _ch.invokeMethod<bool>(method, args);
@@ -93,9 +108,20 @@ class TelemetryService {
     if (enabled) {
       final p = livePing;
       final pingText = (p != null && p > 0) ? '$p ms' : '-';
-      text = '↓ ${_fmt(down)}   ↑ ${_fmt(up)}   •   Ping $pingText';
+      // badge کیفیت
+      final qEmoji = lastQualityEmoji ?? '';
+      final qScore = lastQualityScore;
+      final qPart = (qScore != null && qEmoji.isNotEmpty)
+          ? '   •   $qEmoji $qScore'
+          : '';
+      text = '↓ ${_fmt(down)}   ↑ ${_fmt(up)}   •   Ping $pingText$qPart';
     } else {
-      text = 'Connected · tap to manage';
+      // اگه quality هست ولی speed نمایش داده نمی‌شه، بازم badge رو نشون بده
+      if (lastQualityScore != null && lastQualityEmoji != null) {
+        text = 'Connected · $lastQualityEmoji $lastQualityScore · tap to manage';
+      } else {
+        text = 'Connected · tap to manage';
+      }
     }
 
     _shown = true;
@@ -109,6 +135,8 @@ class TelemetryService {
     if (!_shown && !force) return;
     _shown = false;
     livePing = null;
+    lastQualityScore = null;
+    lastQualityEmoji = null;
     await _call('telemetryHide');
   }
 

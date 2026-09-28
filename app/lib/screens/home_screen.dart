@@ -3465,6 +3465,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
       // ذخیره در تاریخچه
       final latest = _qualityMonitor.latest.value;
+      // ارسال کیفیت به notification
+      if (latest != null) {
+        // ignore: unawaited_futures
+        Future<void>.microtask(() {
+          TelemetryService.setQuality(
+            latest.score,
+            latest.grade.emoji,
+          );
+        });
+      }
       if (latest != null) {
         // ignore: unawaited_futures
         QualityHistoryService.add(QualitySample(
