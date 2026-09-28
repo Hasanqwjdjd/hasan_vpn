@@ -1,8 +1,12 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/server.dart';
 import '../services/app_colors.dart';
 import '../services/quality_history_service.dart';
+import '../services/quality_insights.dart';
 import '../services/connection_quality.dart';
 
 /// صفحه‌ی تاریخچه کیفیت اتصال — نمودار امتیاز، پینگ و jitter.
@@ -23,6 +27,9 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
   Duration? _window = const Duration(hours: 24);
   String _selectedServerId = ''; // '' = all
   bool _loading = true;
+  // insights
+  QualityInsightsResult _insights = const QualityInsightsResult.empty();
+  List<VpnServer> _servers = const [];
 
   @override
   void initState() {
@@ -30,12 +37,58 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
     _load();
   }
 
+  /// خواندن لیست سرورها از cache export که home_screen آماده کرده.
+  Future<List<VpnServer>> _loadServersFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('quick_export_servers_v1');
+      if (raw == null || raw.isEmpty) return const [];
+      final doc = jsonDecode(raw);
+      if (doc is! Map) return const [];
+      final list = doc['servers'];
+      if (list is! List) return const [];
+      final out = <VpnServer>[];
+      for (final e in list) {
+        if (e is! Map) continue;
+        final protoStr = e['protocol']?.toString() ?? '';
+        final proto = VpnProtocol.values.firstWhere(
+          (p) => p.name == protoStr,
+          orElse: () => VpnProtocol.custom,
+        );
+        out.add(VpnServer(
+          id: e['id']?.toString() ?? '',
+          name: e['name']?.toString() ?? '',
+          flag: e['flag']?.toString() ?? '🌐',
+          shareLink: e['shareLink']?.toString() ?? '',
+          protocol: proto,
+          host: e['host']?.toString() ?? '',
+          port: (e['port'] as num?)?.toInt() ?? 0,
+          isDeletable: e['isDeletable'] == true,
+        ));
+      }
+      return out;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// محاسبه insights جدید.
+  void _recomputeInsights() {
+    _insights = QualityInsights.compute(
+      _servers,
+      window: _window,
+    );
+  }
+
   Future<void> _load() async {
     final list = await QualityHistoryService.load();
+    final servers = await _loadServersFromCache();
     if (!mounted) return;
     setState(() {
       _all = list;
+      _servers = servers;
       _applyFilter();
+      _recomputeInsights();
       _loading = false;
     });
   }
@@ -50,6 +103,7 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
       list = list.where((s) => s.at.isAfter(cutoff)).toList();
     }
     _filtered = list;
+    _recomputeInsights();
   }
 
   Future<void> _clear() async {
@@ -223,6 +277,8 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
                       _buildWindowSelector(),
                       const SizedBox(height: 16),
                       _buildStatsRow(stats),
+                      const SizedBox(height: 20),
+                      _buildInsightsSection(),
                       const SizedBox(height: 20),
                       _buildChart(
                         title: _t('امتیاز کیفیت', 'Quality score'),
