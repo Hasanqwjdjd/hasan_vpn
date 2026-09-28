@@ -13,6 +13,7 @@ import 'connection_log_screen.dart';
 import 'quality_history_screen.dart';
 import '../services/telegram_source_service.dart';
 import '../services/warp_scout_scheduler.dart';
+import '../services/quality_alert.dart';
 import '../services/warp_batch_tester.dart';
 import '../services/warp_endpoint_health_monitor.dart';
 import '../services/update_service.dart';
@@ -98,7 +99,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Batch test state
   bool _batchAutoEnabled = false;
+  int _qualityThreshold = 40;
+  bool _qualityAlertEnabled = true;
   int _batchParallelism = 2;
+
+  Future<void> _loadQualityPrefs() async {
+    try {
+      await QualityAlert.instance.restore();
+      if (!mounted) return;
+      setState(() {
+        _qualityThreshold = QualityAlert.instance.threshold;
+        _qualityAlertEnabled = QualityAlert.instance.enabled;
+      });
+    } catch (_) {}
+  }
 
   Future<void> _loadBatchPrefs() async {
     try {
@@ -550,6 +564,82 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         'Scan finished',
                       ));
                     },
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ------- Quality Alert ---------
+          _sectionTitle(_t('هشدار کیفیت اتصال',
+              'Connection quality alert')),
+
+          _card(
+            context,
+            Column(
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: AppColors.accent,
+                  title: Text(
+                    _t('هشدار افت کیفیت', 'Alert on quality drop'),
+                    style:
+                        TextStyle(color: AppColors.fg(context), fontSize: 13),
+                  ),
+                  subtitle: Text(
+                    _t(
+                      'وقتی امتیاز اتصال پایین‌تر از آستانه بیاد، هشدار می‌ده.',
+                      'Alerts when connection score drops below threshold.',
+                    ),
+                    style: TextStyle(
+                        color: AppColors.muted2(context),
+                        fontSize: 10.5,
+                        height: 1.4),
+                  ),
+                  value: _qualityAlertEnabled,
+                  onChanged: (v) async {
+                    await QualityAlert.instance.setEnabled(v);
+                    if (!mounted) return;
+                    setState(() => _qualityAlertEnabled = v);
+                  },
+                ),
+                if (_qualityAlertEnabled)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: Text(
+                      _t('آستانه هشدار', 'Alert threshold'),
+                      style:
+                          TextStyle(color: AppColors.fg(context), fontSize: 12),
+                    ),
+                    subtitle: Text(
+                      _t(
+                        '$_qualityThreshold — پایین‌تر از این = ضعیف',
+                        '$_qualityThreshold — below this = poor',
+                      ),
+                      style: TextStyle(
+                          color: AppColors.muted2(context), fontSize: 10.5),
+                    ),
+                    trailing: SizedBox(
+                      width: 140,
+                      child: Slider(
+                        value: _qualityThreshold.toDouble(),
+                        min: 10,
+                        max: 90,
+                        divisions: 8,
+                        label: '$_qualityThreshold',
+                        activeColor: AppColors.accent,
+                        onChanged: (v) {
+                          setState(() =>
+                              _qualityThreshold = v.round());
+                        },
+                        onChangeEnd: (v) async {
+                          await QualityAlert.instance
+                              .setThreshold(v.round());
+                        },
+                      ),
+                    ),
                   ),
               ],
             ),
