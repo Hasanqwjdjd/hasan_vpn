@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/gestures.dart';
 import 'dart:convert';
 
@@ -24,6 +25,8 @@ import '../models/ssh_profile.dart';
 import '../services/ssh_session_service.dart';
 import '../services/master_dns_session_service.dart';
 import '../services/final_mask_finder.dart';
+import '../services/desync_service.dart';
+import '../services/pingng_args.dart';
 import '../services/desync_tuner.dart';
 import '../services/warp_masque_session_service.dart';
 import '../services/geo_assets_service.dart';
@@ -4297,12 +4300,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           });
           // ignore: unawaited_futures
           ConnectionLogService.logConnect(server.displayName);
+          // Desync روی WARP MASQUE: پروکسی HTTP CONNECT لوکال که
+          // outer TLS را از داخل SOCKS5 موتور Desync عبور می‌دهد.
+          final desyncOn = PingNgArgs.isEnabled(server.pingNgProfile);
+          int desyncPort = 0;
+          if (desyncOn) {
+            final args = PingNgArgs.build(
+              profile: server.pingNgProfile,
+              customArgs: server.pingNgArgs,
+              port: 0,
+            );
+            if (args != null && args.isNotEmpty) {
+              try {
+                final probe = await ServerSocket.bind(
+                    InternetAddress.loopbackIPv4, 0);
+                desyncPort = probe.port;
+                await probe.close();
+                final base = <String>[];
+                for (var i = 0; i < args.length; i++) {
+                  if (args[i] == '--port' && i + 1 < args.length) {
+                    base.add('--port');
+                    base.add(desyncPort.toString());
+                    i++;
+                  } else {
+                    base.add(args[i]);
+                  }
+                }
+                final bound = await DesyncService.start(
+                  args: base,
+                  port: desyncPort,
+                );
+                if (bound == null) desyncPort = 0;
+              } catch (e) {
+                debugPrint('desync-for-masque failed: $e');
+                desyncPort = 0;
+              }
+            }
+          }
+
           await WarpMasqueSessionService.instance.connect(
             server.id,
             endpoint: endpoint,
             sni: sni,
             dns: dns,
             http2: h2,
+            desyncEnabled: desyncPort > 0,
+            desyncSocksPort: desyncPort,
           );
           return;
         }
