@@ -2510,6 +2510,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// callback کیفیت پایین — هشدار.
+  void _onLowQuality(int score) {
+    if (!mounted) return;
+    _showMsg(_t(
+      'کیفیت اتصال افت کرد (امتیاز ' + score.toString() + ') — endpoint رو تغییر بده',
+      'Connection quality dropped (score ' + score.toString() + ') — change endpoint',
+    ));
+  }
+
+  void _onQualityRecovered() {
+    if (!mounted) return;
+    _showMsg(_t('کیفیت اتصال برگشت', 'Quality recovered'));
+  }
+
   /// callback از WARP Scout Scheduler — rescan سرور هدف.
   Future<void> _onSchedulerRescan(VpnServer server, {bool force = false}) async {
     try {
