@@ -44,6 +44,16 @@ class QualityBadge extends StatelessWidget {
     final s = score!;
 
     if (compact) {
+      // trend arrow
+      String trend = '';
+      Color trendColor = color;
+      if (s.improving) {
+        trend = '↑';
+        trendColor = AppColors.accent;
+      } else if (s.degrading) {
+        trend = '↓';
+        trendColor = AppColors.danger;
+      }
       return Tooltip(
         message: s.summary,
         child: Container(
@@ -64,6 +74,17 @@ class QualityBadge extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              if (trend.isNotEmpty) ...[
+                const SizedBox(width: 2),
+                Text(
+                  trend,
+                  style: TextStyle(
+                    color: trendColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -89,13 +110,30 @@ class QualityBadge extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                '${s.score} · ${s.grade.label(_isFa)}',
-                style: TextStyle(
-                  color: color,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
+              Row(
+                children: [
+                  Text(
+                    '${s.score} · ${s.grade.label(_isFa)}',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (s.delta != null && s.delta!.abs() > 3) ...[
+                    const SizedBox(width: 4),
+                    Text(
+                      s.improving ? '↑' : '↓',
+                      style: TextStyle(
+                        color: s.improving
+                            ? AppColors.accent
+                            : AppColors.danger,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ],
               ),
               const SizedBox(height: 1),
               Text(

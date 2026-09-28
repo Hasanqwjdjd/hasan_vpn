@@ -90,6 +90,7 @@ class QualityScore {
   final int jitterMs;
   final double lossPct;
   final DateTime computedAt;
+  final int? prevScore;
 
   const QualityScore({
     required this.score,
@@ -98,12 +99,22 @@ class QualityScore {
     required this.jitterMs,
     required this.lossPct,
     required this.computedAt,
+    this.prevScore,
   });
 
   /// نسخه ساده برای log.
   String get summary =>
       'score=\$score (\${grade.name}) ping=\${pingMs}ms '
       'jitter=\${jitterMs}ms loss=\${lossPct.toStringAsFixed(1)}%';
+
+  /// روند — تغییر نسبت به نمونه قبلی.
+  int? get delta => prevScore == null ? null : score - prevScore!;
+
+  /// آیا روند بهبودی داره؟
+  bool get improving => (delta ?? 0) > 3;
+
+  /// آیا روند بدتر داره؟
+  bool get degrading => (delta ?? 0) < -3;
 }
 
 /// مانیتور زنده‌ی کیفیت — چند نمونه ping رو جمع می‌کنه و امتیاز می‌ده.
@@ -131,11 +142,20 @@ class QualityMonitor {
         diffSum += (_samples[i] - _samples[i - 1]).abs();
       }
       final avgJitter = (diffSum / (_samples.length - 1)).round();
+      final prev = latest.value?.score;
       final score = ConnectionQuality.compute(
         pingMs: mean.round(),
         jitterMs: avgJitter > 0 ? avgJitter : jitterMs,
       );
-      latest.value = score;
+      latest.value = QualityScore(
+        score: score.score,
+        grade: score.grade,
+        pingMs: score.pingMs,
+        jitterMs: score.jitterMs,
+        lossPct: score.lossPct,
+        computedAt: score.computedAt,
+        prevScore: prev,
+      );
     }
   }
 
