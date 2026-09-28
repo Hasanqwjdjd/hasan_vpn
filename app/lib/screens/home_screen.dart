@@ -2530,9 +2530,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// callback کیفیت پایین — هشدار.
+  /// callback کیفیت پایین — هشدار + لرزش کوتاه.
   void _onLowQuality(int score) {
     if (!mounted) return;
+    // لرزش کوتاه (فقط اگه اپ در foreground باشه)
+    try {
+      HapticFeedback.mediumImpact();
+      // الگوی دو-ضربه‌ای برای هشدار واضح‌تر
+      Future.delayed(const Duration(milliseconds: 180), () {
+        try {
+          HapticFeedback.lightImpact();
+        } catch (_) {}
+      });
+    } catch (_) {}
     _showMsg(_t(
       'کیفیت اتصال افت کرد (امتیاز ' + score.toString() + ') — endpoint رو تغییر بده',
       'Connection quality dropped (score ' + score.toString() + ') — change endpoint',
@@ -2541,6 +2551,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _onQualityRecovered() {
     if (!mounted) return;
+    // لرزش کوتاه برای بازیابی
+    try {
+      HapticFeedback.lightImpact();
+    } catch (_) {}
     _showMsg(_t('کیفیت اتصال برگشت', 'Quality recovered'));
   }
 
