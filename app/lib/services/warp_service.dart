@@ -647,26 +647,28 @@ class WarpService {
         return (server: null, error: 'license is required');
       }
 
-      // 1) endpoint — یک بار برای هر دو hop
+      // 1) اسکن اولیه — WARPSCOUT-style
       onProgress?.call('Scanning endpoints for outer hop (${mode.label})...');
-      var endpoint = '162.159.192.1:$_warpPort';
       // outer keypair هنوز ساخته نشده — با keypair موقت اسکن می‌کنیم.
       final scanKp = await _generateX25519();
-      final hit = await WarpEndpointTester.select(
+      final hits = await WarpEndpointTester.selectMany(
         mode: mode,
         privateKeyB64: scanKp.privateKeyB64,
         peerPublicKeyB64: scanKp.publicKeyB64,
         customEndpoint: customEndpoint,
+        maxHits: 12,
         onProgress: (label, tested, total) {
           onProgress?.call('$label $tested/$total');
         },
       );
-      if (hit != null) {
-        endpoint = hit.endpoint.toString();
-        onProgress?.call('Endpoint: ${hit.endpoint} (${hit.latencyMs}ms)');
+      if (hits.isEmpty) {
+        return (server: null, error: 'no endpoint found');
       }
+      final candidateEndpoints = hits.take(4).map((h) => h.endpoint.toString()).toList();
+      onProgress?.call(
+          'Got ${hits.length} UDP hits; will verify top ${candidateEndpoints.length} via chain');
 
-      // 2) OUTER — keypair تازه، بدون license
+      // 2) OUTER + 3) INNER — یک‌بار register، بعد verify روی endpoint های مختلف
       onProgress?.call('Registering outer WARP...');
       final outerKp = await _generateX25519();
       final outerReg = await _register(
@@ -679,14 +681,7 @@ class WarpService {
           error: 'outer: ${outerReg.error ?? "no account"}',
         );
       }
-      final outerLink = _buildVpnLinkFromAccount(
-        privateKeyB64: outerKp.privateKeyB64,
-        account: outerReg.account!,
-        endpoint: endpoint,
-        description: 'WARP outer',
-      );
 
-      // 3) INNER — keypair تازه + license
       onProgress?.call('Registering inner WARP with license...');
       final innerKp = await _generateX25519();
       final innerReg = await _register(
@@ -700,21 +695,109 @@ class WarpService {
           error: 'inner: ${innerReg.error ?? "no account"}',
         );
       }
-      final innerLink = _buildVpnLinkFromAccount(
+
+      // 4) Verify هر endpoint با chain واقعی
+      String? chosenEndpoint;
+      int? chosenMs;
+      for (var i = 0; i < candidateEndpoints.length; i++) {
+        final ep = candidateEndpoints[i];
+        onProgress?.call(
+            'Verify chain $ep (${i + 1}/${candidateEndpoints.length})');
+
+        final outerLink = _buildVpnLinkFromAccount(
+          privateKeyB64: outerKp.privateKeyB64,
+          account: outerReg.account!,
+          endpoint: ep,
+          description: 'WARP outer',
+        );
+        final innerLink = _buildVpnLinkFromAccount(
+          privateKeyB64: innerKp.privateKeyB64,
+          account: innerReg.account!,
+          endpoint: ep,
+          description: 'WARP inner (Plus)',
+        );
+
+        final chainLink = Uri(
+          scheme: 'chain',
+          host: 'config',
+          queryParameters: <String, String>{
+            'first': outerLink,
+            'second': innerLink,
+            'name': 'WARP+ 2-hop verify',
+          },
+        ).toString();
+
+        final hostPort = ep.split(':');
+        final testServer = VpnServer(
+          id: 'warp_plus_verify_$i',
+          name: 'WARP+ verify',
+          flag: '\u{1F310}',
+          shareLink: chainLink,
+          protocol: VpnProtocol.chain,
+          host: hostPort.first,
+          port: int.tryParse(hostPort.length > 1 ? hostPort[1] : '2408') ?? 2408,
+          isDeletable: false,
+        );
+
+        try {
+          await V2RayEngine.disconnect();
+          await Future<void>.delayed(const Duration(milliseconds: 250));
+
+          final ok = await V2RayEngine
+              .connect(testServer)
+              .timeout(const Duration(seconds: 12), onTimeout: () => false);
+          if (ok) {
+            final ms = await V2RayEngine
+                .connectedDelay(timeout: const Duration(seconds: 6))
+                .timeout(const Duration(seconds: 8), onTimeout: () => -1);
+            if (ms > 0) {
+              chosenEndpoint = ep;
+              chosenMs = ms;
+              onProgress?.call('Chain works on $ep ($ms ms)');
+              break;
+            }
+          }
+          onProgress?.call('Chain rejected $ep');
+        } catch (e) {
+          debugPrint('chain verify $ep error: $e');
+        } finally {
+          try {
+            await V2RayEngine.disconnect();
+          } catch (_) {}
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+        }
+      }
+
+      // اگه هیچ کدوم verify نشد، اولین UDP hit رو استفاده کن
+      final endpoint = chosenEndpoint ?? candidateEndpoints.first;
+      if (chosenMs != null) {
+        onProgress?.call('Selected verified endpoint $endpoint ($chosenMs ms)');
+      } else {
+        onProgress?.call('No endpoint verified; using first UDP hit $endpoint');
+      }
+
+      // ساخت لینک‌های نهایی با endpoint انتخاب‌شده
+      final finalOuterLink = _buildVpnLinkFromAccount(
+        privateKeyB64: outerKp.privateKeyB64,
+        account: outerReg.account!,
+        endpoint: endpoint,
+        description: 'WARP outer',
+      );
+      final finalInnerLink = _buildVpnLinkFromAccount(
         privateKeyB64: innerKp.privateKeyB64,
         account: innerReg.account!,
         endpoint: endpoint,
         description: 'WARP inner (Plus)',
       );
 
-      // 4) chain:// — outer اول (dialer)، inner دوم (exit)
+      // 5) chain:// نهایی — outer اول (dialer)، inner دوم (exit)
       onProgress?.call('Building chain config...');
       final chainLink = Uri(
         scheme: 'chain',
         host: 'config',
         queryParameters: <String, String>{
-          'first': outerLink,
-          'second': innerLink,
+          'first': finalOuterLink,
+          'second': finalInnerLink,
           'name': 'WARP+ 2-hop',
         },
       ).toString();
