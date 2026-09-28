@@ -18,6 +18,59 @@ class _ConnectionLogScreenState extends State<ConnectionLogScreen> {
 
   List<ConnectionLogEntry> _entries = [];
   bool _loading = true;
+  String _filterType = 'all'; // all | connect | disconnect | error | warp
+
+  List<ConnectionLogEntry> get _filtered {
+    if (_filterType == 'all') return _entries;
+    if (_filterType == 'warp') {
+      return _entries
+          .where((e) =>
+              e.type == 'warp_scan' || e.type == 'warp_rescan')
+          .toList();
+    }
+    return _entries.where((e) => e.type == _filterType).toList();
+  }
+
+  Widget _buildFilterRow() {
+    final filterLabels = <String, String>{
+      'all': _t('همه', 'All'),
+      'connect': _t('اتصال', 'Connect'),
+      'disconnect': _t('قطع', 'Disconnect'),
+      'error': _t('خطا', 'Error'),
+      'warp': _t('WARP scan', 'WARP scan'),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: filterLabels.entries.map((e) {
+            final selected = _filterType == e.key;
+            return Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: ChoiceChip(
+                label: Text(
+                  e.value,
+                  style: TextStyle(
+                    color: selected
+                        ? Colors.black
+                        : AppColors.fg(context),
+                    fontSize: 11,
+                  ),
+                ),
+                selected: selected,
+                selectedColor: AppColors.accent,
+                backgroundColor: AppColors.surface(context),
+                side: BorderSide(color: AppColors.border(context)),
+                onSelected: (_) =>
+                    setState(() => _filterType = e.key),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
