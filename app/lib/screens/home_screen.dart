@@ -29,6 +29,7 @@ import '../services/desync_service.dart';
 import '../services/pingng_args.dart';
 import '../services/desync_tuner.dart';
 import '../services/warp_masque_session_service.dart';
+import '../services/warp_masque_service.dart';
 import '../services/warp_service.dart';
 import '../services/warp_cache_codec.dart';
 import '../services/geo_assets_service.dart';
@@ -230,6 +231,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         .addListener(_onMasterDnsRoutingChanged);
     WarpMasqueSessionService.instance.routingCount
         .addListener(_onWarpMasqueRoutingChanged);
+    WarpMasqueService.scanProgress.addListener(_onMasqueScanProgress);
 
     await _loadDeletedAndPinned();
     await _loadUiSettings();
