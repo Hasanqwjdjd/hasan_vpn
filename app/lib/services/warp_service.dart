@@ -485,4 +485,160 @@ class WarpService {
       onProgress: onProgress,
     );
   }
+
+  // ------------------------------------------------- WARP Plus 2-hop (chain)
+
+  /// ساخت لینک vpn:// از account ثبت‌شده — قابل استفاده در chain.
+  /// برخلاف generate()، این نسخه reserved را داخل settings می‌ذاره چون
+  /// chain به آن نیاز دارد.
+  static String _buildVpnLinkFromAccount({
+    required String privateKeyB64,
+    required Map<String, dynamic> account,
+    required String endpoint,
+    required String description,
+  }) {
+    final cfg = account['config'] as Map?;
+    final peers = cfg?['peers'] as List?;
+    if (peers == null || peers.isEmpty) {
+      throw StateError('no peers in account');
+    }
+    final peer = Map<String, dynamic>.from(peers.first as Map);
+    final peerPublicKey = (peer['public_key'] ?? '').toString();
+    if (peerPublicKey.isEmpty) {
+      throw StateError('no peer public key');
+    }
+    final iface = cfg?['interface'] as Map?;
+    final addrMap = (iface?['addresses'] as Map?) ??
+        ((cfg?['interface'] as Map?)?['addresses'] as Map?);
+    final v4 = ((addrMap)?['v4'] ?? '').toString();
+    final clientId = (cfg?['client_id'] ?? '').toString();
+    final reserved = _decodeReserved(clientId);
+    final host = endpoint.split(':').first;
+    final port = int.tryParse(endpoint.split(':').last) ?? _warpPort;
+
+    final container = <String, dynamic>{
+      'awg': <String, dynamic>{
+        'port': '\$port',
+        'last_config': jsonEncode(<String, dynamic>{
+          'interface': <String, dynamic>{
+            'private_key': privateKeyB64,
+            'address': v4.isNotEmpty ? v4 : '172.16.0.2/32',
+            'dns': '1.1.1.1',
+            'mtu': 1280,
+          },
+          'peer': <String, dynamic>{
+            'public_key': peerPublicKey,
+            'endpoint': endpoint,
+            'allowed_ips': <String>['0.0.0.0/0', '::/0'],
+            if (reserved != null) 'reserved': reserved,
+          },
+        }),
+        'mtu': '1280',
+      },
+    };
+    final outer = <String, dynamic>{
+      'hostName': host,
+      'description': description,
+      'containers': <dynamic>[container],
+    };
+    final rawB64 = base64.encode(utf8.encode(jsonEncode(outer)));
+    return 'vpn://\$rawB64';
+  }
+
+  /// ساخت WARP Plus 2-hop — Outer (بدون license) + Inner (با license).
+  /// خروجی یک chain:// است که توی _buildChainConfig تبدیل به دو outbound
+  /// wireguard می‌شود (outer اول، inner دوم).
+  static Future<({VpnServer? server, String? error})> generatePlusChain({
+    required String license,
+    String? proxySocksPort,
+    void Function(String msg)? onProgress,
+  }) async {
+    try {
+      final lic = license.trim();
+      if (lic.isEmpty) {
+        return (server: null, error: 'license is required');
+      }
+
+      // 1) endpoint — یک بار برای هر دو hop
+      onProgress?.call('Scanning edge IPs...');
+      var endpoint = '162.159.192.1:\$_warpPort';
+      try {
+        final fastest = await _scanFastest(
+          timeoutMs: 1500,
+          onProgress: onProgress,
+        );
+        if (fastest != null && fastest.isNotEmpty) endpoint = fastest;
+      } catch (_) {}
+
+      // 2) OUTER — keypair تازه، بدون license
+      onProgress?.call('Registering outer WARP...');
+      final outerKp = await _generateX25519();
+      final outerReg = await _register(
+        outerKp.publicKeyB64,
+        proxySocksPort: proxySocksPort,
+      );
+      if (outerReg.error != null || outerReg.account == null) {
+        return (
+          server: null,
+          error: 'outer: \${outerReg.error ?? "no account"}',
+        );
+      }
+      final outerLink = _buildVpnLinkFromAccount(
+        privateKeyB64: outerKp.privateKeyB64,
+        account: outerReg.account!,
+        endpoint: endpoint,
+        description: 'WARP outer',
+      );
+
+      // 3) INNER — keypair تازه + license
+      onProgress?.call('Registering inner WARP with license...');
+      final innerKp = await _generateX25519();
+      final innerReg = await _register(
+        innerKp.publicKeyB64,
+        proxySocksPort: proxySocksPort,
+        license: lic,
+      );
+      if (innerReg.error != null || innerReg.account == null) {
+        return (
+          server: null,
+          error: 'inner: \${innerReg.error ?? "no account"}',
+        );
+      }
+      final innerLink = _buildVpnLinkFromAccount(
+        privateKeyB64: innerKp.privateKeyB64,
+        account: innerReg.account!,
+        endpoint: endpoint,
+        description: 'WARP inner (Plus)',
+      );
+
+      // 4) chain:// — outer اول (dialer)، inner دوم (exit)
+      onProgress?.call('Building chain config...');
+      final chainLink = Uri(
+        scheme: 'chain',
+        host: 'config',
+        queryParameters: <String, String>{
+          'first': outerLink,
+          'second': innerLink,
+          'name': 'WARP+ 2-hop',
+        },
+      ).toString();
+
+      final host = endpoint.split(':').first;
+      final port = int.tryParse(endpoint.split(':').last) ?? _warpPort;
+
+      final server = VpnServer(
+        id: 'warp_plus_chain_\${DateTime.now().millisecondsSinceEpoch}',
+        name: 'WARP+ · 2-hop · \$host',
+        flag: '\u{1F310}',
+        shareLink: chainLink,
+        protocol: VpnProtocol.chain,
+        host: host,
+        port: port,
+        isDeletable: true,
+      );
+      return (server: server, error: null);
+    } catch (e) {
+      return (server: null, error: e.toString());
+    }
+  }
 }
