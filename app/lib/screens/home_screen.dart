@@ -4686,6 +4686,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 tooltip: _t('تست همه', 'Test All'),
               ),
               IconButton(
+                icon: _batchRunning
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.accent),
+                      )
+                    : const Icon(Icons.grid_view,
+                        color: AppColors.accent, size: 22),
+                onPressed: _batchRunning ? null : _runWarpBatchTest,
+                tooltip: _t('تست دسته‌ای WARP/WARP+/MASQUE',
+                    'Batch test WARP/WARP+/MASQUE'),
+              ),
+              IconButton(
                 icon: Icon(
                   _selectionMode
                       ? Icons.check_box
