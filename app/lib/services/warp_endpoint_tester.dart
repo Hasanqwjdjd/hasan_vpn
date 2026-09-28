@@ -191,6 +191,131 @@ class WarpEndpointTester {
     return best;
   }
 
+  /// نسخه چند-برنده `select`: لیست hit ها رو برمی‌گردونه برای verify.
+  ///
+  /// برای WARP Plus / WARP که می‌خوان real-tunnel verify کنن لازمه —
+  /// چون UDP handshake تضمین نمی‌کنه data-plane کار کنه.
+  static Future<List<WarpEndpointHit>> selectMany({
+    required WarpEndpointMode mode,
+    required String privateKeyB64,
+    required String peerPublicKeyB64,
+    String? customEndpoint,
+    int maxHits = 12,
+    void Function(String label, int tested, int total)? onProgress,
+  }) async {
+    final priv = _tryDecodeB64(privateKeyB64);
+    final peer = _tryDecodeB64(peerPublicKeyB64);
+    if (priv == null || peer == null) return const [];
+
+    if (mode == WarpEndpointMode.custom) {
+      final custom = _parseEndpoint(customEndpoint);
+      if (custom == null) return const [];
+      final hits = await WarpEndpointScanner.scan(
+        endpoints: [custom],
+        privateKey: priv,
+        peerPublicKey: peer,
+        ratePerSecond: 0,
+        workers: 1,
+        timeoutMs: 800,
+        maxHits: 1,
+        acceptCookieReplies: true,
+        onProgress: (t, total) => onProgress?.call('Custom', t, total),
+      );
+      return hits;
+    }
+
+    // reconnect — اگه cached بود، اول اون رو با priority برگردون
+    final cached = await _cachedEndpoint(mode);
+    final List<WarpEndpointHit> cachedHits;
+    if (cached != null) {
+      cachedHits = await WarpEndpointScanner.scan(
+        endpoints: [cached],
+        privateKey: priv,
+        peerPublicKey: peer,
+        ratePerSecond: 0,
+        workers: 1,
+        timeoutMs: 600,
+        maxHits: 1,
+        acceptCookieReplies: true,
+        onProgress: (t, total) =>
+            onProgress?.call('Reconnect', t, total),
+      );
+    } else {
+      cachedHits = const [];
+    }
+
+    final List<WarpEndpoint> pool;
+    final int workers;
+    final int timeoutMs;
+    final int? stopAfterHits;
+    final int ratePerSecond;
+
+    switch (mode) {
+      case WarpEndpointMode.fast:
+        pool = _fastSeeds
+            .map(_parseEndpoint)
+            .whereType<WarpEndpoint>()
+            .toList();
+        workers = 64;
+        timeoutMs = 400;
+        stopAfterHits = maxHits;
+        ratePerSecond = 1500;
+        break;
+      case WarpEndpointMode.medium:
+        pool = WarpEndpointScanner.buildPool(
+          subnets: _primarySubnets,
+          ports: _primaryPorts,
+          sampleHostsPerSubnet: 32,
+        );
+        workers = 128;
+        timeoutMs = 500;
+        stopAfterHits = maxHits;
+        ratePerSecond = 3500;
+        break;
+      case WarpEndpointMode.slow:
+        pool = WarpEndpointScanner.buildPool(
+          subnets: _primarySubnets,
+          ports: [..._primaryPorts, ..._extendedPorts],
+        );
+        workers = 256;
+        timeoutMs = 350;
+        stopAfterHits = null;
+        ratePerSecond = 2000;
+        break;
+      case WarpEndpointMode.custom:
+        return const [];
+    }
+
+    final label = mode.label;
+    final hits = await WarpEndpointScanner.scan(
+      endpoints: pool,
+      privateKey: priv,
+      peerPublicKey: peer,
+      ratePerSecond: ratePerSecond,
+      workers: workers,
+      timeoutMs: timeoutMs,
+      maxHits: maxHits.clamp(1, 64),
+      stopAfterHits: stopAfterHits,
+      acceptCookieReplies: mode != WarpEndpointMode.fast,
+      onProgress: (t, total) => onProgress?.call(label, t, total),
+    );
+
+    // cached اول، بعد بقیه
+    final out = <WarpEndpointHit>[];
+    if (cachedHits.isNotEmpty) out.addAll(cachedHits);
+    out.addAll(hits);
+
+    // dedup
+    final seen = <String>{};
+    out.retainWhere((h) => seen.add(h.endpoint.toString()));
+
+    if (out.isEmpty) return const [];
+    out.sort(mode == WarpEndpointMode.slow
+        ? (a, b) => a.latencyMs.compareTo(b.latencyMs)
+        : (a, b) => a.discoveryOrder.compareTo(b.discoveryOrder));
+    return out;
+  }
+
   /// چک کردن اینکه endpoint قبلاً تست شده.
   static Future<WarpEndpoint?> _cachedEndpoint(WarpEndpointMode mode) async {
     try {
