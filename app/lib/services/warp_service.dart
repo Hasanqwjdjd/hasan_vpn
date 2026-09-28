@@ -817,6 +817,104 @@ class WarpService {
     return 'vpn://$rawB64';
   }
 
+  /// ساخت WARP Plus 2-hop از دو لینک آماده vpn:// — بدون register.
+  ///
+  /// برای کاربران پیشرفته که کلید outer/inner رو جدا ساختن.
+  /// هر دو link باید فرمت `vpn://<base64>` داشته باشن (AmneziaWG format).
+  static ({VpnServer? server, String? error}) buildPlusChainFromLinks({
+    required String outerVpnLink,
+    required String innerVpnLink,
+    String name = 'WARP+ manual 2-hop',
+  }) {
+    try {
+      final outer = outerVpnLink.trim();
+      final inner = innerVpnLink.trim();
+      if (!outer.startsWith('vpn://')) {
+        return (server: null, error: 'outer link must be vpn://...');
+      }
+      if (!inner.startsWith('vpn://')) {
+        return (server: null, error: 'inner link must be vpn://...');
+      }
+
+      // اطمینان از اینکه هر دو valid هستن
+      final outerFields = _extractWgFieldsFromVpnLink(outer);
+      final innerFields = _extractWgFieldsFromVpnLink(inner);
+      if (outerFields == null) {
+        return (server: null, error: 'outer link is invalid');
+      }
+      if (innerFields == null) {
+        return (server: null, error: 'inner link is invalid');
+      }
+
+      final chainLink = Uri(
+        scheme: 'chain',
+        host: 'config',
+        queryParameters: <String, String>{
+          'first': outer,
+          'second': inner,
+          'name': name,
+        },
+      ).toString();
+
+      // endpoint از outer می‌گیریم برای نمایش
+      final outerEndpoint = _extractWgEndpointFromLink(outer) ?? '';
+      final host = outerEndpoint.split(':').first;
+      final port = int.tryParse(
+              outerEndpoint.split(':').length > 1
+                  ? outerEndpoint.split(':').last
+                  : '') ??
+          _warpPort;
+
+      final server = VpnServer(
+        id: 'warp_plus_manual_${DateTime.now().millisecondsSinceEpoch}',
+        name: host.isEmpty ? name : '$name · $host',
+        flag: '\u{1F310}',
+        shareLink: chainLink,
+        protocol: VpnProtocol.chain,
+        host: host,
+        port: port,
+        isDeletable: true,
+        warpEndpointMode: 'Custom',
+      );
+      return (server: server, error: null);
+    } catch (e) {
+      return (server: null, error: e.toString());
+    }
+  }
+
+  /// استخراج endpoint از یک vpn:// link (برای نمایش).
+  static String? _extractWgEndpointFromLink(String link) {
+    try {
+      final b64 = link.substring('vpn://'.length).trim();
+      final raw = utf8.decode(
+        base64.decode(base64.normalize(b64)),
+        allowMalformed: true,
+      );
+      final outer = jsonDecode(raw);
+      if (outer is! Map) return null;
+      Map? awg;
+      final containers = outer['containers'];
+      if (containers is List) {
+        for (final c in containers) {
+          if (c is Map && c['awg'] is Map) {
+            awg = Map<String, dynamic>.from(c['awg'] as Map);
+            break;
+          }
+        }
+      }
+      if (awg == null) return null;
+      final lastCfg = (awg['last_config'] ?? '').toString();
+      if (lastCfg.isEmpty) return null;
+      final innerCfg = jsonDecode(lastCfg);
+      if (innerCfg is! Map) return null;
+      final peer = innerCfg['peer'];
+      if (peer is! Map) return null;
+      return (peer['endpoint'] ?? '').toString();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// ساخت WARP Plus 2-hop — Outer (بدون license) + Inner (با license).
   /// خروجی یک chain:// است که توی _buildChainConfig تبدیل به دو outbound
   /// wireguard می‌شود (outer اول، inner دوم).
