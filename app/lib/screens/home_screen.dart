@@ -35,6 +35,7 @@ import '../services/warp_endpoint_health_monitor.dart';
 import '../services/connection_quality.dart';
 import '../services/quality_history_service.dart';
 import '../services/telemetry_service.dart';
+import '../services/quality_alert.dart';
 import 'quality_history_screen.dart';
 import '../services/warp_batch_tester.dart';
 import '../services/warp_scout_scheduler.dart';
@@ -252,6 +253,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WarpScoutScheduler.instance.onRescanNeeded = _onSchedulerRescan;
     // ignore: unawaited_futures
     WarpScoutScheduler.instance.restore();
+    // Quality alert
+    QualityAlert.instance.onLowQuality = _onLowQuality;
+    QualityAlert.instance.onRecovered = _onQualityRecovered;
+    // ignore: unawaited_futures
+    QualityAlert.instance.restore();
     // Batch test auto-run
     _maybeAutoBatchOnStart();
 
@@ -3476,6 +3482,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           );
         });
       }
+      // هشدار کیفیت
+      if (latest != null) {
+        QualityAlert.instance.evaluate(latest.score);
+      }
       if (latest != null) {
         // ignore: unawaited_futures
         QualityHistoryService.add(QualitySample(
@@ -6169,6 +6179,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       WarpScoutScheduler.instance.onRescanNeeded = null;
       WarpScoutScheduler.instance.serversProvider = null;
+    } catch (_) {}
+    try {
+      QualityAlert.instance.onLowQuality = null;
+      QualityAlert.instance.onRecovered = null;
     } catch (_) {}
     _qualityMonitor.reset();
     ConnectivityWatcher.instance.stop();
