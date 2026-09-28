@@ -33,6 +33,7 @@ import '../services/warp_masque_service.dart';
 import '../services/warp_service.dart';
 import '../services/warp_endpoint_health_monitor.dart';
 import '../services/connection_quality.dart';
+import '../services/warp_batch_tester.dart';
 import '../widgets/quality_badge.dart';
 import '../services/warp_cache_codec.dart';
 import '../services/geo_assets_service.dart';
@@ -123,6 +124,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _autoFailoverRunning = false;
   bool _autoFailoverEnabled = false;
   final QualityMonitor _qualityMonitor = QualityMonitor();
+  final WarpBatchTester _batchTester = WarpBatchTester();
+  bool _batchRunning = false;
   DateTime? _lastConnectTime;
   VoidCallback? _finalMaskDialogRefresh;
   List<String> _manualOrder = <String>[];
@@ -2808,6 +2811,218 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     });
     _savePings();
+  }
+
+  /// تست دسته‌ای چند سرور WARP/WARP+/MASQUE به‌صورت موازی.
+  ///
+  /// هر سرور رو با یه endpoint rescan تست می‌کنه. بهترین endpoint
+  /// برای هر سرور ذخیره می‌شه.
+  Future<void> _runWarpBatchTest() async {
+    if (_batchRunning) {
+      _showMsg(_t('تست دسته‌ای در حال اجراست', 'Batch test already running'));
+      return;
+    }
+
+    final warpServers = _servers
+        .where((s) =>
+            (s.protocol == VpnProtocol.amneziaWg ||
+                s.protocol == VpnProtocol.chain ||
+                s.protocol == VpnProtocol.warpMasque) &&
+            s.isDeletable)
+        .toList();
+
+    if (warpServers.isEmpty) {
+      _showMsg(_t('هیچ سرور WARP/WARP+/MASQUE قابل تست نیست',
+          'No testable WARP/WARP+/MASQUE server'));
+      return;
+    }
+
+    if (_connected) {
+      try { await _disconnectAll(); } catch (_) {}
+      _markDisconnected(_t('آماده', 'Ready'));
+    }
+
+    _batchRunning = true;
+
+    // نمایش دیالوگ زنده
+    // ignore: unawaited_futures
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface(ctx),
+        title: Text(
+          _t('تست دسته‌ای WARP', 'WARP batch test'),
+          style: TextStyle(color: AppColors.fg(ctx), fontSize: 15),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 350,
+          child: ValueListenableBuilder<WarpBatchState>(
+            valueListenable: _batchTester.state,
+            builder: (_, state, __) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LinearProgressIndicator(
+                    value: state.total > 0 ? state.progress : null,
+                    color: AppColors.accent,
+                    backgroundColor: AppColors.border(ctx),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${state.tested} / ${state.total}',
+                    style: TextStyle(
+                        color: AppColors.muted(ctx), fontSize: 12),
+                  ),
+                  if (state.currentServer.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        state.currentServer,
+                        style: TextStyle(
+                            color: AppColors.fg(ctx), fontSize: 11),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: state.results.isEmpty
+                        ? Center(
+                            child: Text(
+                              _t('شروع...', 'Starting...'),
+                              style: TextStyle(
+                                  color: AppColors.muted2(ctx),
+                                  fontSize: 11),
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: state.results.length,
+                            itemBuilder: (_, i) {
+                              final r = state.results[i];
+                              return ListTile(
+                                dense: true,
+                                title: Text(
+                                  r.server.displayName,
+                                  style: TextStyle(
+                                      color: AppColors.fg(ctx),
+                                      fontSize: 11),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                  r.ok
+                                      ? r.bestEndpoint!
+                                      : (r.error ?? 'unknown'),
+                                  style: TextStyle(
+                                    color: r.ok
+                                        ? AppColors.muted2(ctx)
+                                        : AppColors.danger,
+                                    fontSize: 9.5,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: Text(
+                                  r.ok ? '${r.latencyMs}ms' : '✕',
+                                  style: TextStyle(
+                                    color: r.ok
+                                        ? AppColors.accent
+                                        : AppColors.danger,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+        actions: [
+          ValueListenableBuilder<WarpBatchState>(
+            valueListenable: _batchTester.state,
+            builder: (_, state, __) => TextButton(
+              onPressed: state.running
+                  ? () {
+                      _batchTester.cancel();
+                      Navigator.pop(ctx);
+                    }
+                  : () => Navigator.pop(ctx),
+              child: Text(
+                state.running
+                    ? _t('لغو', 'Cancel')
+                    : _t('بستن', 'Close'),
+                style: TextStyle(
+                    color: state.running
+                        ? AppColors.danger
+                        : AppColors.accent),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    try {
+      final results = await _batchTester.run(
+        servers: warpServers,
+        rescan: (server) async {
+          if (server.protocol == VpnProtocol.warpMasque) {
+            return await WarpMasqueService.rescanEndpoints(
+              endpoint: server.host + ':' + server.port.toString(),
+              endpointCandidates: server.warpMasqueEndpointCandidates,
+              timeoutSec: 90,
+            );
+          }
+          return await WarpService.rescanEndpoints(server);
+        },
+      );
+
+      if (!mounted) return;
+      if (Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      // آپدیت endpoint برنده روی هر سرور
+      var updated = 0;
+      for (final r in results) {
+        if (!r.ok) continue;
+        final ep = r.bestEndpoint!;
+        final parts = ep.split(':');
+        if (parts.length < 2) continue;
+        final newHost = parts[0];
+        final newPort = int.tryParse(parts[1]) ?? r.server.port;
+        final upd = r.server.copyWith(host: newHost, port: newPort);
+        setState(() {
+          final idx = _customServers.indexWhere((s) => s.id == r.server.id);
+          if (idx >= 0) _customServers[idx] = upd;
+          final si = _servers.indexWhere((s) => s.id == r.server.id);
+          if (si >= 0) _servers[si] = upd;
+        });
+        updated++;
+      }
+      // ignore: unawaited_futures
+      _saveCustomServers();
+
+      _showMsg(_t(
+        'تست دسته‌ای تمام شد — $updated endpoint ذخیره شد',
+        'Batch test done — $updated endpoints saved',
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      if (Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      _showMsg(_t('خطا: $e', 'Error: $e'));
+    } finally {
+      _batchRunning = false;
+    }
   }
 
   Future<void> _testAll() async {
