@@ -54,6 +54,7 @@ class _TorScreenState extends State<TorScreen> {
   ];
 
   String _bridgeType = 'vanilla';
+  bool _fetchingBridges = false;
   String _selectedSni = TorSniPresets.defaultSni;
   bool _sniEnabled = false;
   bool _sniAutoPicking = false;
@@ -1428,6 +1429,34 @@ class _TorScreenState extends State<TorScreen> {
     );
   }
 
+  /// fetch پل‌های تازه از moat API Tor Project + cache 12h.
+  Future<void> _refreshFromMoat() async {
+    if (_fetchingBridges) return;
+    setState(() => _fetchingBridges = true);
+    _snack(_t('در حال دریافت پل‌های تازه...', 'Fetching fresh bridges...'));
+    try {
+      await TorBridges.clearCache();
+      final list = await TorBridges.forTypeAsync(
+        _bridgeType,
+        sni: _selectedSni,
+        forceRefresh: true,
+      );
+      if (!mounted) return;
+      if (list.isNotEmpty) {
+        _snack(_t('${list.length} پل تازه از Tor دریافت شد',
+            '${list.length} fresh bridges from Tor'));
+      } else {
+        _snack(_t('دریافت پل‌های تازه ناموفق — از لیست پیش‌فرض استفاده می‌شود',
+            'Refresh failed — using built-in list'));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _snack(_t('خطا: $e', 'Error: $e'));
+    } finally {
+      if (mounted) setState(() => _fetchingBridges = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final listView = ListView(
@@ -1646,6 +1675,26 @@ class _TorScreenState extends State<TorScreen> {
                           minWidth: 32, minHeight: 32),
                     ),
                   ],
+                  if (_fetchingBridges)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  else
+                    IconButton(
+                      tooltip: _t('دریافت پل تازه از Tor',
+                          'Fetch fresh bridges from Tor'),
+                      onPressed: _refreshFromMoat,
+                      icon: const Icon(Icons.cloud_download,
+                          color: AppColors.accent, size: 20),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                          minWidth: 32, minHeight: 32),
+                    ),
                   TextButton(
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 6),
