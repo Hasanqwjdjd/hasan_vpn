@@ -344,6 +344,49 @@ class PsiphonRuntimeService : Service() {
         boundUnderlyingNetwork = null
     }
 
+    /**
+     * Uses a caller-supplied Psiphon JSON config as the base, but forces the
+     * data directories and adds the upstream URL if it is missing. The
+     * runtime process has different filesDir than the caller, so the data
+     * root must always be rewritten to this process's path.
+     */
+    private fun mergeRuntimePaths(raw: String, upstreamPort: Int): String {
+        val root = JsonParser.parseString(raw).asJsonObject
+        val dataRoot = File(filesDir, "pingng-psiphon")
+        check(dataRoot.mkdirs() || dataRoot.isDirectory) {
+            "Unable to create Psiphon data root: ${dataRoot.absolutePath}"
+        }
+        val dataStore = File(dataRoot, "datastore")
+        check(dataStore.mkdirs() || dataStore.isDirectory) {
+            "Unable to create Psiphon datastore: ${dataStore.absolutePath}"
+        }
+        val osl = File(filesDir, "osl")
+        check(osl.mkdirs() || osl.isDirectory) {
+            "Unable to create Psiphon OSL directory: ${osl.absolutePath}"
+        }
+        root.addProperty("DataRootDirectory", dataRoot.absolutePath)
+        root.addProperty("DataStoreDirectory", dataStore.absolutePath)
+        root.addProperty("MigrateDataStoreDirectory", filesDir.absolutePath)
+        root.addProperty("MigrateObfuscatedServerListDownloadDirectory", osl.absolutePath)
+        root.addProperty("MigrateRemoteServerListDownloadFilename", File(filesDir, "remote_server_list").absolutePath)
+        root.addProperty("EstablishTunnelTimeoutSeconds", 0)
+        root.addProperty("UpstreamProxyAllowAllServerEntrySources", true)
+        if (!root.has("TunnelWholeDevice")) root.addProperty("TunnelWholeDevice", 0)
+        val existingUpstream = root.get("UpstreamProxyUrl")?.asString.orEmpty()
+        if (existingUpstream.isBlank() && upstreamPort in 1..65535) {
+            root.addProperty("UpstreamProxyUrl", "http://127.0.0.1:$upstreamPort")
+        }
+        if (!root.has("DeviceRegion")) root.addProperty("DeviceRegion", Locale.getDefault().country)
+        if (!root.has("ClientPlatform")) {
+            root.addProperty(
+                "ClientPlatform",
+                "Android_${Build.VERSION.RELEASE}_$packageName".replace(Regex("[^\\w\\-.]"), "_"),
+            )
+        }
+        if (!root.has("ClientAPILevel")) root.addProperty("ClientAPILevel", Build.VERSION.SDK_INT)
+        return root.toString()
+    }
+
     private fun buildConfig(
         region: String,
         mode: String,
