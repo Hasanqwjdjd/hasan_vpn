@@ -19,6 +19,7 @@ class ServerTile extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onTest;
   final VoidCallback? onHomeWidget;
+  final VoidCallback? onRescanWarp;
   final VoidCallback? onLongPress;
   /// حالت گرید دوستونی: آیکون‌ها و padding فشرده می‌شن تا همپوشانی نشه.
   final bool compact;
@@ -36,6 +37,7 @@ class ServerTile extends StatelessWidget {
     this.onEdit,
     this.onTest,
     this.onHomeWidget,
+    this.onRescanWarp,
     this.onLongPress,
     this.compact = false,
   });
@@ -218,6 +220,7 @@ class ServerTile extends StatelessWidget {
   static const String _editLabel = 'ویرایش نام / Rename';
   static const String _widgetLabel = 'ویجت / Home widget';
   static const String _deleteLabel = 'حذف / Delete';
+  static const String _rescanLabel = 'اسکن دوباره endpoints / Rescan endpoints';
 
   Widget _smallIcon({
     required IconData icon,
@@ -443,6 +446,9 @@ class ServerTile extends StatelessWidget {
                       case 'test':
                         onTest?.call();
                         break;
+                      case 'rescan':
+                        onRescanWarp?.call();
+                        break;
                       case 'delete':
                         onDelete?.call();
                         break;
@@ -498,6 +504,22 @@ class ServerTile extends StatelessWidget {
                           const SizedBox(width: 8),
                           Text(_pingLabel,
                               style: TextStyle(color: AppColors.fg(bCtx))),
+                        ]),
+                      ),
+                    if (onRescanWarp != null &&
+                        (server.protocol == VpnProtocol.amneziaWg ||
+                            server.protocol == VpnProtocol.chain))
+                      PopupMenuItem(
+                        value: 'rescan',
+                        child: Row(children: [
+                          Icon(Icons.refresh,
+                              size: 16, color: AppColors.fg(bCtx)),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(_rescanLabel,
+                                style: TextStyle(color: AppColors.fg(bCtx)),
+                                overflow: TextOverflow.ellipsis),
+                          ),
                         ]),
                       ),
                     if (onEdit != null)
