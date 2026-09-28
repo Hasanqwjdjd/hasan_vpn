@@ -812,6 +812,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         TextEditingController(text: server.tls.sniPool.join(', '));
 
     String pingNgProfile = server.pingNgProfile ?? 'Off';
+    bool pingNgUdp = server.pingNgUdpDesync;
     final pingNgArgsCtrl =
         TextEditingController(text: server.pingNgArgs ?? '');
 
@@ -1098,6 +1099,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ),
                     ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      activeColor: AppColors.accent,
+                      title: Text(
+                        _t('Desync روی UDP (Hysteria2/QUIC)',
+                            'Desync on UDP (Hysteria2/QUIC)'),
+                        style: TextStyle(color: AppColors.fg(ctx), fontSize: 12),
+                      ),
+                      subtitle: Text(
+                        _t('برای سرورهایی که روی UDP کار می\u200cکنن فعال کن',
+                            'Enable for servers that run on UDP'),
+                        style: TextStyle(
+                            color: AppColors.muted2(ctx), fontSize: 10),
+                      ),
+                      value: pingNgUdp,
+                      onChanged: (v) => setLocal(() => pingNgUdp = v),
+                    ),
                     if (pingNgProfile == 'Custom') ...[
                       const SizedBox(height: 6),
                       field(
@@ -1146,6 +1165,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   'browserDialer': browserDialer,
                   'targetStrategy': targetStratCtrl.text.trim(),
                   'pingNgProfile': pingNgProfile,
+                  'pingNgUdp': pingNgUdp,
                   'pingNgArgs': pingNgProfile == 'Custom'
                       ? pingNgArgsCtrl.text.trim()
                       : null,
@@ -1194,6 +1214,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final newDns = (result['dns'] as String?)?.trim() ?? '';
       final newPingProfile = (result['pingNgProfile'] as String?)?.trim();
       final newPingArgs = (result['pingNgArgs'] as String?)?.trim();
+      final newPingUdp = result['pingNgUdp'] == true;
 
       final updated = server.copyWith(
         name: newName.isNotEmpty ? newName : null,
@@ -1206,6 +1227,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         pingNgArgs: (newPingArgs == null || newPingArgs.isEmpty)
             ? null
             : newPingArgs,
+        pingNgUdpDesync: newPingUdp,
       );
 
       // آپدیت sniOrHost (nullable final است؛ مستقیم ست می‌کنیم)
