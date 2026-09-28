@@ -394,6 +394,11 @@ class PsiphonService {
         final channel = uri.queryParameters['channel'] ?? '';
         final region = uri.queryParameters['region'] ?? '';
         final upstream = uri.queryParameters['upstream'] ?? '';
+        final upstreamProxyUrl = switch (upstream) {
+          'warpmasque' => 'socks5://127.0.0.1:1819',
+          'masterdns' => 'socks5://127.0.0.1:18000',
+          _ => '',
+        };
         final mode = uri.queryParameters['mode'] ?? 'auto';
         final cdnIps = uri.queryParameters['cdn_ips'] ?? '';
         final cdnSni = uri.queryParameters['cdn_sni'] ?? '';
@@ -402,7 +407,7 @@ class PsiphonService {
           sponsorId: sponsor,
           propagationChannelId: channel,
           egressRegion: region,
-          upstreamProxyUrl: upstream,
+          upstreamProxyUrl: upstreamProxyUrl,
           mode: mode,
           cdnIps: cdnIps,
           cdnSni: cdnSni,
