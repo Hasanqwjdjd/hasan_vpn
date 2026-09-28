@@ -2499,6 +2499,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// callback از WARP Scout Scheduler — rescan سرور هدف.
+  Future<void> _onSchedulerRescan(VpnServer server, {bool force = false}) async {
+    try {
+      debugPrint('scheduler: rescan ' + server.name + ' force=' + force.toString());
+      if (server.protocol == VpnProtocol.warpMasque) {
+        if (!force) {
+          final alive = await WarpEndpointHealthMonitor.quickCheck(
+            server.host + ':' + server.port.toString(),
+          );
+          if (alive) return;
+        }
+        await _rescanMasqueServer(server);
+      } else {
+        if (!force) {
+          final alive = await WarpEndpointHealthMonitor.quickCheck(
+            server.host + ':' + server.port.toString(),
+          );
+          if (alive) return;
+        }
+        await _rescanWarpServer(server);
+      }
+    } catch (e) {
+      debugPrint('scheduler rescan error: ' + e.toString());
+    }
+  }
+
   /// health monitor: endpoint فعلی خراب شد → failover به یه endpoint دیگه.
   void _onWarpEndpointDegraded(String serverId) {
     if (!mounted) return;
