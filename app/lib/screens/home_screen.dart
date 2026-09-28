@@ -5673,6 +5673,71 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// کپی دسته‌ای انتخاب‌شده‌ها.
+  Future<void> _bulkCopy(String mode) async {
+    final selected = _servers
+        .where((s) => _selectedIds.contains(s.id))
+        .toList();
+    if (selected.isEmpty) {
+      _showMsg(_t('چیزی انتخاب نشده', 'Nothing selected'));
+      return;
+    }
+
+    final copyable = <VpnServer>[];
+    var blockedCount = 0;
+    for (final s in selected) {
+      final isCustom = _customServers.any((c) => c.id == s.id);
+      if (isCustom || s.isAether || s.isPsiphon) {
+        copyable.add(s);
+      } else {
+        blockedCount++;
+      }
+    }
+
+    if (copyable.isEmpty) {
+      _showMsg(_t('سرور های داخل برنامه قابل کپی برداری نمی باشد',
+          'Built-in servers cannot be copied'));
+      setState(() {
+        _selectionMode = false;
+        _selectedIds.clear();
+      });
+      return;
+    }
+
+    String payload;
+    switch (mode) {
+      case 'names':
+        payload = copyable.map((s) => s.displayName).join('\n');
+        break;
+      case 'json':
+        final list = copyable.map((s) => <String, dynamic>{
+              'name': s.displayName,
+              'protocol': s.protocol.name,
+              'flag': s.flag,
+              'host': s.host,
+              'port': s.port,
+              'shareLink': s.shareLink,
+            }).toList();
+        payload = const JsonEncoder.withIndent('  ').convert(list);
+        break;
+      case 'links':
+      default:
+        payload = copyable.map((s) => s.shareLink).join('\n');
+        break;
+    }
+
+    await Clipboard.setData(ClipboardData(text: payload));
+    if (!mounted) return;
+    _showMsg(_t(
+      '${copyable.length} مورد کپی شد${blockedCount > 0 ? " ($blockedCount نامعتبر رد شد)" : ""}',
+      '${copyable.length} copied${blockedCount > 0 ? " ($blockedCount skipped)" : ""}',
+    ));
+    setState(() {
+      _selectionMode = false;
+      _selectedIds.clear();
+    });
+  }
+
   Future<void> _addSelectedToGroup() async {
     await _openGroupMembersEditor();
   }
@@ -6256,43 +6321,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ),
                     ),
-                    _compactIconButton(
-                      icon: Icons.copy,
+                    PopupMenuButton<String>(
+                      icon: Icon(Icons.copy,
+                          color: AppColors.fg(context), size: 20),
                       tooltip: _t('کپی', 'Copy'),
-                      onPressed: () {
-                        final selected = _servers
-                            .where((s) => _selectedIds.contains(s.id))
-                            .toList();
-                        final copyable = <VpnServer>[];
-                        var blockedCount = 0;
-                        for (final s in selected) {
-                          final isCustom =
-                              _customServers.any((c) => c.id == s.id);
-                          if (isCustom || s.isAether || s.isPsiphon) {
-                            copyable.add(s);
-                          } else {
-                            blockedCount++;
-                          }
-                        }
-                        if (blockedCount > 0) {
-                          _showMsg(_t(
-                              'سرور های داخل برنامه قابل کپی برداری نمی باشد',
-                              'Built-in servers cannot be copied'));
-                        }
-                        if (copyable.isNotEmpty) {
-                          Clipboard.setData(ClipboardData(
-                              text: copyable
-                                  .map((s) => s.shareLink)
-                                  .join('\n')));
-                          if (blockedCount == 0) {
-                            _showMsg(_t('کپی شد', 'Copied'));
-                          }
-                        }
-                        setState(() {
-                          _selectionMode = false;
-                          _selectedIds.clear();
-                        });
-                      },
+                      color: AppColors.surface(context),
+                      onSelected: (mode) => _bulkCopy(mode),
+                      itemBuilder: (bCtx) => <PopupMenuEntry<String>>[
+                        PopupMenuItem(
+                          value: 'links',
+                          child: Row(children: [
+                            Icon(Icons.link,
+                                size: 16, color: AppColors.fg(bCtx)),
+                            const SizedBox(width: 8),
+                            Text(_t('لینک‌های اشتراک', 'Share links'),
+                                style: TextStyle(color: AppColors.fg(bCtx))),
+                          ]),
+                        ),
+                        PopupMenuItem(
+                          value: 'names',
+                          child: Row(children: [
+                            Icon(Icons.label_outline,
+                                size: 16, color: AppColors.fg(bCtx)),
+                            const SizedBox(width: 8),
+                            Text(_t('نام سرورها', 'Server names'),
+                                style: TextStyle(color: AppColors.fg(bCtx))),
+                          ]),
+                        ),
+                        PopupMenuItem(
+                          value: 'json',
+                          child: Row(children: [
+                            Icon(Icons.data_object,
+                                size: 16, color: AppColors.fg(bCtx)),
+                            const SizedBox(width: 8),
+                            Text(_t('JSON کامل', 'Full JSON'),
+                                style: TextStyle(color: AppColors.fg(bCtx))),
+                          ]),
+                        ),
+                      ],
                     ),
                     _compactIconButton(
                       icon: Icons.folder_special,
