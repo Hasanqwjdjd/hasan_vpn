@@ -6590,6 +6590,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _autoFastestTimer?.cancel();
+    _widgetTimerRefresh?.cancel();
     try {
       WarpMasqueService.scanProgress.removeListener(_onMasqueScanProgress);
     } catch (_) {}
