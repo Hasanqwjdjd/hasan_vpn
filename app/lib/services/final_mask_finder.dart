@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import 'v2ray_engine.dart';
@@ -73,6 +74,97 @@ class FinalMaskFinder {
     ),
   ];
 
+  /// Presets که با مشخصات سرور فعلی سازگارتر هستند و اول امتحان می‌شن.
+  ///
+  /// - اگه SNI/Host دومین کوتاه باشه → fragment کوچک‌تر با priority
+  /// - اگه سرور CDN باشه (cloudflare/amazon/...) → tlshello aggressive
+  /// - preset هایی که قبلاً روی همین سرور برنده شدن → اول لیست
+  static Future<List<FinalMaskPreset>> dynamicPresetsFor(VpnServer server) async {
+    final dynamic = <FinalMaskPreset>[];
+    final sni = (server.sniOrHost ?? '').toLowerCase();
+    final host = server.host.toLowerCase();
+    final target = sni.isNotEmpty ? sni : host;
+    final isCdn = host.contains('cloudflare') ||
+        host.contains('amazonaws') ||
+        host.contains('fastly') ||
+        host.contains('akamai') ||
+        host.contains('cdn') ||
+        host.endsWith('.workers.dev') ||
+        host.endsWith('.pages.dev');
+
+    // CDN: بسته‌های TLS بزرگ → split در موقعیت کوچک
+    if (isCdn) {
+      dynamic.add(const FinalMaskPreset(
+        label: 'CDN adaptive: tlshello / 1-20 / 0-1',
+        finalMask:
+            '{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","lengths":["1","20"],"delays":["0","1"],"maxSplit":"0"}}]}',
+      ));
+      dynamic.add(const FinalMaskPreset(
+        label: 'CDN adaptive: 1-3 / 100-300 / 1-2',
+        finalMask:
+            '{"tcp":[{"type":"fragment","settings":{"packets":"1-3","lengths":["100","300"],"delays":["1","2"],"maxSplit":"0"}}]}',
+      ));
+    }
+
+    // دامنه‌های کوتاه یا تک‌برچسبی → split دقیق‌تر در بایت اول SNI
+    if (target.isNotEmpty && target.split('.').length <= 2) {
+      dynamic.add(const FinalMaskPreset(
+        label: 'short-SNI: tlshello / 0-40 / 0',
+        finalMask:
+            '{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","lengths":["0","40"],"delays":["0"],"maxSplit":"0"}}]}',
+      ));
+    }
+
+    // سرور ایران یا دامنه‌های خاص → fragment شدید
+    final iran = host.endsWith('.ir') || target.endsWith('.ir');
+    if (iran) {
+      dynamic.add(const FinalMaskPreset(
+        label: 'IR-adaptive: tlshello / 0-104-1 / 0 + 1-1 / 114',
+        finalMask:
+            '{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","lengths":["0","104","1"],"delays":["0"],"maxSplit":"0"}},{"type":"fragment","settings":{"packets":"1-1","lengths":["114","1"],"delays":["1"],"maxSplit":"11"}}]}',
+      ));
+      dynamic.add(const FinalMaskPreset(
+        label: 'IR-adaptive: 1-1 / 200-400 / 5',
+        finalMask:
+            '{"tcp":[{"type":"fragment","settings":{"packets":"1-1","lengths":["200","400"],"delays":["5"],"maxSplit":"0"}}]}',
+      ));
+    }
+
+    // preset هایی که قبلاً روی همین سرور برنده شدن → با اولویت
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getStringList('final_mask_winners_${server.id}');
+      if (saved != null && saved.isNotEmpty) {
+        for (final raw in saved.take(3)) {
+          if (raw.isEmpty) continue;
+          dynamic.insert(
+            0,
+            FinalMaskPreset(label: 'remembered (server)', finalMask: raw),
+          );
+        }
+      }
+    } catch (_) {}
+
+    return dynamic;
+  }
+
+  /// بعد از انتخاب بهترین preset، اون رو برای این سرور یادداشت می‌کنه
+  /// تا در اجراهای بعدی اول امتحان بشه.
+  static Future<void> rememberWinner(
+      VpnServer server, FinalMaskPreset preset) async {
+    if (preset.finalMask.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'final_mask_winners_${server.id}';
+      final list = prefs.getStringList(key) ?? <String>[];
+      list.remove(preset.finalMask);
+      list.insert(0, preset.finalMask);
+      // فقط ۵ تا رو نگه دار
+      if (list.length > 5) list.removeRange(5, list.length);
+      await prefs.setStringList(key, list);
+    } catch (_) {}
+  }
+
   static bool _running = false;
   static bool get isRunning => _running;
 
@@ -91,10 +183,24 @@ class FinalMaskFinder {
 
     final results = <FinalMaskResult>[];
 
+    // Presets سفارشی این سرور (CDN/IR/short-SNI + remembered) + لیست ثابت
+    final List<FinalMaskPreset> effective;
     try {
-      for (var i = 0; i < presets.length; i++) {
-        final preset = presets[i];
-        onProgress?.call(i + 1, presets.length, preset);
+      final dynamic = await dynamicPresetsFor(server);
+      // deduplicate by finalMask
+      final seen = <String>{};
+      effective = <FinalMaskPreset>[];
+      for (final p in [...dynamic, ...presets]) {
+        if (seen.add(p.finalMask)) effective.add(p);
+      }
+    } catch (_) {
+      effective = presets;
+    }
+
+    try {
+      for (var i = 0; i < effective.length; i++) {
+        final preset = effective[i];
+        onProgress?.call(i + 1, effective.length, preset);
 
         final testServer = server.copyWith(
           tls: server.tls.copyWith(finalMask: preset.finalMask.isEmpty
@@ -157,7 +263,11 @@ class FinalMaskFinder {
       final working =
           results.where((r) => r.ok).toList()..sort((a, b) => a.ms.compareTo(b.ms));
       if (working.isEmpty) return null;
-      return working.first;
+      final best = working.first;
+      // یادداشت برنده برای اجرای بعدی
+      // ignore: unawaited_futures
+      rememberWinner(server, best.preset);
+      return best;
     } finally {
       _running = false;
     }
