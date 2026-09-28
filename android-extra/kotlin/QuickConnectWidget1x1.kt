@@ -142,6 +142,16 @@ class QuickConnectWidget1x1 : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, R.layout.widget_quick_connect_1x1)
             views.setTextViewText(R.id.widget_title, title)
 
+            // Country flag — از prefs (Dart مقدار flag رو ست می‌کنه)
+            // flutter.widget_country_flag  (String, emoji)
+            val countryFlag = prefs.getString("flutter.widget_country_flag", "")
+            if (countryFlag != null && countryFlag.isNotEmpty()) {
+                views.setTextViewText(R.id.widget_flag, countryFlag)
+                views.setViewVisibility(R.id.widget_flag, android.view.View.VISIBLE)
+            } else {
+                views.setViewVisibility(R.id.widget_flag, android.view.View.GONE)
+            }
+
             // FIX: رنگ پس‌زمینه/حاشیه بر اساس وضعیت اتصال.
             // فلت prefs که از Dart با FIX_VPN_FLAG ذخیره می‌شه.
             val vpnActive = prefs.getBoolean("flutter.vpn_active", false)

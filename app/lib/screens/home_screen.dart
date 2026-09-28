@@ -3508,12 +3508,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       WarpEndpointHealthMonitor.instance.stop();
     } catch (_) {}
-    // پاک کردن quality widget + timer
+    // پاک کردن quality widget + timer + flag
     _stopWidgetTimerRefresh();
     // ignore: unawaited_futures
     HomeWidgetService.clearQuality();
     // ignore: unawaited_futures
     HomeWidgetService.clearConnectedStart();
+    // ignore: unawaited_futures
+    HomeWidgetService.setCountryFlag('');
     _autoFailoverEnabled = false;
     if (!mounted) return;
     setState(() {
@@ -3594,6 +3596,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           info.country!.isNotEmpty) {
         final newFlag = GeoFlag.fromName(info.country);
         final farsi = GeoFlag.farsiName(info.country);
+        // ست کردن flag در ویجت
+        if (newFlag != '🌐') {
+          // ignore: unawaited_futures
+          HomeWidgetService.setCountryFlag(newFlag);
+        }
         // flag فقط اگه تغییر کرده
         if (newFlag != '🌐' && active.flag != newFlag) {
           final updated = active.copyWith(flag: newFlag);

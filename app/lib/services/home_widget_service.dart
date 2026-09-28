@@ -60,6 +60,21 @@ class HomeWidgetService {
     }
   }
 
+  /// ذخیره flag کشور — برای نمایش در ویجت.
+  static Future<void> setCountryFlag(String flag) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (flag.isEmpty) {
+        await prefs.remove('widget_country_flag');
+      } else {
+        await prefs.setString('widget_country_flag', flag);
+      }
+      try {
+        await _channel.invokeMethod('updateWidgets');
+      } catch (_) {}
+    } catch (_) {}
+  }
+
   /// ذخیره timestamp شروع اتصال — برای timer در ویجت.
   static Future<void> setConnectedStart(DateTime at) async {
     try {

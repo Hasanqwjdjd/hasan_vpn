@@ -5,20 +5,38 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:gravity="center"
-    android:padding="6dp"
+    android:padding="4dp"
     android:background="@drawable/widget_bg">
 
-    <TextView
-        android:id="@+id/widget_title"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:orientation="horizontal"
         android:gravity="center"
-        android:textColor="#FFFFFF"
-        android:textSize="11sp"
-        android:textStyle="bold"
-        android:maxLines="2"
-        android:ellipsize="end"
-        android:text="Hasan" />
+        android:baselineAligned="true">
+
+        <TextView
+            android:id="@+id/widget_flag"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:visibility="gone"
+            android:text=""
+            android:paddingEnd="4dp" />
+
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:text="Hasan" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/widget_quality"
