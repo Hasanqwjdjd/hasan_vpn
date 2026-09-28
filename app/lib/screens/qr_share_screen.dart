@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../models/server.dart';
 import '../services/app_colors.dart';
+import '../services/warp_share_codec.dart';
 
 /// نمایش لینک یک سرور به‌صورت QR تا یک دستگاه دیگر بتواند با اسکن آن
 /// سرور را به برنامه‌اش اضافه کند.
@@ -18,6 +19,16 @@ class QrShareScreen extends StatelessWidget {
 
   bool get _isFa => language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
+
+  /// لینک مؤثر برای QR و Clipboard. برای سرورهای WARP/WARP+/MASQUE
+  /// از فرمت فشرده hasan-warp:// استفاده کن تا QR کوچیک‌تر بشه.
+  String get _effectiveLink {
+    if (WarpShareCodec.shouldEncode(server)) {
+      final compact = WarpShareCodec.encode(server);
+      if (compact != null && compact.isNotEmpty) return compact;
+    }
+    return server.shareLink;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,7 +68,7 @@ class QrShareScreen extends StatelessWidget {
                   ],
                 ),
                 child: QrImageView(
-                  data: server.shareLink,
+                  data: _effectiveLink,
                   version: QrVersions.auto,
                   size: 240,
                   gapless: true,
@@ -78,7 +89,7 @@ class QrShareScreen extends StatelessWidget {
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: () {
-                    Clipboard.setData(ClipboardData(text: server.shareLink));
+                    Clipboard.setData(ClipboardData(text: _effectiveLink));
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(_t('لینک کپی شد', 'Link copied')),

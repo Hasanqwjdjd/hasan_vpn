@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../models/server.dart';
 import 'xray_json.dart';
+import 'warp_share_codec.dart';
 
 /// تجزیه‌ی لینک‌های اشتراک‌گذاری (vless / vmess / trojan / ss / hysteria2 / custom / aether / xrayjson)
 /// و همچنین کانفیگ خام JSON هسته Xray به [VpnServer].
@@ -28,7 +29,7 @@ class LinkParser {
   ];
 
   static final RegExp linkRegex = RegExp(
-    r'(?:vless|vmess|trojan|ss|ssd|vpn|ssh|masterdns|mdns|warpmasque|wmq|hysteria2|hy2|aether|custom|xrayjson)://[^\s"<>\\]+',
+    r'(?:vless|vmess|trojan|ss|ssd|vpn|ssh|masterdns|mdns|warpmasque|wmq|hasan-warp|hysteria2|hy2|aether|custom|xrayjson)://[^\s"<>\\]+',
     caseSensitive: false,
   );
 
@@ -89,6 +90,13 @@ class LinkParser {
       if (sep <= 0) return null;
 
       final scheme = link.substring(0, sep).toLowerCase();
+
+      // hasan-warp:// — کدگذاری فشرده WARP/MASQUE/Plus
+      if (scheme == 'hasan-warp') {
+        final decoded = WarpShareCodec.decode(link, id: id);
+        if (decoded != null) return decoded;
+        return null;
+      }
 
       switch (scheme) {
         case 'vmess':
