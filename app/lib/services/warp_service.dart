@@ -70,6 +70,184 @@ class WarpService {
 
   /// ساخت VpnServer آماده WARP (بدون WARP Plus).
   /// [plus] اگه true باشه، نیاز به license داره (که کاربر paste می‌کنه).
+  /// وضعیت زنده اسکن endpoint که UI می‌تونه listen کنه.
+  /// این notifier global است — از home_screen هم قابل دسترسیه.
+  static final ValueNotifier<WarpScanState> scanProgress =
+      ValueNotifier(const WarpScanState());
+
+  /// ریست کردن progress (قبل از شروع scan جدید).
+  static void _resetProgress() {
+    scanProgress.value = const WarpScanState();
+  }
+
+  /// به‌روزرسانی progress (داخلی).
+  static void _updateProgress({
+    required String phase,
+    int tested = 0,
+    int total = 0,
+    String? lastEndpoint,
+    int? lastMs,
+    bool done = false,
+    String? error,
+  }) {
+    final current = scanProgress.value;
+    scanProgress.value = current.copyWith(
+      phase: phase,
+      tested: tested,
+      total: total,
+      lastEndpoint: lastEndpoint,
+      lastMs: lastMs,
+      done: done,
+      error: error,
+      clearError: error == null && done,
+    );
+  }
+
+  /// rescan کردن endpoint برای یک سرور موجود (WARP یا WARP Plus).
+  ///
+  /// از کلیدهای ذخیره‌شده استفاده می‌کنه و فقط endpoint رو دوباره اسکن + verify.
+  static Future<({String? endpoint, int? ms, String? error})>
+      rescanEndpoints(VpnServer server) async {
+    if (!server.isDeletable) {
+      return (endpoint: null, ms: null, error: 'built-in server');
+    }
+    try {
+      _resetProgress();
+
+      // استخراج privateKey از shareLink
+      String? privateKeyB64;
+      String? peerPublicKeyB64;
+      if (server.protocol == VpnProtocol.amneziaWg) {
+        final fields = _extractWgFieldsFromVpnLink(server.shareLink);
+        privateKeyB64 = fields?.privateKey;
+        peerPublicKeyB64 = fields?.publicKey;
+      } else if (server.protocol == VpnProtocol.chain) {
+        // inner = exit hop (دومی)
+        final uri = Uri.parse(server.shareLink);
+        final inner = uri.queryParameters['second'] ?? '';
+        if (inner.isNotEmpty) {
+          final fields = _extractWgFieldsFromVpnLink(inner);
+          privateKeyB64 = fields?.privateKey;
+          peerPublicKeyB64 = fields?.publicKey;
+        }
+      }
+      if (privateKeyB64 == null || peerPublicKeyB64 == null) {
+        return (endpoint: null, ms: null, error: 'no keys');
+      }
+
+      final modeLabel = server.warpEndpointMode ?? 'Fast';
+      final mode = WarpEndpointMode.values.firstWhere(
+        (m) => m.label == modeLabel,
+        orElse: () => WarpEndpointMode.fast,
+      );
+
+      _updateProgress(phase: 'Scanning', tested: 0, total: 0);
+      final hits = await WarpEndpointTester.selectMany(
+        mode: mode,
+        privateKeyB64: privateKeyB64,
+        peerPublicKeyB64: peerPublicKeyB64,
+        maxHits: 12,
+        onProgress: (label, tested, total) {
+          _updateProgress(
+            phase: 'Scanning (${modeLabel})',
+            tested: tested,
+            total: total,
+          );
+        },
+      );
+
+      if (hits.isEmpty) {
+        _updateProgress(phase: 'No hits', done: true,
+            error: 'no endpoint found');
+        return (endpoint: null, ms: null, error: 'no endpoint');
+      }
+
+      _updateProgress(phase: 'Verifying', tested: 0, total: hits.length);
+      final verified = await WarpRealTunnelTester.findFirstWorking(
+        hits: hits,
+        makeServerFromEndpoint: (ep) {
+          return server.copyWith(
+            host: ep.host,
+            port: ep.port,
+            sniOrHost: server.sniOrHost,
+          );
+        },
+        maxCandidates: 12,
+        onProgress: (tested, total, ep, ms) {
+          _updateProgress(
+            phase: 'Verifying',
+            tested: tested,
+            total: total,
+            lastEndpoint: ep.toString(),
+            lastMs: ms > 0 ? ms : null,
+          );
+        },
+      );
+
+      if (verified == null) {
+        _updateProgress(
+          phase: 'Done',
+          done: true,
+          error: 'no verified endpoint',
+        );
+        return (endpoint: null, ms: null, error: 'no verified endpoint');
+      }
+
+      _updateProgress(
+        phase: 'Done',
+        done: true,
+        lastEndpoint: verified.endpoint.toString(),
+        lastMs: verified.latencyMs,
+      );
+      return (
+        endpoint: verified.endpoint.toString(),
+        ms: verified.latencyMs,
+        error: null,
+      );
+    } catch (e) {
+      _updateProgress(phase: 'Error', done: true, error: e.toString());
+      return (endpoint: null, ms: null, error: e.toString());
+    }
+  }
+
+  /// استخراج privateKey/publicKey از یک vpn:// link (بدون JSON کامل).
+  static _WgKeys? _extractWgFieldsFromVpnLink(String link) {
+    try {
+      if (!link.startsWith('vpn://')) return null;
+      final b64 = link.substring('vpn://'.length).trim();
+      final raw = utf8.decode(
+        base64.decode(base64.normalize(b64)),
+        allowMalformed: true,
+      );
+      final outer = jsonDecode(raw);
+      if (outer is! Map) return null;
+      Map? awg;
+      final containers = outer['containers'];
+      if (containers is List) {
+        for (final c in containers) {
+          if (c is Map && c['awg'] is Map) {
+            awg = Map<String, dynamic>.from(c['awg'] as Map);
+            break;
+          }
+        }
+      }
+      if (awg == null) return null;
+      final lastCfg = (awg['last_config'] ?? '').toString();
+      if (lastCfg.isEmpty) return null;
+      final inner = jsonDecode(lastCfg);
+      if (inner is! Map) return null;
+      final iface = inner['interface'];
+      final peer = inner['peer'];
+      if (iface is! Map || peer is! Map) return null;
+      final priv = (iface['private_key'] ?? iface['privateKey'] ?? '').toString();
+      final pub = (peer['public_key'] ?? peer['publicKey'] ?? '').toString();
+      if (priv.isEmpty || pub.isEmpty) return null;
+      return _WgKeys(privateKey: priv, publicKey: pub);
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<({VpnServer? server, String? error})> generate({
     bool plus = false,
     String? proxySocksPort,
@@ -821,4 +999,55 @@ class WarpService {
       return (server: null, error: e.toString());
     }
   }
+
+
+/// وضعیت زنده اسکن endpoint — قابل listen در UI.
+class WarpScanState {
+  final String phase;
+  final int tested;
+  final int total;
+  final String? lastEndpoint;
+  final int? lastMs;
+  final bool done;
+  final String? error;
+
+  const WarpScanState({
+    this.phase = '',
+    this.tested = 0,
+    this.total = 0,
+    this.lastEndpoint,
+    this.lastMs,
+    this.done = false,
+    this.error,
+  });
+
+  WarpScanState copyWith({
+    String? phase,
+    int? tested,
+    int? total,
+    String? lastEndpoint,
+    int? lastMs,
+    bool? done,
+    String? error,
+    bool clearError = false,
+  }) =>
+      WarpScanState(
+        phase: phase ?? this.phase,
+        tested: tested ?? this.tested,
+        total: total ?? this.total,
+        lastEndpoint: lastEndpoint ?? this.lastEndpoint,
+        lastMs: lastMs ?? this.lastMs,
+        done: done ?? this.done,
+        error: clearError ? null : (error ?? this.error),
+      );
+
+  double get progress => total > 0 ? tested / total : 0.0;
+  bool get active => !done && phase.isNotEmpty;
+}
+
+class _WgKeys {
+  final String privateKey;
+  final String publicKey;
+  const _WgKeys({required this.privateKey, required this.publicKey});
+}
 }
