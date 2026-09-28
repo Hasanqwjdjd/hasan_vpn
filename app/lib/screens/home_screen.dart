@@ -4680,8 +4680,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onTest: () => _testOne(server),
       onHomeWidget: () => _pinServerToHome(server),
       onRescanWarp: (server.protocol == VpnProtocol.amneziaWg ||
-              server.protocol == VpnProtocol.chain)
-          ? () => _rescanWarpServer(server)
+              server.protocol == VpnProtocol.chain ||
+              server.protocol == VpnProtocol.warpMasque)
+          ? () => server.protocol == VpnProtocol.warpMasque
+              ? _rescanMasqueServer(server)
+              : _rescanWarpServer(server)
           : null,
     );
   }

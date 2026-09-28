@@ -508,7 +508,8 @@ class ServerTile extends StatelessWidget {
                       ),
                     if (onRescanWarp != null &&
                         (server.protocol == VpnProtocol.amneziaWg ||
-                            server.protocol == VpnProtocol.chain))
+                            server.protocol == VpnProtocol.chain ||
+                            server.protocol == VpnProtocol.warpMasque))
                       PopupMenuItem(
                         value: 'rescan',
                         child: Row(children: [
