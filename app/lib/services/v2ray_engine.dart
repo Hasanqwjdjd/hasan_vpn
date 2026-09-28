@@ -797,6 +797,105 @@ class V2RayEngine {
     }
   }
 
+  /// یک لینک پایه (vpn:// یا استاندارد) را به outbound Map تبدیل می‌کند.
+  /// برای زنجیره‌سازی استفاده می‌شود تا WARP/WARP Plus هم بتواند در
+  /// chain قرار بگیرد. خروجی بدون tag است؛ caller tag را می‌دهد.
+  static Map<String, dynamic>? _chainOutboundFromLink(String link) {
+    try {
+      if (link.startsWith('vpn://')) {
+        return _vpnLinkToOutboundMap(link);
+      }
+      final p = FlutterVless.parse(link);
+      final raw = jsonDecode(p.getFullConfiguration());
+      if (raw is! Map) return null;
+      final obs = raw['outbounds'] as List?;
+      if (obs == null || obs.isEmpty) return null;
+      return Map<String, dynamic>.from(obs.first as Map);
+    } catch (e) {
+      debugPrint('chainOutboundFromLink error: $e');
+      return null;
+    }
+  }
+
+  /// AmneziaWG / WARP / WARP Plus → outbound Map (بدون tag).
+  /// نکته: برعکس _buildAmneziaWgConfig، این نسخه reserved را هم
+  /// داخل settings قرار می‌دهد چون برای WARP لازم است.
+  static Map<String, dynamic>? _vpnLinkToOutboundMap(String link) {
+    try {
+      if (!link.startsWith('vpn://')) return null;
+      final b64 = link.substring('vpn://'.length).trim();
+      final raw = utf8.decode(base64.decode(base64.normalize(b64)),
+          allowMalformed: true);
+      final outer = jsonDecode(raw);
+      if (outer is! Map) return null;
+
+      Map? awg;
+      final containers = outer['containers'];
+      if (containers is List) {
+        for (final c in containers) {
+          if (c is Map && c['awg'] is Map) {
+            awg = Map<String, dynamic>.from(c['awg'] as Map);
+            break;
+          }
+        }
+      }
+      if (awg == null) return null;
+
+      final lastCfg = (awg['last_config'] ?? '').toString();
+      if (lastCfg.isEmpty) return null;
+      final inner = jsonDecode(lastCfg);
+      if (inner is! Map) return null;
+
+      final iface = inner['interface'];
+      final peer = inner['peer'];
+      if (iface is! Map || peer is! Map) return null;
+
+      String s(dynamic v) => v?.toString().trim() ?? '';
+
+      final privateKey = s(iface['private_key'] ?? iface['privateKey']);
+      final publicKey = s(peer['public_key'] ?? peer['publicKey']);
+      final endpoint = s(peer['endpoint']);
+      final address = s(iface['address']);
+      final mtu = int.tryParse(s(iface['mtu'] ?? awg['mtu'] ?? '1280')) ?? 1280;
+      final psk = s(peer['preshared_key'] ?? peer['presharedKey']);
+      final reservedRaw = s(peer['reserved'] ?? iface['reserved']);
+      final reservedList = reservedRaw.isEmpty
+          ? null
+          : reservedRaw
+              .split(',')
+              .map((e) => int.tryParse(e.trim()) ?? 0)
+              .toList();
+
+      if (privateKey.isEmpty || publicKey.isEmpty || endpoint.isEmpty) {
+        return null;
+      }
+      final addr = address.isEmpty ? '172.16.0.2/32' : address;
+
+      final wgPeer = <String, dynamic>{
+        'publicKey': publicKey,
+        'endpoint': endpoint,
+        'allowedIPs': <String>['0.0.0.0/0', '::/0'],
+        if (psk.isNotEmpty) 'preSharedKey': psk,
+      };
+      final wgSettings = <String, dynamic>{
+        'secretKey': privateKey,
+        'address': <String>[addr],
+        'peers': <dynamic>[wgPeer],
+        'mtu': mtu,
+        'kernelMode': false,
+        if (reservedList != null && reservedList.isNotEmpty)
+          'reserved': reservedList,
+      };
+      return <String, dynamic>{
+        'protocol': 'wireguard',
+        'settings': wgSettings,
+      };
+    } catch (e) {
+      debugPrint('vpnLinkToOutboundMap error: $e');
+      return null;
+    }
+  }
+
   static String _buildChainConfig(VpnServer server) {
     try {
       final link = server.shareLink;
@@ -826,7 +925,15 @@ class V2RayEngine {
           stream['sockopt'] as Map? ?? {});
       sockopt['dialerProxy'] = 'relay';
       stream['sockopt'] = sockopt;
+      // WireGuard روی UDP است؛ network: tcp از پیش‌فرض باعث گیر کردن می‌شود.
+      if (proxy['protocol'] == 'wireguard') {
+        stream['network'] = null;
+      }
       proxy['streamSettings'] = stream;
+      // Outer WireGuard (relay) نباید streamSettings داشته باشد.
+      if (relay['protocol'] == 'wireguard') {
+        relay.remove('streamSettings');
+      }
 
       final cfg = <String, dynamic>{
         'log': {'loglevel': 'warning'},
