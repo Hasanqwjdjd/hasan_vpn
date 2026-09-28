@@ -492,7 +492,7 @@ class _ConnectionLogScreenState extends State<ConnectionLogScreen> {
       ),
     );
   }
-
+}
 
 class _ConnectionStats {
   final int total;
@@ -513,4 +513,4 @@ class _ConnectionStats {
     this.maxDuration,
   });
 }
-}
+

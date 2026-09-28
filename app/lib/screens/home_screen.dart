@@ -2364,6 +2364,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {});
   }
 
+  Future<void> _loadSmartResumePref() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _smartResumeEnabled = prefs.getBool('smart_resume_v1') ?? true;
+      });
+    } catch (_) {}
+  }
+
   void _onNetworkReconnected() {
     if (!mounted) return;
     // Smart Resume: اگه کاربر قبلاً خودش دستی قطع کرده، وصل نشو
@@ -3516,12 +3526,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final farsi = GeoFlag.farsiName(info.country);
         // flag فقط اگه تغییر کرده
         if (newFlag != '🌐' && active.flag != newFlag) {
+          final updated = active.copyWith(flag: newFlag);
           setState(() {
-            active.flag = newFlag;
+            if (_active?.id == active.id) _active = updated;
             final si = _servers.indexWhere((s) => s.id == active.id);
-            if (si >= 0) _servers[si].flag = newFlag;
+            if (si >= 0) _servers[si] = updated;
             final ci = _customServers.indexWhere((s) => s.id == active.id);
-            if (ci >= 0) _customServers[ci].flag = newFlag;
+            if (ci >= 0) _customServers[ci] = updated;
+            if (_selected?.id == active.id) _selected = updated;
           });
           // ignore: unawaited_futures
           _saveCustomServers();
