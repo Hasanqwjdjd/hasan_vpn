@@ -4508,6 +4508,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           final sni = (q['sni'] ?? 'soft98.ir').trim();
           final dns = (q['dns'] ?? '1.1.1.1,1.0.0.1').trim();
           final h2 = (q['h2'] ?? '1') == '1';
+          final candidates = (q['candidates'] ?? q['cn'] ?? '').trim();
           if (endpoint.isEmpty) {
             _showMsg(_t('WARP MASQUE: endpoint ناقصه',
                 'WARP MASQUE: endpoint missing'));
@@ -4552,6 +4553,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           await WarpMasqueSessionService.instance.connect(
             server.id,
             endpoint: endpoint,
+            endpointCandidates:
+                candidates.isNotEmpty ? candidates : null,
             sni: sni,
             dns: dns,
             http2: h2,
