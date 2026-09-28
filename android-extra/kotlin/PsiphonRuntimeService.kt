@@ -13,9 +13,8 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import dalvik.system.DexClassLoader
-import com.google.gson.JsonArray
-import com.google.gson.JsonObject
-import com.google.gson.JsonParser
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
@@ -351,7 +350,7 @@ class PsiphonRuntimeService : Service() {
      * root must always be rewritten to this process's path.
      */
     private fun mergeRuntimePaths(raw: String, upstreamPort: Int): String {
-        val root = JsonParser.parseString(raw).asJsonObject
+        val root = JSONObject(raw)
         val dataRoot = File(filesDir, "pingng-psiphon")
         check(dataRoot.mkdirs() || dataRoot.isDirectory) {
             "Unable to create Psiphon data root: ${dataRoot.absolutePath}"
@@ -364,26 +363,26 @@ class PsiphonRuntimeService : Service() {
         check(osl.mkdirs() || osl.isDirectory) {
             "Unable to create Psiphon OSL directory: ${osl.absolutePath}"
         }
-        root.addProperty("DataRootDirectory", dataRoot.absolutePath)
-        root.addProperty("DataStoreDirectory", dataStore.absolutePath)
-        root.addProperty("MigrateDataStoreDirectory", filesDir.absolutePath)
-        root.addProperty("MigrateObfuscatedServerListDownloadDirectory", osl.absolutePath)
-        root.addProperty("MigrateRemoteServerListDownloadFilename", File(filesDir, "remote_server_list").absolutePath)
-        root.addProperty("EstablishTunnelTimeoutSeconds", 0)
-        root.addProperty("UpstreamProxyAllowAllServerEntrySources", true)
-        if (!root.has("TunnelWholeDevice")) root.addProperty("TunnelWholeDevice", 0)
-        val existingUpstream = root.get("UpstreamProxyUrl")?.asString.orEmpty()
+        root.put("DataRootDirectory", dataRoot.absolutePath)
+        root.put("DataStoreDirectory", dataStore.absolutePath)
+        root.put("MigrateDataStoreDirectory", filesDir.absolutePath)
+        root.put("MigrateObfuscatedServerListDownloadDirectory", osl.absolutePath)
+        root.put("MigrateRemoteServerListDownloadFilename", File(filesDir, "remote_server_list").absolutePath)
+        root.put("EstablishTunnelTimeoutSeconds", 0)
+        root.put("UpstreamProxyAllowAllServerEntrySources", true)
+        if (!root.has("TunnelWholeDevice")) root.put("TunnelWholeDevice", 0)
+        val existingUpstream = root.optString("UpstreamProxyUrl", "")
         if (existingUpstream.isBlank() && upstreamPort in 1..65535) {
-            root.addProperty("UpstreamProxyUrl", "http://127.0.0.1:$upstreamPort")
+            root.put("UpstreamProxyUrl", "http://127.0.0.1:$upstreamPort")
         }
-        if (!root.has("DeviceRegion")) root.addProperty("DeviceRegion", Locale.getDefault().country)
+        if (!root.has("DeviceRegion")) root.put("DeviceRegion", Locale.getDefault().country)
         if (!root.has("ClientPlatform")) {
-            root.addProperty(
+            root.put(
                 "ClientPlatform",
                 "Android_${Build.VERSION.RELEASE}_$packageName".replace(Regex("[^\\w\\-.]"), "_"),
             )
         }
-        if (!root.has("ClientAPILevel")) root.addProperty("ClientAPILevel", Build.VERSION.SDK_INT)
+        if (!root.has("ClientAPILevel")) root.put("ClientAPILevel", Build.VERSION.SDK_INT)
         return root.toString()
     }
 
@@ -396,7 +395,7 @@ class PsiphonRuntimeService : Service() {
         upstreamPort: Int,
     ): String {
         val base = assets.open(CONFIG_ASSET).bufferedReader().use { it.readText() }
-        val root = JsonParser.parseString(base).asJsonObject
+        val root = JSONObject(base)
         val dataRoot = File(filesDir, "pingng-psiphon")
         check(dataRoot.mkdirs() || dataRoot.isDirectory) {
             "Unable to create Psiphon data root: ${dataRoot.absolutePath}"
@@ -405,25 +404,25 @@ class PsiphonRuntimeService : Service() {
         check(dataStore.mkdirs() || dataStore.isDirectory) {
             "Unable to create Psiphon datastore: ${dataStore.absolutePath}"
         }
-        root.addProperty("EgressRegion", normalizedEgressRegion(region))
-        root.addProperty("TunnelWholeDevice", 0)
-        root.addProperty("UpstreamProxyUrl", "http://127.0.0.1:$upstreamPort")
-        root.addProperty("DataRootDirectory", dataRoot.absolutePath)
-        root.addProperty("DataStoreDirectory", dataStore.absolutePath)
-        root.addProperty("MigrateDataStoreDirectory", filesDir.absolutePath)
+        root.put("EgressRegion", normalizedEgressRegion(region))
+        root.put("TunnelWholeDevice", 0)
+        root.put("UpstreamProxyUrl", "http://127.0.0.1:$upstreamPort")
+        root.put("DataRootDirectory", dataRoot.absolutePath)
+        root.put("DataStoreDirectory", dataStore.absolutePath)
+        root.put("MigrateDataStoreDirectory", filesDir.absolutePath)
         val osl = File(filesDir, "osl")
         check(osl.mkdirs() || osl.isDirectory) {
             "Unable to create Psiphon OSL directory: ${osl.absolutePath}"
         }
-        root.addProperty("MigrateObfuscatedServerListDownloadDirectory", osl.absolutePath)
-        root.addProperty("MigrateRemoteServerListDownloadFilename", File(filesDir, "remote_server_list").absolutePath)
-        root.addProperty("EstablishTunnelTimeoutSeconds", 0)
-        root.addProperty("UpstreamProxyAllowAllServerEntrySources", true)
+        root.put("MigrateObfuscatedServerListDownloadDirectory", osl.absolutePath)
+        root.put("MigrateRemoteServerListDownloadFilename", File(filesDir, "remote_server_list").absolutePath)
+        root.put("EstablishTunnelTimeoutSeconds", 0)
+        root.put("UpstreamProxyAllowAllServerEntrySources", true)
         applyTunnelProtocolMode(root, mode)
         addCdnFrontingConfig(root, mode, cdnIps, cdnSni, cdnSets)
-        root.addProperty("DeviceRegion", Locale.getDefault().country)
-        root.addProperty("ClientPlatform", "Android_${Build.VERSION.RELEASE}_$packageName".replace(Regex("[^\\w\\-.]"), "_"))
-        root.addProperty("ClientAPILevel", Build.VERSION.SDK_INT)
+        root.put("DeviceRegion", Locale.getDefault().country)
+        root.put("ClientPlatform", "Android_${Build.VERSION.RELEASE}_$packageName".replace(Regex("[^\\w\\-.]"), "_"))
+        root.put("ClientAPILevel", Build.VERSION.SDK_INT)
         return root.toString()
     }
 
@@ -434,8 +433,8 @@ class PsiphonRuntimeService : Service() {
             "direct" -> CHAINED_TUNNEL_PROTOCOLS.filterNot { it.startsWith("FRONTED-") }
             else -> CHAINED_TUNNEL_PROTOCOLS
         }
-        root.add("LimitTunnelProtocols", JsonArray().also { values -> protocols.forEach(values::add) })
-        if (normalized == "cdn" || normalized == "direct") root.addProperty("DisableTactics", true)
+        root.put("LimitTunnelProtocols", JSONArray().also { values -> protocols.forEach(values::put) })
+        if (normalized == "cdn" || normalized == "direct") root.put("DisableTactics", true)
     }
 
     private fun addCdnFrontingConfig(
@@ -453,17 +452,17 @@ class PsiphonRuntimeService : Service() {
         val sets = candidates(cdnSets)
         if (!mode.trim().equals("cdn", ignoreCase = true) && addresses.isEmpty() && names.isEmpty() && sets.isEmpty()) return
         if (addresses.isNotEmpty()) {
-            val spec = JsonObject().apply {
-                add("IPCandidates", JsonArray().also { values -> addresses.forEach(values::add) })
+            val spec = JSONObject().apply {
+                add("IPCandidates", JSONArray().also { values -> addresses.forEach(values::put) })
                 if (names.isNotEmpty()) {
-                    add("SNIServerNames", JsonArray().also { values -> names.forEach(values::add) })
+                    add("SNIServerNames", JSONArray().also { values -> names.forEach(values::put) })
                 }
             }
-            root.add("FrontedMeekCDNScanSpec", spec)
+            root.put("FrontedMeekCDNScanSpec", spec)
         }
-        if (addresses.isEmpty() || sets.isNotEmpty()) root.addProperty("FrontedMeekCDNScanUseBuiltInSpec", true)
+        if (addresses.isEmpty() || sets.isNotEmpty()) root.put("FrontedMeekCDNScanUseBuiltInSpec", true)
         if (sets.isNotEmpty()) {
-            root.add("FrontedMeekCDNScanBuiltInSets", JsonArray().also { values -> sets.forEach(values::add) })
+            root.put("FrontedMeekCDNScanBuiltInSets", JSONArray().also { values -> sets.forEach(values::put) })
         }
     }
 
@@ -535,7 +534,7 @@ class PsiphonRuntimeService : Service() {
     }
 
     private fun buildNotification(): Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setSmallIcon(android.R.drawable.stat_sys_vpn_ic)
+        .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
         .setContentTitle("Hasan VPN")
         .setContentText("Psiphon")
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
