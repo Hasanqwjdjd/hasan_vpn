@@ -10,6 +10,7 @@ import '../services/settings_service.dart';
 import 'security_test_screen.dart';
 import 'backup_screen.dart';
 import 'connection_log_screen.dart';
+import 'engines_screen.dart';
 import 'quality_history_screen.dart';
 import '../services/telegram_source_service.dart';
 import '../services/warp_scout_scheduler.dart';
@@ -906,6 +907,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // ------- هسته و تست -------
           _sectionTitle(_t('هسته و تست', 'Core & Test')),
+          _card(
+            context,
+            InkWell(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => EnginesScreen(language: _lang),
+                  ),
+                );
+                if (mounted) setState(() {});
+              },
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.memory,
+                    color: AppColors.accent),
+                title: Text(
+                  _t('هسته‌ها و موتورها', 'Engines & Cores'),
+                  style: TextStyle(color: AppColors.fg(context)),
+                ),
+                subtitle: Text(
+                  _t(
+                    'لیست هسته‌های native با نسخه و چک آپدیت خودکار',
+                    'Native cores list with version & auto update check',
+                  ),
+                  style: TextStyle(
+                      color: AppColors.muted2(context), fontSize: 11),
+                ),
+                trailing: Icon(Icons.chevron_left,
+                    color: AppColors.muted(context)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           _card(
             context,
             InkWell(
