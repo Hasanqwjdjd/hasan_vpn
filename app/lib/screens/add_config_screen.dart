@@ -128,6 +128,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _wmqCandidatesController =
       TextEditingController(
           text: WarpMasqueService.defaultEndpointCandidates);
+  final TextEditingController _wmqDeviceNameController =
+      TextEditingController(text: 'Hasan-VPN');
   bool _wmqHttp2 = true;
 
   // SOCKS5
@@ -3215,6 +3217,22 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             onChanged: (v) => setState(() => _wmqHttp2 = v),
           ),
         ),
+        const SizedBox(height: 12),
+        _tunnelField(
+          controller: _wmqDeviceNameController,
+          label: _t('نام دستگاه (register)', 'Device name (register)'),
+          hint: 'Hasan-VPN',
+          color: color,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _t(
+            'نامی که به Cloudflare برای ثبت دستگاه ارسال می‌شه. فقط حرف، عدد، خط تیره.',
+            'Name sent to Cloudflare during device registration. Letters, numbers, dashes only.',
+          ),
+          style: TextStyle(
+              color: AppColors.muted2(context), fontSize: 10, height: 1.4),
+        ),
         const SizedBox(height: 20),
         SizedBox(
           width: double.infinity,
@@ -3257,6 +3275,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       'dns': dns.isEmpty ? WarpMasqueService.defaultDns : dns,
       'h2': _wmqHttp2 ? '1' : '0',
       if (candidates.isNotEmpty) 'candidates': candidates,
+      if (_wmqDeviceNameController.text.trim().isNotEmpty)
+        'device': _wmqDeviceNameController.text.trim(),
       'name': name,
     };
     final uri = Uri(
@@ -5132,6 +5152,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _wmqSniController.dispose();
     _wmqDnsController.dispose();
     _wmqCandidatesController.dispose();
+    _wmqDeviceNameController.dispose();
     _mdnsKeyController.dispose();
     _mdnsResolversController.dispose();
     _hy2FragmentLengthController.dispose();

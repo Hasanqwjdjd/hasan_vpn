@@ -164,6 +164,7 @@ class LinkParser {
       );
 
       final candidates = (q['candidates'] ?? q['cn'] ?? '').trim();
+      final device = (q['device'] ?? q['dn'] ?? '').trim();
 
       final internal = <String, String>{
         'endpoint': endpoint,
@@ -171,6 +172,7 @@ class LinkParser {
         'dns': dns,
         'h2': h2 ? '1' : '0',
         if (candidates.isNotEmpty) 'candidates': candidates,
+        if (device.isNotEmpty) 'device': device,
         if (name.isNotEmpty) 'name': name,
       };
       final rebuilt = Uri(
