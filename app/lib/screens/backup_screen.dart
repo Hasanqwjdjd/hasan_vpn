@@ -40,7 +40,43 @@ class _BackupScreenState extends State<BackupScreen> {
 
   bool _busy = false;
   String? _status;
+  bool _includeLogs = false;
+  int _keyCount = 0;
+  int _estimatedBytes = 0;
   final TextEditingController _importCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    // ignore: unawaited_futures
+    _refreshStats();
+  }
+
+  Future<void> _refreshStats() async {
+    try {
+      final count = await BackupService.backupableKeyCount(
+        includeLogs: _includeLogs,
+      );
+      final bytes = await BackupService.estimatedBytes(
+        includeLogs: _includeLogs,
+      );
+      if (!mounted) return;
+      setState(() {
+        _keyCount = count;
+        _estimatedBytes = bytes;
+      });
+    } catch (_) {}
+  }
+
+  String _fmtBytes(int bytes) {
+    if (bytes >= 1048576) {
+      return '${(bytes / 1048576).toStringAsFixed(2)} MB';
+    }
+    if (bytes >= 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    return '$bytes B';
+  }
 
   @override
   void dispose() {
@@ -54,7 +90,7 @@ class _BackupScreenState extends State<BackupScreen> {
       _status = null;
     });
     try {
-      final json = await BackupService.export();
+      final json = await BackupService.export(includeLogs: _includeLogs);
       await Clipboard.setData(ClipboardData(text: json));
       if (!mounted) return;
       setState(() {
@@ -78,7 +114,7 @@ class _BackupScreenState extends State<BackupScreen> {
       _status = null;
     });
     try {
-      final json = await BackupService.export();
+      final json = await BackupService.export(includeLogs: _includeLogs);
       final dir = await getApplicationDocumentsDirectory();
       final stamp = DateTime.now()
           .toIso8601String()
@@ -347,6 +383,60 @@ class _BackupScreenState extends State<BackupScreen> {
                         color: AppColors.muted2(context), fontSize: 12),
                   ),
                   const SizedBox(height: 12),
+                  // آمار زنده
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.elevated(context),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.border(context)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            size: 14, color: AppColors.muted(context)),
+                        const SizedBox(width: 6),
+                        Text(
+                          _t(
+                            '$_keyCount کلید · ~${_fmtBytes(_estimatedBytes)}',
+                            '$_keyCount keys · ~${_fmtBytes(_estimatedBytes)}',
+                          ),
+                          style: TextStyle(
+                              color: AppColors.muted2(context),
+                              fontSize: 10.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // toggle include logs
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    activeColor: AppColors.accent,
+                    title: Text(
+                      _t('شامل لاگ‌ها', 'Include logs'),
+                      style: TextStyle(
+                          color: AppColors.fg(context), fontSize: 12),
+                    ),
+                    subtitle: Text(
+                      _t(
+                        'تاریخچه اتصال + کیفیت (حجم بزرگ‌تر)',
+                        'Connection + quality history (larger file)',
+                      ),
+                      style: TextStyle(
+                          color: AppColors.muted2(context),
+                          fontSize: 10),
+                    ),
+                    value: _includeLogs,
+                    onChanged: (v) {
+                      setState(() => _includeLogs = v);
+                      // ignore: unawaited_futures
+                      _refreshStats();
+                    },
+                  ),
+                  const SizedBox(height: 4),
                   Row(
                     children: [
                       Expanded(
