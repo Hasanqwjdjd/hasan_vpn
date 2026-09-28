@@ -3508,6 +3508,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           pingMs: latest.pingMs,
           jitterMs: latest.jitterMs,
           lossPct: latest.lossPct,
+          serverId: _active?.id ?? _selected?.id ?? '',
         ));
       }
     }

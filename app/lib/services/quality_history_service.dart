@@ -12,6 +12,8 @@ class QualitySample {
   final int pingMs;
   final int jitterMs;
   final double lossPct;
+  /// شناسه سروری که این نمونه ازش اومده (خالی = global/قدیمی).
+  final String serverId;
 
   const QualitySample({
     required this.at,
@@ -19,6 +21,7 @@ class QualitySample {
     required this.pingMs,
     required this.jitterMs,
     required this.lossPct,
+    this.serverId = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -27,6 +30,7 @@ class QualitySample {
         'p': pingMs,
         'j': jitterMs,
         'l': lossPct,
+        if (serverId.isNotEmpty) 'sid': serverId,
       };
 
   factory QualitySample.fromJson(Map<String, dynamic> j) => QualitySample(
@@ -35,6 +39,7 @@ class QualitySample {
         pingMs: (j['p'] as num?)?.toInt() ?? 0,
         jitterMs: (j['j'] as num?)?.toInt() ?? 0,
         lossPct: (j['l'] as num?)?.toDouble() ?? 0.0,
+        serverId: j['sid']?.toString() ?? '',
       );
 }
 
@@ -106,6 +111,27 @@ class QualityHistoryService {
     if (window == null) return _cache;
     final cutoff = DateTime.now().subtract(window);
     return _cache.where((s) => s.at.isAfter(cutoff)).toList();
+  }
+
+  /// نمونه‌ها برای یه سرور مشخص.
+  static List<QualitySample> forServer(String serverId, {Duration? window}) {
+    if (serverId.isEmpty) return const [];
+    var out = _cache.where((s) => s.serverId == serverId).toList();
+    if (window != null) {
+      final cutoff = DateTime.now().subtract(window);
+      out = out.where((s) => s.at.isAfter(cutoff)).toList();
+    }
+    return out;
+  }
+
+  /// لیست شناسه‌های سرور که نمونه دارن + تعداد نمونه.
+  static Map<String, int> get serverIdsWithCounts {
+    final out = <String, int>{};
+    for (final s in _cache) {
+      if (s.serverId.isEmpty) continue;
+      out[s.serverId] = (out[s.serverId] ?? 0) + 1;
+    }
+    return out;
   }
 
   /// آمار خلاصه.
