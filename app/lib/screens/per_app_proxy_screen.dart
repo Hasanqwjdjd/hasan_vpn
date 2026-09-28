@@ -23,6 +23,11 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
   final Set<String> _selected = {};
   String _mode = 'all';
   String _q = '';
+  // فیلتر نوع اپ
+  String _appFilter = 'all'; // all | user | system
+  // sort
+  String _sort = 'az'; // az | za | selected_first
+
 
   String _t(String fa, String en) =>
       widget.language.startsWith('fa') ? fa : en;
@@ -80,12 +85,53 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _q.isEmpty
-        ? _apps
-        : _apps.where((a) {
-            final l = '${a['label']} ${a['package']}'.toLowerCase();
-            return l.contains(_q.toLowerCase());
-          }).toList();
+    // فیلتر نوع (user/system)
+    var filtered = _apps.where((a) {
+      if (_appFilter == 'user') {
+        return a['isSystem'] != true;
+      }
+      if (_appFilter == 'system') {
+        return a['isSystem'] == true;
+      }
+      return true;
+    }).toList();
+
+    // search
+    if (_q.isNotEmpty) {
+      final q = _q.toLowerCase();
+      filtered = filtered.where((a) {
+        final l = '${a['label']} ${a['package']}'.toLowerCase();
+        return l.contains(q);
+      }).toList();
+    }
+
+    // sort
+    switch (_sort) {
+      case 'az':
+        filtered.sort((a, b) => (a['label'] ?? '')
+            .toString()
+            .toLowerCase()
+            .compareTo((b['label'] ?? '').toString().toLowerCase()));
+        break;
+      case 'za':
+        filtered.sort((a, b) => (b['label'] ?? '')
+            .toString()
+            .toLowerCase()
+            .compareTo((a['label'] ?? '').toString().toLowerCase()));
+        break;
+      case 'selected_first':
+        filtered.sort((a, b) {
+          final aSel = _selected.contains(a['package']?.toString() ?? '');
+          final bSel = _selected.contains(b['package']?.toString() ?? '');
+          if (aSel != bSel) return aSel ? -1 : 1;
+          return (a['label'] ?? '')
+              .toString()
+              .toLowerCase()
+              .compareTo((b['label'] ?? '').toString().toLowerCase());
+        });
+        break;
+    }
+
     final listEnabled = _mode != 'all';
 
     return Scaffold(
@@ -93,6 +139,59 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
       appBar: AppBar(
         title: Text(_t('پراکسی هر برنامه', 'Per-app proxy')),
         backgroundColor: AppColors.bg(context),
+        actions: [
+          if (_mode != 'all')
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              color: AppColors.surface(context),
+              onSelected: _onBulkAction,
+              itemBuilder: (bCtx) => <PopupMenuEntry<String>>[
+                PopupMenuItem(
+                  value: 'select_visible',
+                  child: Row(children: [
+                    Icon(Icons.check_circle_outline,
+                        size: 16, color: AppColors.fg(bCtx)),
+                    const SizedBox(width: 8),
+                    Text(_t('انتخاب همه نمایش‌داده‌شده',
+                        'Select all visible'),
+                        style: TextStyle(color: AppColors.fg(bCtx))),
+                  ]),
+                ),
+                PopupMenuItem(
+                  value: 'clear_visible',
+                  child: Row(children: [
+                    Icon(Icons.remove_circle_outline,
+                        size: 16, color: AppColors.fg(bCtx)),
+                    const SizedBox(width: 8),
+                    Text(_t('لغو انتخاب نمایش‌داده‌شده',
+                        'Deselect visible'),
+                        style: TextStyle(color: AppColors.fg(bCtx))),
+                  ]),
+                ),
+                PopupMenuItem(
+                  value: 'invert_visible',
+                  child: Row(children: [
+                    Icon(Icons.swap_horiz,
+                        size: 16, color: AppColors.fg(bCtx)),
+                    const SizedBox(width: 8),
+                    Text(_t('معکوس انتخاب', 'Invert visible selection'),
+                        style: TextStyle(color: AppColors.fg(bCtx))),
+                  ]),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'clear_all',
+                  child: Row(children: [
+                    const Icon(Icons.delete_sweep_outlined,
+                        size: 16, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Text(_t('پاک کردن همه', 'Clear all'),
+                        style: const TextStyle(color: Colors.red)),
+                  ]),
+                ),
+              ],
+            ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -126,13 +225,64 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
                 const Divider(height: 1),
                 if (listEnabled)
                   Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: TextField(
-                      decoration: InputDecoration(
-                        hintText: _t('جستجو', 'Search'),
-                        prefixIcon: const Icon(Icons.search),
-                      ),
-                      onChanged: (v) => setState(() => _q = v),
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                    child: Column(
+                      children: [
+                        // Filter chips
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              _filterChip('all',
+                                  _t('همه', 'All'), Icons.apps),
+                              const SizedBox(width: 6),
+                              _filterChip('user',
+                                  _t('کاربر', 'User'), Icons.person),
+                              const SizedBox(width: 6),
+                              _filterChip('system',
+                                  _t('سیستم', 'System'), Icons.settings),
+                              const SizedBox(width: 6),
+                              _sortChip(),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          decoration: InputDecoration(
+                            hintText: _t('جستجو', 'Search'),
+                            prefixIcon: const Icon(Icons.search),
+                            isDense: true,
+                            suffixIcon: _q.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    onPressed: () =>
+                                        setState(() => _q = ''),
+                                  )
+                                : null,
+                          ),
+                          onChanged: (v) => setState(() => _q = v),
+                        ),
+                        const SizedBox(height: 6),
+                        // Selection count
+                        Row(
+                          children: [
+                            Icon(Icons.checklist,
+                                size: 14,
+                                color: AppColors.muted(context)),
+                            const SizedBox(width: 6),
+                            Text(
+                              _t(
+                                '${_selected.length} از ${_apps.length} انتخاب‌شده · ${filtered.length} نمایش',
+                                '${_selected.length}/${_apps.length} selected · ${filtered.length} shown',
+                              ),
+                              style: TextStyle(
+                                color: AppColors.muted2(context),
+                                fontSize: 10.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                 Expanded(
