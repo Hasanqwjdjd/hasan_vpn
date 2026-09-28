@@ -80,6 +80,7 @@ class WarpShareCodec {
       params.dns,
       params.http2 ? '1' : '0',
       server.displayName,
+      params.candidates ?? '',
     ].join('|');
     return Uri(
       scheme: 'hasan-warp',
@@ -100,12 +101,15 @@ class WarpShareCodec {
     final name = parts.length > 4 && parts[4].isNotEmpty
         ? parts[4]
         : 'WARP MASQUE · $endpoint';
+    // v2: candidates اختیاری (سازگار با v1 که نداره)
+    final candidates = parts.length > 5 ? parts[5] : '';
 
     final internal = <String, String>{
       'endpoint': endpoint,
       'sni': sni,
       'dns': dns,
       'h2': http2 ? '1' : '0',
+      if (candidates.isNotEmpty) 'candidates': candidates,
       'name': name,
     };
     final rebuilt = Uri(
@@ -127,6 +131,8 @@ class WarpShareCodec {
       host: host,
       port: port,
       sniOrHost: sni,
+      warpMasqueEndpointCandidates:
+          candidates.isEmpty ? null : candidates,
       isDeletable: true,
     );
   }
@@ -136,11 +142,13 @@ class WarpShareCodec {
       final uri = Uri.parse(link);
       if (uri.scheme != 'warpmasque' && uri.scheme != 'wmq') return null;
       final q = uri.queryParameters;
+      final candidates = (q['candidates'] ?? q['cn'] ?? '').trim();
       return _MasqueParams(
         endpoint: (q['endpoint'] ?? q['ep'] ?? '162.159.198.238:443').trim(),
         sni: (q['sni'] ?? 'soft98.ir').trim(),
         dns: (q['dns'] ?? '1.1.1.1,1.0.0.1').trim(),
         http2: (q['h2'] ?? '1') == '1',
+        candidates: candidates.isEmpty ? null : candidates,
       );
     } catch (_) {
       return null;
@@ -431,11 +439,13 @@ class _MasqueParams {
   final String sni;
   final String dns;
   final bool http2;
+  final String? candidates;
   const _MasqueParams({
     required this.endpoint,
     required this.sni,
     required this.dns,
     required this.http2,
+    this.candidates,
   });
 }
 
