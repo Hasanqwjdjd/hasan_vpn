@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import 'warp_endpoint_tester.dart';
+import 'warp_real_tunnel_tester.dart';
 import 'warp_endpoint_scanner.dart';
 
 /// WARP / WARP Plus key generator + endpoint scanner.
@@ -148,24 +149,93 @@ class WarpService {
       final clientId = (cfg?['client_id'] ?? '').toString();
       final reserved = _decodeReserved(clientId);
 
-      // 3) اسکن edge — WARPSCOUT-style
+      // 3) اسکن edge — WARPSCOUT-style + real-tunnel verify
       String chosenEndpoint = endpointOverride ?? '';
       if (chosenEndpoint.isEmpty) {
         onProgress?.call('Scanning WARP endpoints (${mode.label})...');
-        final hit = await WarpEndpointTester.select(
+        final hits = await WarpEndpointTester.selectMany(
           mode: mode,
           privateKeyB64: privateKeyB64,
           peerPublicKeyB64: peerPublicKey,
           customEndpoint: customEndpoint,
+          maxHits: 12,
           onProgress: (label, tested, total) {
             onProgress?.call('$label $tested/$total');
           },
         );
-        if (hit != null) {
-          chosenEndpoint = hit.endpoint.toString();
-          onProgress?.call('Selected ${hit.endpoint} (${hit.latencyMs}ms)');
+        if (hits.isNotEmpty) {
+          onProgress?.call(
+              'Verifying ${hits.length} candidates via real tunnel...');
+          final verifyServerFor = (WarpEndpoint ep) => VpnServer(
+                id: 'warp_verify',
+                name: 'WARP verify',
+                flag: '\u{1F310}',
+                shareLink: 'vpn://verify',
+                protocol: VpnProtocol.amneziaWg,
+                host: ep.host,
+                port: ep.port,
+                isDeletable: false,
+              );
+          final verified = await WarpRealTunnelTester.findFirstWorking(
+            hits: hits,
+            makeServerFromEndpoint: (ep) {
+              // ساخت vpn:// link برای این endpoint خاص + keys واقعی
+              final container = <String, dynamic>{
+                'awg': <String, dynamic>{
+                  'port': '${ep.port}',
+                  'last_config': jsonEncode(<String, dynamic>{
+                    'interface': <String, dynamic>{
+                      'private_key': privateKeyB64,
+                      'address':
+                          v4.isNotEmpty ? v4 : '172.16.0.2/32',
+                      'dns': '1.1.1.1',
+                      'mtu': 1280,
+                    },
+                    'peer': <String, dynamic>{
+                      'public_key': peerPublicKey,
+                      'endpoint': ep.toString(),
+                      'allowed_ips': <String>['0.0.0.0/0', '::/0'],
+                      if (reserved != null) 'reserved': reserved,
+                    },
+                  }),
+                  'mtu': '1280',
+                },
+              };
+              final outer = <String, dynamic>{
+                'hostName': ep.host,
+                'description': plus ? 'WARP+ verify' : 'WARP verify',
+                'containers': <dynamic>[container],
+              };
+              final link = 'vpn://${base64.encode(utf8.encode(jsonEncode(outer)))}';
+              return VpnServer(
+                id: 'warp_verify_${ep.host}_${ep.port}',
+                name: 'WARP verify',
+                flag: '\u{1F310}',
+                shareLink: link,
+                protocol: VpnProtocol.amneziaWg,
+                host: ep.host,
+                port: ep.port,
+                isDeletable: false,
+              );
+            },
+            maxCandidates: 12,
+            onProgress: (tested, total, ep, ms) {
+              onProgress?.call(
+                  'Verify $tested/$total: $ep ${ms > 0 ? "$ms ms" : "\u2715"}');
+            },
+          );
+          if (verified != null) {
+            chosenEndpoint = verified.endpoint.toString();
+            onProgress?.call(
+                'Verified ${verified.endpoint} (${verified.latencyMs}ms)');
+          } else {
+            onProgress?.call(
+                'Verify found nothing — using first UDP hit');
+            chosenEndpoint = hits.first.endpoint.toString();
+          }
         } else {
-          onProgress?.call('Scanner found nothing — falling back to default');
+          onProgress?.call(
+              'Scanner found nothing — falling back to default');
           chosenEndpoint = '$peerEndpoint:$_warpPort';
         }
       }
