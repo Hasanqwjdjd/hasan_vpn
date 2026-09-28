@@ -11,6 +11,7 @@ import '../models/server.dart';
 import 'warp_endpoint_tester.dart';
 import 'connection_log_service.dart';
 import 'warp_real_tunnel_tester.dart';
+import 'v2ray_engine.dart';
 import 'warp_endpoint_scanner.dart';
 
 /// WARP / WARP Plus key generator + endpoint scanner.
@@ -170,7 +171,6 @@ class WarpService {
           return server.copyWith(
             host: ep.host,
             port: ep.port,
-            sniOrHost: server.sniOrHost,
           );
         },
         maxCandidates: 12,
@@ -1007,7 +1007,7 @@ class WarpService {
       return (server: null, error: e.toString());
     }
   }
-
+}
 
 /// وضعیت زنده اسکن endpoint — قابل listen در UI.
 class WarpScanState {
@@ -1056,6 +1056,5 @@ class WarpScanState {
 class _WgKeys {
   final String privateKey;
   final String publicKey;
-  const _WgKeys({required this.privateKey, required this.publicKey});
-}
+  const _WgKeys({required this.privateKey, required this.publicKey}
 }
