@@ -3249,6 +3249,181 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _showMsg(_t('لینک کپی شد', 'Link copied'));
   }
 
+  /// Rescan endpoint برای WARP MASQUE — با Kotlin parallel scanner.
+  /// دیالوگ زنده + ذخیره endpoint برنده.
+  Future<void> _rescanMasqueServer(VpnServer server) async {
+    if (WarpMasqueService.scanProgress.value.active) {
+      _showMsg(_t('اسکن قبلی هنوز در حال اجراست',
+          'Previous scan still running'));
+      return;
+    }
+
+    // استخراج پارامترها از shareLink
+    final uri = Uri.parse(server.shareLink);
+    final q = uri.queryParameters;
+    final primaryEndpoint = (q['endpoint'] ?? q['ep'] ?? '').trim();
+    final sni = (q['sni'] ?? WarpMasqueService.defaultSni).trim();
+    final dns = (q['dns'] ?? WarpMasqueService.defaultDns).trim();
+    final h2 = (q['h2'] ?? '1') == '1';
+    final candidates =
+        (q['candidates'] ?? q['cn'] ?? '').trim();
+
+    if (primaryEndpoint.isEmpty) {
+      _showMsg(_t('MASQUE: endpoint ناقص است',
+          'MASQUE: endpoint missing'));
+      return;
+    }
+
+    final rescanFuture = WarpMasqueService.rescanEndpoints(
+      endpoint: primaryEndpoint,
+      endpointCandidates:
+          candidates.isNotEmpty ? candidates : null,
+      sni: sni,
+      dns: dns,
+      http2: h2,
+      timeoutSec: 90,
+    );
+
+    // ignore: unawaited_futures
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface(ctx),
+        title: Text(
+          _t('اسکن MASQUE', 'Scanning MASQUE'),
+          style: TextStyle(color: AppColors.fg(ctx), fontSize: 15),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ValueListenableBuilder<WarpMasqueScanState>(
+            valueListenable: WarpMasqueService.scanProgress,
+            builder: (_, state, __) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LinearProgressIndicator(
+                    value: state.total > 0 ? state.progress : null,
+                    color: AppColors.accent,
+                    backgroundColor: AppColors.border(ctx),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    state.phase.isNotEmpty ? state.phase : '…',
+                    style: TextStyle(
+                        color: AppColors.fg(ctx), fontSize: 12),
+                  ),
+                  if (state.total > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '${state.tested}/${state.total}',
+                        style: TextStyle(
+                            color: AppColors.muted2(ctx),
+                            fontSize: 11),
+                      ),
+                    ),
+                  if (state.endpoint.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '${state.endpoint}'
+                        '${state.ms > 0 ? " · ${state.ms}ms" : ""}',
+                        style: TextStyle(
+                            color: state.ms > 0
+                                ? AppColors.accent
+                                : AppColors.muted(ctx),
+                            fontSize: 11),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  if (state.error.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        state.error,
+                        style: TextStyle(
+                            color: AppColors.danger, fontSize: 11),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+        actions: [
+          ValueListenableBuilder<WarpMasqueScanState>(
+            valueListenable: WarpMasqueService.scanProgress,
+            builder: (_, state, __) => TextButton(
+              onPressed:
+                  state.done ? () => Navigator.pop(ctx) : null,
+              child: Text(
+                _t('بستن', 'Close'),
+                style: TextStyle(
+                    color: state.done
+                        ? AppColors.accent
+                        : AppColors.muted2(ctx)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final result = await rescanFuture;
+
+    if (!mounted) return;
+    if (Navigator.of(context, rootNavigator: true).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+
+    if (result.endpoint == null) {
+      _showMsg(_t(
+        'اسکن MASQUE ناموفق: ${result.error ?? "unknown"}',
+        'MASQUE rescan failed: ${result.error ?? "unknown"}',
+      ));
+      return;
+    }
+
+    final parts = result.endpoint!.split(':');
+    if (parts.length < 2) {
+      _showMsg(_t('endpoint نامعتبر', 'Invalid endpoint'));
+      return;
+    }
+    final newHost = parts[0];
+    final newPort = int.tryParse(parts[1]) ?? server.port;
+
+    final newQ = Map<String, String>.from(q);
+    newQ['endpoint'] = result.endpoint!;
+    final newLink = Uri(
+      scheme: 'warpmasque',
+      host: 'config',
+      queryParameters: newQ,
+    ).toString();
+
+    final updated = server.copyWith(
+      host: newHost,
+      port: newPort,
+      shareLink: newLink,
+    );
+    setState(() {
+      final idx = _customServers.indexWhere((s) => s.id == server.id);
+      if (idx >= 0) _customServers[idx] = updated;
+      final si = _servers.indexWhere((s) => s.id == server.id);
+      if (si >= 0) _servers[si] = updated;
+      if (_selected?.id == server.id) _selected = updated;
+    });
+    // ignore: unawaited_futures
+    _saveCustomServers();
+
+    _showMsg(_t(
+      'بهترین MASQUE: ${result.endpoint} (${result.ms}ms)',
+      'Best MASQUE endpoint: ${result.endpoint} (${result.ms}ms)',
+    ));
+  }
+
   /// Rescan endpoint برای WARP/WARP+ — یه دیالوگ زنده که وضعیت
   /// scan/verify رو نشون می‌ده، بعد endpoint رو ذخیره می‌کنه.
   Future<void> _rescanWarpServer(VpnServer server) async {
