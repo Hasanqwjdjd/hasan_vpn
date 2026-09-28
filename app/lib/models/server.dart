@@ -227,6 +227,10 @@ class VpnServer {
   /// Fast / Medium / Slow / Custom. null = سرور غیر-WARP.
   String? warpEndpointMode;
 
+  /// لیست endpoint candidates برای MASQUE parallel fallback scan.
+  /// فرمت: `host:port,subnet/24:port,...` — null = پیش‌فرض داخلی.
+  String? warpMasqueEndpointCandidates;
+
   int? ping;
   int? jitter;
   PingKind pingKind;
