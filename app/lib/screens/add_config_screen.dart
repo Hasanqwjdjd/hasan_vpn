@@ -2528,6 +2528,28 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
           ),
         ),
 
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          height: 46,
+          child: OutlinedButton.icon(
+            onPressed: _warpGenerating
+                ? null
+                : () => _generateWarpPlusChain(),
+            icon: const Icon(Icons.hub, size: 18),
+            label: Text(
+                _t('ساخت WARP+ 2-hop (Outer + Inner)',
+                    'Build WARP+ 2-hop (Outer + Inner)')),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: color,
+              side: BorderSide(color: color),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+
         const SizedBox(height: 14),
         Center(
           child: TextButton.icon(
@@ -2625,6 +2647,73 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       _showMsg(plus
           ? _t('WARP+ اضافه شد', 'WARP+ added')
           : _t('WARP اضافه شد', 'WARP added'));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _warpGenerating = false;
+        _warpProgress = _t('خطا', 'Failed');
+      });
+      _showMsg(_t('خطا: $e', 'Error: $e'));
+    }
+  }
+
+  Future<void> _generateWarpPlusChain() async {
+    if (_warpGenerating) return;
+    final lic = _warpLicenseController.text.trim();
+    if (lic.isEmpty) {
+      _showMsg(_t('license رو وارد کن', 'Enter your license'));
+      return;
+    }
+
+    setState(() {
+      _warpGenerating = true;
+      _warpProgress = _t('شروع...', 'Starting...');
+    });
+
+    String? proxyPort;
+    try {
+      final p = V2RayEngine.localSocksPort;
+      if (V2RayEngine.isConnected && p > 0) {
+        proxyPort = '$p';
+      }
+    } catch (_) {}
+
+    if (proxyPort == null) {
+      _showMsg(_t(
+        'برای WARP+ 2-hop باید اول یه VPN وصل باشی تا register از داخلش رد شه.',
+        'For WARP+ 2-hop you must connect a VPN first so register goes through it.',
+      ));
+      setState(() => _warpGenerating = false);
+      return;
+    }
+
+    try {
+      final result = await WarpService.generatePlusChain(
+        license: lic,
+        proxySocksPort: proxyPort,
+        onProgress: (m) {
+          if (mounted) setState(() => _warpProgress = m);
+        },
+      );
+
+      if (!mounted) return;
+
+      if (result.server == null) {
+        setState(() {
+          _warpGenerating = false;
+          _warpProgress = _t('خطا', 'Failed');
+        });
+        _showMsg(_t(
+          'تولید ناموفق: ${result.error ?? "unknown"}',
+          'Generation failed: ${result.error ?? "unknown"}',
+        ));
+        return;
+      }
+
+      widget.onServerAdded(result.server!);
+      if (!mounted) return;
+      Navigator.pop(context);
+      _showMsg(_t('WARP+ 2-hop اضافه شد', 'WARP+ 2-hop added'));
     } catch (e) {
       if (!mounted) return;
       setState(() {
