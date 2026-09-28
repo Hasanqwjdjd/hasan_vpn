@@ -46,6 +46,7 @@ class WarpMasqueService : Service() {
         private const val EXTRA_DESYNC_ENABLED = "desyncEnabled"
         private const val EXTRA_DESYNC_PORT = "desyncSocksPort"
         private const val EXTRA_ENDPOINT_CANDIDATES = "endpointCandidates"
+        private const val EXTRA_DEVICE_NAME = "deviceName"
 
         private const val MAX_PARALLEL_MASQUE_ATTEMPTS = 6
         private const val MAX_PARALLEL_ENDPOINT_PROBES = 64
@@ -124,6 +125,7 @@ class WarpMasqueService : Service() {
             http2: Boolean = true,
             desyncEnabled: Boolean = false,
             desyncSocksPort: Int = 0,
+            deviceName: String = "Hasan-VPN",
         ) {
             val i = Intent(context, WarpMasqueService::class.java).apply {
                 action = ACTION_START
@@ -134,6 +136,7 @@ class WarpMasqueService : Service() {
                 putExtra(EXTRA_HTTP2, http2)
                 putExtra(EXTRA_DESYNC_ENABLED, desyncEnabled)
                 putExtra(EXTRA_DESYNC_PORT, desyncSocksPort)
+                putExtra(EXTRA_DEVICE_NAME, deviceName)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(i)
@@ -170,9 +173,12 @@ class WarpMasqueService : Service() {
                 val http2 = intent.getBooleanExtra(EXTRA_HTTP2, true)
                 val desyncEnabled = intent.getBooleanExtra(EXTRA_DESYNC_ENABLED, false)
                 val desyncPort = intent.getIntExtra(EXTRA_DESYNC_PORT, 0)
+                val deviceName = intent.getStringExtra(EXTRA_DEVICE_NAME)
+                    ?.takeIf { it.isNotBlank() } ?: "Hasan-VPN"
                 startForegroundSafe("WARP MASQUE · $endpoint")
                 Thread(
-                    { runMasque(endpoint, endpointCandidates, sni, dns, http2, desyncEnabled, desyncPort) },
+                    { runMasque(endpoint, endpointCandidates, sni, dns, http2,
+                        desyncEnabled, desyncPort, deviceName) },
                     "WarpMasqueRunner"
                 ).start()
             }
@@ -188,6 +194,7 @@ class WarpMasqueService : Service() {
         http2: Boolean,
         desyncEnabled: Boolean,
         desyncPort: Int,
+        deviceName: String,
     ) {
         try {
             cancelled.set(false)
@@ -204,7 +211,7 @@ class WarpMasqueService : Service() {
 
             // ---- 1. register (اگه config نداریم)
             if (!isRegistered(configFile)) {
-                if (!registerDevice(binary, root, configFile)) {
+                if (!registerDevice(binary, root, configFile, deviceName)) {
                     stopSelf()
                     return
                 }
@@ -306,15 +313,24 @@ class WarpMasqueService : Service() {
     }
 
     /** ثبت دستگاه MASQUE — true اگه config آماده شد. */
-    private fun registerDevice(binary: File, root: File, configFile: File): Boolean {
+    private fun registerDevice(
+        binary: File,
+        root: File,
+        configFile: File,
+        deviceName: String,
+    ): Boolean {
         if (configFile.exists()) runCatching { configFile.delete() }
         val regConfig = File(root, "register-temp.json")
         if (regConfig.exists()) runCatching { regConfig.delete() }
 
         notifyText("Registering WARP MASQUE device…")
+        val safeName = deviceName
+            .replace(Regex("[^A-Za-z0-9_.-]"), "_")
+            .take(64)
+            .ifBlank { "Hasan-VPN" }
         val registerProc = ProcessBuilder(
             binary.absolutePath, "register",
-            "-n", "Hasan-VPN",
+            "-n", safeName,
             "--accept-tos",
         ).directory(root).redirectErrorStream(true).start()
 
