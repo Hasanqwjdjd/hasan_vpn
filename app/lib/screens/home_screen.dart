@@ -30,6 +30,7 @@ import '../services/pingng_args.dart';
 import '../services/desync_tuner.dart';
 import '../services/warp_masque_session_service.dart';
 import '../services/warp_service.dart';
+import '../services/warp_cache_codec.dart';
 import '../services/geo_assets_service.dart';
 import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
@@ -3292,6 +3293,67 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ),
         actions: [
+          // Export cache — کاربر می‌تونه endpoint برنده رو با دوستش به اشتراک بذاره
+          TextButton.icon(
+            icon: Icon(Icons.ios_share, size: 16,
+                color: AppColors.muted(ctx)),
+            onPressed: () async {
+              final uri = await WarpCacheCodec.exportCurrent();
+              if (uri == null) {
+                if (mounted) {
+                  _showMsg(_t(
+                    'کش خالی است — اول یک اسکن موفق انجام بده',
+                    'Cache empty — run a successful scan first',
+                  ));
+                }
+                return;
+              }
+              await Clipboard.setData(ClipboardData(text: uri));
+              if (mounted) {
+                _showMsg(_t(
+                  'لینک کش کپی شد',
+                  'Cache link copied',
+                ));
+              }
+            },
+            label: Text(
+              _t('خروجی', 'Export'),
+              style: TextStyle(
+                  color: AppColors.muted(ctx), fontSize: 12),
+            ),
+          ),
+          // Import cache — کاربر paste کنه
+          TextButton.icon(
+            icon: Icon(Icons.download, size: 16,
+                color: AppColors.muted(ctx)),
+            onPressed: () async {
+              final clipboardData =
+                  await Clipboard.getData(Clipboard.kTextPlain);
+              final text = clipboardData?.text?.trim() ?? '';
+              if (text.isEmpty ||
+                  !WarpCacheCodec.looksLikeCache(text)) {
+                if (mounted) {
+                  _showMsg(_t(
+                    'کلیپ‌بورد لینک کش معتبر ندارد',
+                    'Clipboard has no valid cache link',
+                  ));
+                }
+                return;
+              }
+              final n = await WarpCacheCodec.importFrom(text);
+              if (mounted) {
+                _showMsg(n > 0
+                    ? _t('$n endpoint وارد شد',
+                        '$n endpoints imported')
+                    : _t('import ناموفق', 'Import failed'));
+              }
+            },
+            label: Text(
+              _t('ورودی', 'Import'),
+              style: TextStyle(
+                  color: AppColors.muted(ctx), fontSize: 12),
+            ),
+          ),
           ValueListenableBuilder<WarpScanState>(
             valueListenable: WarpService.scanProgress,
             builder: (_, state, __) => TextButton(
