@@ -136,6 +136,28 @@ class QuickConnectWidget1x1 : AppWidgetProvider() {
             val bgRes = if (vpnActive) R.drawable.widget_bg else R.drawable.widget_bg_gray
             views.setInt(R.id.widget_root, "setBackgroundResource", bgRes)
 
+            // Quality badge — از prefs هایی که Dart می‌نویسه
+            // flutter.widget_quality_score  (int)
+            // flutter.widget_quality_emoji  (String)
+            val qualityScore = prefs.getInt("flutter.widget_quality_score", -1)
+            val qualityEmoji = prefs.getString("flutter.widget_quality_emoji", "")
+            if (qualityScore > 0 && !qualityEmoji.isNullOrEmpty()) {
+                val qualityText = "$qualityEmoji  $qualityScore"
+                views.setTextViewText(R.id.widget_quality, qualityText)
+                views.setViewVisibility(R.id.widget_quality, android.view.View.VISIBLE)
+                // رنگ badge بر اساس امتیاز
+                val qColor = when {
+                    qualityScore >= 85 -> 0xFF3DDC97.toInt() // سبز
+                    qualityScore >= 70 -> 0xFF8BC34A.toInt() // سبز روشن
+                    qualityScore >= 50 -> 0xFFFFB300.toInt() // زرد
+                    qualityScore >= 30 -> 0xFFFF7043.toInt() // نارنجی
+                    else -> 0xFFE53935.toInt()               // قرمز
+                }
+                views.setTextColor(R.id.widget_quality, qColor)
+            } else {
+                views.setViewVisibility(R.id.widget_quality, android.view.View.GONE)
+            }
+
             val tap = Intent(context, QuickConnectWidget1x1::class.java).apply {
                 action = ACTION_TAP
                 putExtra(EXTRA_TYPE, type)

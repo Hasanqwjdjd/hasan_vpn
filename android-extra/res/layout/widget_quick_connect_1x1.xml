@@ -19,4 +19,17 @@
         android:maxLines="2"
         android:ellipsize="end"
         android:text="Hasan" />
+
+    <TextView
+        android:id="@+id/widget_quality"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textColor="#3DDC97"
+        android:textSize="9sp"
+        android:textStyle="bold"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:visibility="gone"
+        android:text="" />
 </LinearLayout>

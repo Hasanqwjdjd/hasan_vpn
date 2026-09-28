@@ -3380,6 +3380,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       WarpEndpointHealthMonitor.instance.stop();
     } catch (_) {}
+    // پاک کردن quality widget
+    // ignore: unawaited_futures
+    HomeWidgetService.clearQuality();
     _autoFailoverEnabled = false;
     if (!mounted) return;
     setState(() {
@@ -3491,6 +3494,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // ignore: unawaited_futures
         Future<void>.microtask(() {
           TelemetryService.setQuality(
+            latest.score,
+            latest.grade.emoji,
+          );
+          HomeWidgetService.setQuality(
             latest.score,
             latest.grade.emoji,
           );

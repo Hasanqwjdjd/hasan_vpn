@@ -60,6 +60,31 @@ class HomeWidgetService {
     }
   }
 
+  /// ذخیره امتیاز کیفیت در prefs — برای نمایش در ویجت.
+  static Future<void> setQuality(int score, String emoji) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('widget_quality_score', score);
+      await prefs.setString('widget_quality_emoji', emoji);
+      // آپدیت widget ها
+      try {
+        await _channel.invokeMethod('updateWidgets');
+      } catch (_) {}
+    } catch (_) {}
+  }
+
+  /// پاک کردن quality از prefs (بعد از disconnect).
+  static Future<void> clearQuality() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('widget_quality_score');
+      await prefs.remove('widget_quality_emoji');
+      try {
+        await _channel.invokeMethod('updateWidgets');
+      } catch (_) {}
+    } catch (_) {}
+  }
+
   static Future<void> _save(List<HomeWidgetSlot> slots) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
