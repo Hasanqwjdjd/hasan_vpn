@@ -33,6 +33,8 @@ import '../services/warp_masque_service.dart';
 import '../services/warp_service.dart';
 import '../services/warp_endpoint_health_monitor.dart';
 import '../services/connection_quality.dart';
+import '../services/quality_history_service.dart';
+import 'quality_history_screen.dart';
 import '../services/warp_batch_tester.dart';
 import '../services/warp_scout_scheduler.dart';
 import '../widgets/quality_badge.dart';
@@ -3461,6 +3463,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         pingMs: result.ms!,
         jitterMs: result.jitter ?? 0,
       );
+      // ذخیره در تاریخچه
+      final latest = _qualityMonitor.latest.value;
+      if (latest != null) {
+        // ignore: unawaited_futures
+        QualityHistoryService.add(QualitySample(
+          at: DateTime.now(),
+          score: latest.score,
+          pingMs: latest.pingMs,
+          jitterMs: latest.jitterMs,
+          lossPct: latest.lossPct,
+        ));
+      }
     }
     await _savePings();
   }
@@ -4764,6 +4778,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   if (!_selectionMode) _selectedIds.clear();
                 }),
                 tooltip: _t('حالت انتخاب', 'Selection mode'),
+              ),
+              IconButton(
+                icon: Icon(Icons.timeline,
+                    color: AppColors.accent, size: 22),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => QualityHistoryScreen(
+                      language: widget.language,
+                    ),
+                  ),
+                ),
+                tooltip: _t('تاریخچه کیفیت', 'Quality history'),
               ),
               IconButton(
                 icon: Icon(Icons.settings,
