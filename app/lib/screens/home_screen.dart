@@ -3293,6 +3293,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
       if (ok != true) return;
     }
+    // ذخیره snapshot برای undo
+    final removedServer = server;
+    final originalIndex =
+        _customServers.indexWhere((item) => item.id == server.id);
+    final originalTag = _customSubTags[server.id];
+
     _deletedIds.add(server.id);
     _customServers.removeWhere((item) => item.id == server.id);
     _customSubTags.remove(server.id);
@@ -3304,6 +3310,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _saveDeleted();
     _saveCustomServers();
     _savePings();
+
+    // Snackbar با دکمه Undo
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_t(
+          'سرور حذف شد: ${server.displayName}',
+          'Deleted: ${server.displayName}',
+        )),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: _t('بازگردانی', 'Undo'),
+          textColor: AppColors.accent,
+          onPressed: () async {
+            if (!mounted) return;
+            _deletedIds.remove(server.id);
+            // بازگردانی در جای اصلی
+            if (originalIndex >= 0 &&
+                originalIndex <= _customServers.length) {
+              _customServers.insert(originalIndex, removedServer);
+            } else {
+              _customServers.insert(0, removedServer);
+            }
+            if (originalTag != null) {
+              _customSubTags[server.id] = originalTag;
+            }
+            _saveCustomSubTags();
+            _rebuildServerList();
+            _saveDeleted();
+            _saveCustomServers();
+            // ignore: unawaited_futures
+            _savePings();
+            if (!mounted) return;
+            setState(() {});
+            _showMsg(_t('سرور بازگردانی شد', 'Server restored'));
+          },
+        ),
+      ),
+    );
   }
   void _deleteDuplicates() {
     final seen = <String>{};
