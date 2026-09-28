@@ -60,6 +60,35 @@ class WarpMasqueService : Service() {
         private const val DEFAULT_SNI = "soft98.ir"
         private const val DEFAULT_DNS = "1.1.1.1,1.0.0.1"
 
+        @Volatile private var progressCallback: ((Map<String, Any?>) -> Unit)? = null
+        fun setProgressCallback(cb: ((Map<String, Any?>) -> Unit)?) {
+            progressCallback = cb
+        }
+
+        private fun emitProgress(
+            phase: String,
+            tested: Int = 0,
+            total: Int = 0,
+            endpoint: String = "",
+            ms: Int = 0,
+            done: Boolean = false,
+            error: String = "",
+        ) {
+            try {
+                progressCallback?.invoke(
+                    mapOf(
+                        "phase" to phase,
+                        "tested" to tested,
+                        "total" to total,
+                        "endpoint" to endpoint,
+                        "ms" to ms,
+                        "done" to done,
+                        "error" to error,
+                    )
+                )
+            } catch (_: Throwable) {}
+        }
+
         @Volatile private var process: Process? = null
         private val cancelled = AtomicBoolean(false)
 
@@ -176,6 +205,12 @@ class WarpMasqueService : Service() {
             val primary = parseEndpoint(endpoint)
             if (primary != null) {
                 notifyText("Testing primary ${primary.rendered}…")
+                emitProgress(
+                    phase = "Testing primary",
+                    tested = 1,
+                    total = 1,
+                    endpoint = primary.rendered,
+                )
                 val started = startEndpoint(
                     binary, root, configFile, primary,
                     sni, dns, http2, desyncProxyUrl,
@@ -187,6 +222,13 @@ class WarpMasqueService : Service() {
                     return
                 }
                 Log.i(TAG, "Primary ${primary.rendered} failed; entering fallback scan")
+                emitProgress(
+                    phase = "Primary failed; scanning pool",
+                    tested = 1,
+                    total = 1,
+                    endpoint = primary.rendered,
+                    error = "primary failed",
+                )
             }
 
             // ---- 4. Parallel fallback scan
@@ -216,9 +258,20 @@ class WarpMasqueService : Service() {
             )
             if (finalProc == null) {
                 notifyError("Winner ${winner.endpoint.rendered} failed on final start")
+                emitProgress(
+                    phase = "Failed",
+                    endpoint = winner.endpoint.rendered,
+                    done = true,
+                    error = "final start failed",
+                )
                 stopSelf()
                 return
             }
+            emitProgress(
+                phase = "Connected",
+                endpoint = winner.endpoint.rendered,
+                done = true,
+            )
             streamProcess(finalProc.process)
 
         } catch (e: Exception) {
@@ -361,6 +414,7 @@ class WarpMasqueService : Service() {
         desyncProxyUrl: String?,
     ): StartedEndpoint? {
         if (candidates.isEmpty()) return null
+        emitProgress(phase = "Scanning MASQUE pool", total = candidates.size)
         val parallelism = MAX_PARALLEL_MASQUE_ATTEMPTS
         val executor = Executors.newFixedThreadPool(parallelism)
         val tempPortBase = SOCKS_PORT + 100
@@ -379,6 +433,10 @@ class WarpMasqueService : Service() {
                         var started: StartedEndpoint? = null
                         try {
                             Log.i(TAG, "Probing MASQUE ${ep.rendered} on temp $tempPort")
+                            emitProgress(
+                                phase = "Probing",
+                                endpoint = ep.rendered,
+                            )
                             started = startEndpoint(
                                 binary, root, configFile, ep,
                                 sni, dns, http2, desyncProxyUrl,
@@ -389,6 +447,11 @@ class WarpMasqueService : Service() {
                         }
                         val ready = started ?: return@Callable null
                         running += ready
+                        emitProgress(
+                            phase = "Probe OK",
+                            endpoint = ep.rendered,
+                            done = false,
+                        )
                         if (winner.compareAndSet(null, ready)) ready
                         else {
                             destroyStarted(ready)
