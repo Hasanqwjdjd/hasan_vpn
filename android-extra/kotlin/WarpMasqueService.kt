@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -33,6 +34,8 @@ class WarpMasqueService : Service() {
         private const val EXTRA_SNI = "sni"
         private const val EXTRA_DNS = "dns"
         private const val EXTRA_HTTP2 = "http2"
+        private const val EXTRA_DESYNC_ENABLED = "desyncEnabled"
+        private const val EXTRA_DESYNC_PORT = "desyncSocksPort"
 
         const val SOCKS_PORT = 1819
         private const val DEFAULT_ENDPOINT = "162.159.198.238:443"
@@ -50,6 +53,8 @@ class WarpMasqueService : Service() {
             sni: String = DEFAULT_SNI,
             dns: String = DEFAULT_DNS,
             http2: Boolean = true,
+            desyncEnabled: Boolean = false,
+            desyncSocksPort: Int = 0,
         ) {
             val i = Intent(context, WarpMasqueService::class.java).apply {
                 action = ACTION_START
@@ -57,6 +62,8 @@ class WarpMasqueService : Service() {
                 putExtra(EXTRA_SNI, sni)
                 putExtra(EXTRA_DNS, dns)
                 putExtra(EXTRA_HTTP2, http2)
+                putExtra(EXTRA_DESYNC_ENABLED, desyncEnabled)
+                putExtra(EXTRA_DESYNC_PORT, desyncSocksPort)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(i)
@@ -90,14 +97,24 @@ class WarpMasqueService : Service() {
                 val sni = intent.getStringExtra(EXTRA_SNI) ?: DEFAULT_SNI
                 val dns = intent.getStringExtra(EXTRA_DNS) ?: DEFAULT_DNS
                 val http2 = intent.getBooleanExtra(EXTRA_HTTP2, true)
+                val desyncEnabled = intent.getBooleanExtra(EXTRA_DESYNC_ENABLED, false)
+                val desyncPort = intent.getIntExtra(EXTRA_DESYNC_PORT, 0)
                 startForegroundSafe("WARP MASQUE · $endpoint")
-                Thread({ runMasque(endpoint, sni, dns, http2) }, "WarpMasqueRunner").start()
+                Thread({ runMasque(endpoint, sni, dns, http2, desyncEnabled, desyncPort) },
+                    "WarpMasqueRunner").start()
             }
         }
         return START_NOT_STICKY
     }
 
-    private fun runMasque(endpoint: String, sni: String, dns: String, http2: Boolean) {
+    private fun runMasque(
+        endpoint: String,
+        sni: String,
+        dns: String,
+        http2: Boolean,
+        desyncEnabled: Boolean,
+        desyncPort: Int,
+    ) {
         try {
             cancelled.set(false)
 
@@ -162,6 +179,21 @@ class WarpMasqueService : Service() {
             val endpointPort = hostPort.getOrNull(1)?.toIntOrNull() ?: 443
 
             notifyText("Starting MASQUE socks…")
+
+            // Desync برای outer TLS — پروکسی HTTP CONNECT لوکال که CONNECT
+            // را از داخل SOCKS5 listener موتور Desync عبور می‌دهد.
+            var desyncProxyUrl: String? = null
+            if (desyncEnabled && desyncPort in 1..65535) {
+                try {
+                    desyncProxyUrl = WarpMasqueDesyncProxy.start(desyncPort)
+                    Log.i(TAG, "WARP MASQUE outer TLS via Desync: $desyncProxyUrl")
+                } catch (e: Throwable) {
+                    Log.e(TAG, "Desync proxy start failed", e)
+                    desyncProxyUrl = null
+                }
+            }
+            patchHttpProxy(configFile, desyncProxyUrl)
+
             val args = mutableListOf(
                 binary.absolutePath,
                 "-c", configFile.absolutePath,
@@ -177,10 +209,19 @@ class WarpMasqueService : Service() {
             }
             if (http2) args.add("--http2")
 
-            val proc = ProcessBuilder(args)
+            val pb = ProcessBuilder(args)
                 .directory(root)
                 .redirectErrorStream(true)
-                .start()
+            if (desyncProxyUrl != null) {
+                pb.environment().apply {
+                    put("HTTP_PROXY", desyncProxyUrl!!)
+                    put("HTTPS_PROXY", desyncProxyUrl!!)
+                    put("http_proxy", desyncProxyUrl!!)
+                    put("https_proxy", desyncProxyUrl!!)
+                    put("NO_PROXY", "127.0.0.1,localhost")
+                }
+            }
+            val proc = pb.start()
             process = proc
 
             // ---- 3. پارس log + انتظار برای listen
@@ -213,8 +254,34 @@ class WarpMasqueService : Service() {
             SafeLog.e(TAG, "MASQUE failed", e)
             notifyError(e.message ?: "unknown error")
         } finally {
+            try { WarpMasqueDesyncProxy.stop() } catch (_: Exception) {}
             try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
             stopSelf()
+        }
+    }
+
+    /**
+     * Adds http_proxy to an already-registered MASQUE config.json so the
+     * usque process routes its outer TLS CONNECT through WarpMasqueDesyncProxy.
+     * Leaves every other field untouched; the file is rewritten only when the
+     * value actually changes.
+     */
+    private fun patchHttpProxy(configFile: File, proxyUrl: String?) {
+        try {
+            val raw = configFile.readText()
+            val root = org.json.JSONObject(raw)
+            val current = root.optString("http_proxy", "")
+            val desired = proxyUrl ?: ""
+            if (current == desired) return
+            if (desired.isBlank()) {
+                root.remove("http_proxy")
+            } else {
+                root.put("http_proxy", desired)
+            }
+            configFile.writeText(root.toString())
+            Log.i(TAG, "config.json http_proxy -> ${desired.ifBlank { "(none)" }}")
+        } catch (e: Throwable) {
+            Log.e(TAG, "patchHttpProxy failed", e)
         }
     }
 
