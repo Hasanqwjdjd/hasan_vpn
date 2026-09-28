@@ -4934,10 +4934,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           });
           // ignore: unawaited_futures
           ConnectionLogService.logConnect(server.displayName);
+          // advanced TOML از shareLink (اگه کاربر تنظیم کرده باشه)
+          final advancedToml =
+              (uri.queryParameters['advanced'] ?? '').trim();
           await MasterDnsSessionService.instance.connect(
             server.id, domain, key,
             method: method,
             resolvers: resolvers,
+            advancedToml: advancedToml.isEmpty ? null : advancedToml,
           );
           return;
         }
