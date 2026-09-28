@@ -14,6 +14,7 @@ import 'quality_history_screen.dart';
 import '../services/telegram_source_service.dart';
 import '../services/warp_scout_scheduler.dart';
 import '../services/quality_alert.dart';
+import '../services/server_batch_export.dart';
 import '../services/warp_batch_tester.dart';
 import '../services/warp_endpoint_health_monitor.dart';
 import '../services/update_service.dart';
@@ -260,6 +261,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: Text(_t('تنظیمات', 'Settings'),
             style: TextStyle(color: AppColors.fg(context))),
         centerTitle: true,
+        actions: [
+          IconButton(
+            onPressed: _exportAllServers,
+            icon: const Icon(Icons.ios_share),
+            tooltip: _t('خروجی همه سرورها', 'Export all servers'),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

@@ -46,6 +46,7 @@ import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
 import '../services/exit_ip_service.dart';
 import '../services/geo_flag.dart';
+import '../services/server_batch_export.dart';
 import '../services/psiphon_service.dart';
 import '../services/link_parser.dart';
 import '../services/xray_json.dart';
@@ -264,6 +265,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     QualityAlert.instance.restore();
     // Batch test auto-run
     _maybeAutoBatchOnStart();
+    // آماده‌سازی export cache
+    // ignore: unawaited_futures
+    Future<void>.delayed(const Duration(seconds: 2), () {
+      if (mounted) _refreshExportCache();
+    });
     // Smart Resume pref
     // ignore: unawaited_futures
     _loadSmartResumePref();
@@ -1717,6 +1723,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final parsed = int.tryParse(value?.toString() ?? '');
     if (parsed != null && parsed > 0 && parsed <= 65535) return parsed;
     return 443;
+  }
+
+  /// آماده‌سازی داده export برای settings screen.
+  Future<void> _refreshExportCache() async {
+    try {
+      final json = ServerBatchExport.export(_servers);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('quick_export_servers_v1', json);
+    } catch (e) {
+      debugPrint('refreshExportCache: $e');
+    }
   }
 
   Future<void> _saveCustomServers() async {
