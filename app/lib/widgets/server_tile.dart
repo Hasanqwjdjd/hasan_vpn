@@ -22,6 +22,8 @@ class ServerTile extends StatelessWidget {
   final VoidCallback? onRescanWarp;
   /// متن زنده — مثلاً "Scanning · 3/5" در زمان اسکن فعال.
   final String? liveBadge;
+  /// امتیاز کیفیت آخر این سرور (null = هنوز ثبت نشده).
+  final int? qualityScore;
   final VoidCallback? onLongPress;
   /// حالت گرید دوستونی: آیکون‌ها و padding فشرده می‌شن تا همپوشانی نشه.
   final bool compact;
@@ -41,6 +43,7 @@ class ServerTile extends StatelessWidget {
     this.onHomeWidget,
     this.onRescanWarp,
     this.liveBadge,
+    this.qualityScore,
     this.onLongPress,
     this.compact = false,
   });
@@ -141,6 +144,20 @@ class ServerTile extends StatelessWidget {
     final live = liveBadge;
     if (live != null && live.isNotEmpty) {
       out.insert(0, live);
+    }
+    // Quality score badge — Q۴۵ یعنی امتیاز ۴۵
+    final q = qualityScore;
+    if (q != null && q > 0 && live == null) {
+      final emoji = q >= 85
+          ? '🟢'
+          : q >= 70
+              ? '🟢'
+              : q >= 50
+                  ? '🟡'
+                  : q >= 30
+                      ? '🟠'
+                      : '🔴';
+      out.add('$emoji $q');
     }
     return out;
   }

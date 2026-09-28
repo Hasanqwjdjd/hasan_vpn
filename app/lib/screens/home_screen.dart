@@ -5121,6 +5121,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// آخرین امتیاز کیفیت این سرور (از history).
+  int? _lastQualityFor(String serverId) {
+    if (serverId.isEmpty) return null;
+    final samples = QualityHistoryService.cached;
+    for (var i = samples.length - 1; i >= 0; i--) {
+      if (samples[i].serverId == serverId) {
+        return samples[i].score;
+      }
+    }
+    return null;
+  }
+
   Widget _buildServerTile(VpnServer server, {bool compact = false}) {
     final tileKey = _tileKeys.putIfAbsent(server.id, () => GlobalKey());
     // Live badge — از batch tester یا WARP scan progress
@@ -5141,7 +5153,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             live = r.ok ? '✓ ${r.latencyMs}ms' : '✕';
           }
         }
-        return _buildServerTileInner(server, compact, tileKey, live);
+        final quality = _lastQualityFor(server.id);
+        return _buildServerTileInner(
+            server, compact, tileKey, live, quality);
       },
     );
   }
@@ -5151,12 +5165,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     bool compact,
     GlobalKey tileKey,
     String? liveBadge,
+    int? qualityScore,
   ) {
     return ServerTile(
       key: tileKey,
       server: server,
       compact: compact,
       liveBadge: liveBadge,
+      qualityScore: qualityScore,
       selected: _selected?.id == server.id,
       active: _connected && _active?.id == server.id,
       onTap: () async {
