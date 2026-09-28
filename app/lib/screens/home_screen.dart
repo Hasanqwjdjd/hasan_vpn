@@ -34,6 +34,7 @@ import '../services/warp_service.dart';
 import '../services/warp_endpoint_health_monitor.dart';
 import '../services/connection_quality.dart';
 import '../services/warp_batch_tester.dart';
+import '../services/warp_scout_scheduler.dart';
 import '../widgets/quality_badge.dart';
 import '../services/warp_cache_codec.dart';
 import '../services/geo_assets_service.dart';
@@ -243,6 +244,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WarpMasqueService.scanProgress.addListener(_onMasqueScanProgress);
     WarpEndpointHealthMonitor.instance.onDegraded = _onWarpEndpointDegraded;
     WarpEndpointHealthMonitor.instance.onRecovered = _onWarpEndpointRecovered;
+    // WARP Scout Scheduler — restore تنظیمات ذخیره‌شده
+    WarpScoutScheduler.instance.serversProvider = () => _servers;
+    WarpScoutScheduler.instance.onRescanNeeded = _onSchedulerRescan;
+    // ignore: unawaited_futures
+    WarpScoutScheduler.instance.restore();
 
     await _loadDeletedAndPinned();
     await _loadUiSettings();
@@ -6048,6 +6054,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       WarpEndpointHealthMonitor.instance.onDegraded = null;
       WarpEndpointHealthMonitor.instance.onRecovered = null;
       WarpEndpointHealthMonitor.instance.stop();
+    } catch (_) {}
+    try {
+      WarpScoutScheduler.instance.onRescanNeeded = null;
+      WarpScoutScheduler.instance.serversProvider = null;
     } catch (_) {}
     _qualityMonitor.reset();
     ConnectivityWatcher.instance.stop();
