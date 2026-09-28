@@ -201,6 +201,8 @@ jobs:
           cp -f android-extra/kotlin/NotificationHelper.kt "$KT_DIR/NotificationHelper.kt"
           cp -f android-extra/kotlin/MasterDnsService.kt "$KT_DIR/MasterDnsService.kt"
           cp -f android-extra/kotlin/WarpMasqueService.kt "$KT_DIR/WarpMasqueService.kt"
+          cp -f android-extra/kotlin/PsiphonRuntimeService.kt "$KT_DIR/PsiphonRuntimeService.kt"
+          cp -f android-extra/kotlin/PsiphonStatus.kt "$KT_DIR/PsiphonStatus.kt"
           cp -f android-extra/kotlin/DesyncEngine.kt "$KT_DIR/DesyncEngine.kt"
           CORE_DIR="build_src/android/app/src/main/kotlin/com/v2ray/ang/core"
           mkdir -p "$CORE_DIR"
@@ -246,6 +248,14 @@ jobs:
             cp -f android-extra/assets/masterdns/masterdns_client_config.toml "$ASSET_DIR/masterdns_client_config.toml"
             cp -f android-extra/assets/masterdns/masterdns_client_resolvers.txt "$ASSET_DIR/masterdns_client_resolvers.txt" 2>/dev/null || true
             echo "MasterDNS assets copied"
+          fi
+
+          # PingNG Psiphon runtime (DEX + config + server entries)
+          if [ -f android-extra/assets/pingng_psiphon_runtime.dex ]; then
+            cp -f android-extra/assets/pingng_psiphon_runtime.dex "$ASSET_DIR/pingng_psiphon_runtime.dex"
+            cp -f android-extra/assets/pingng_psiphon_config.json "$ASSET_DIR/pingng_psiphon_config.json"
+            cp -f android-extra/assets/pingng_psiphon_server_entries.txt "$ASSET_DIR/pingng_psiphon_server_entries.txt"
+            echo "Psiphon runtime assets copied"
           fi
           if [ -f android-extra/assets/server_entries.txt ]; then
             cp -f android-extra/assets/server_entries.txt "$ASSET_DIR/server_entries.txt"
