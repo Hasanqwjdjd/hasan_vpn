@@ -430,6 +430,60 @@ class V2RayEngine {
 
   // ---------------------------------------------------------------- connect
 
+  /// ساخت Xray config بدون اتصال — برای fast delay probe.
+  ///
+  /// از NativeDelayProbe استفاده می‌شه که config رو می‌ده به یه Xray
+  /// موقت در پروسه جدا. این متد فقط config رو می‌سازه (بدون listener،
+  /// بدون desync port، بدون device-specific settings).
+  ///
+  /// برمی‌گردونه: config JSON string یا '' در صورت خطا.
+  static Future<String> buildConfigOnly(VpnServer server) async {
+    try {
+      String config;
+      if (server.protocol == VpnProtocol.xrayJson) {
+        final raw = XrayJson.extractJson(server.shareLink);
+        if (raw == null || raw.trim().isEmpty) return '';
+        config = _ensureLocalInbound(raw);
+      } else if (server.protocol == VpnProtocol.chain) {
+        config = _buildChainConfig(server);
+      } else if (server.protocol == VpnProtocol.socks5) {
+        config = _buildSocks5Config(server);
+      } else if (server.protocol == VpnProtocol.amneziaWg) {
+        config = _buildAmneziaWgConfig(server);
+      } else {
+        final parser = FlutterVless.parse(server.shareLink);
+        config = parser.getFullConfiguration();
+      }
+      if (config.trim().isEmpty) return '';
+
+      // Lightweight post-processing (فقط TLS + DNS، بدون routing rules و game)
+      try {
+        config = await XraySettings.applyToConfig(config);
+      } catch (_) {}
+      if (!server.tls.isEmpty) {
+        try {
+          config = XraySettings.applyServerTls(
+            config,
+            server.tls.toJson(),
+            sniOverride: server.sniOrHost,
+          );
+        } catch (_) {}
+      }
+      if (server.dns != null && server.dns!.isNotEmpty) {
+        try {
+          config = XraySettings.applyServerDns(config, server.dns);
+        } catch (_) {}
+      }
+      try {
+        config = await _applyGeoAssetPaths(config);
+      } catch (_) {}
+      return config;
+    } catch (e) {
+      debugPrint('buildConfigOnly error: $e');
+      return '';
+    }
+  }
+
   static Future<bool> connect(VpnServer server) async {
     lastError = null;
     try {
