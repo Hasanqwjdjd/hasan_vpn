@@ -882,6 +882,79 @@ class WarpService {
     }
   }
 
+  /// ساخت chain با N hop از لینک‌های آماده vpn://.
+  ///
+  /// [vpnLinks] باید حداقل ۲ تا باشه. اولین = outer (dialer)، آخرین = inner (exit).
+  static ({VpnServer? server, String? error}) buildNhopChainFromLinks({
+    required List<String> vpnLinks,
+    String name = 'WARP+ manual chain',
+  }) {
+    try {
+      final cleaned = vpnLinks
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      if (cleaned.length < 2) {
+        return (server: null, error: 'need at least 2 links');
+      }
+      if (cleaned.length > 8) {
+        return (server: null, error: 'max 8 hops');
+      }
+      for (var i = 0; i < cleaned.length; i++) {
+        final l = cleaned[i];
+        if (!l.startsWith('vpn://')) {
+          return (server: null, error: 'hop ${i + 1} is not vpn://');
+        }
+        if (_extractWgFieldsFromVpnLink(l) == null) {
+          return (server: null, error: 'hop ${i + 1} is invalid');
+        }
+      }
+
+      final Map<String, String> chainParams;
+      if (cleaned.length == 2) {
+        chainParams = <String, String>{
+          'first': cleaned[0],
+          'second': cleaned[1],
+          'name': name,
+        };
+      } else {
+        chainParams = <String, String>{
+          'hops': cleaned.join(','),
+          'name': name,
+        };
+      }
+
+      final chainLink = Uri(
+        scheme: 'chain',
+        host: 'config',
+        queryParameters: chainParams,
+      ).toString();
+
+      // نمایش: از outer endpoint
+      final outerEndpoint = _extractWgEndpointFromLink(cleaned.first) ?? '';
+      final host = outerEndpoint.split(':').first;
+      final port = int.tryParse(outerEndpoint.split(':').length > 1
+              ? outerEndpoint.split(':').last
+              : '') ??
+          _warpPort;
+
+      final server = VpnServer(
+        id: 'warp_chain_manual_${DateTime.now().millisecondsSinceEpoch}',
+        name: host.isEmpty ? name : '$name · $host',
+        flag: '\u{1F310}',
+        shareLink: chainLink,
+        protocol: VpnProtocol.chain,
+        host: host,
+        port: port,
+        isDeletable: true,
+        warpEndpointMode: 'Custom',
+      );
+      return (server: server, error: null);
+    } catch (e) {
+      return (server: null, error: e.toString());
+    }
+  }
+
   /// استخراج endpoint از یک vpn:// link (برای نمایش).
   static String? _extractWgEndpointFromLink(String link) {
     try {
