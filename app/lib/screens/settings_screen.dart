@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'log_viewer_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -90,6 +91,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<int> _intervalsForScout() => const [
         15, 30, 60, 120, 240, 480, 720,
       ];
+
+  // Batch test state
+  bool _batchAutoEnabled = false;
+  int _batchParallelism = 2;
+
+  Future<void> _loadBatchPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _batchAutoEnabled = prefs.getBool('batch_auto_v1') ?? false;
+        _batchParallelism = prefs.getInt('batch_parallelism_v1') ?? 2;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _saveBatchPref(String key, Object value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (value is bool) await prefs.setBool(key, value);
+      if (value is int) await prefs.setInt(key, value);
+    } catch (_) {}
+  }
 
   /// فقط https و فقط دامنه‌های GitHub (ریپو و دانلود بروزرسانی).
   bool _isAllowedUrl(Uri uri) {
@@ -523,6 +547,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ));
                     },
                   ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ------- Batch Test ---------
+          _sectionTitle(_t('تست دسته‌ای WARP',
+              'WARP batch test')),
+
+          _card(
+            context,
+            Column(
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: AppColors.accent,
+                  title: Text(
+                    _t('اجرا در شروع برنامه',
+                        'Run on app start'),
+                    style:
+                        TextStyle(color: AppColors.fg(context), fontSize: 13),
+                  ),
+                  subtitle: Text(
+                    _t(
+                      'هر بار که برنامه باز می‌شه، بهترین endpoint برای همه سرورهای WARP پیدا می‌شه.',
+                      'Every app start, finds the best endpoint for all WARP servers.',
+                    ),
+                    style: TextStyle(
+                        color: AppColors.muted2(context),
+                        fontSize: 10.5,
+                        height: 1.4),
+                  ),
+                  value: _batchAutoEnabled,
+                  onChanged: (v) async {
+                    setState(() => _batchAutoEnabled = v);
+                    await _saveBatchPref('batch_auto_v1', v);
+                  },
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text(
+                    _t('تعداد همزمانی', 'Parallelism'),
+                    style:
+                        TextStyle(color: AppColors.fg(context), fontSize: 12),
+                  ),
+                  subtitle: Text(
+                    _t(
+                      'چند سرور همزمان تست شه (بیشتر = سریع‌تر ولی سنگین‌تر)',
+                      'How many servers test in parallel',
+                    ),
+                    style: TextStyle(
+                        color: AppColors.muted2(context), fontSize: 10.5),
+                  ),
+                  trailing: DropdownButton<int>(
+                    value: _batchParallelism,
+                    dropdownColor: AppColors.elevated(context),
+                    style:
+                        TextStyle(color: AppColors.fg(context), fontSize: 12),
+                    underline: const SizedBox.shrink(),
+                    items: const [
+                      DropdownMenuItem(value: 1, child: Text('1')),
+                      DropdownMenuItem(value: 2, child: Text('2')),
+                      DropdownMenuItem(value: 3, child: Text('3')),
+                      DropdownMenuItem(value: 4, child: Text('4')),
+                    ],
+                    onChanged: (v) async {
+                      if (v == null) return;
+                      setState(() => _batchParallelism = v);
+                      await _saveBatchPref('batch_parallelism_v1', v);
+                    },
+                  ),
+                ),
               ],
             ),
           ),
