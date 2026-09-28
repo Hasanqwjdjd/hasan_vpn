@@ -133,6 +133,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final WarpBatchTester _batchTester = WarpBatchTester();
   bool _batchRunning = false;
   DateTime? _lastConnectTime;
+  // Smart Resume: true = کاربر خودش دستی قطع کرد (auto-reconnect نشه)
+  bool _manualDisconnect = false;
+  bool _smartResumeEnabled = true;
   VoidCallback? _finalMaskDialogRefresh;
   List<String> _manualOrder = <String>[];
   static const String _sortKey = 'settings_sort_ascending_v1';
@@ -261,6 +264,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     QualityAlert.instance.restore();
     // Batch test auto-run
     _maybeAutoBatchOnStart();
+    // Smart Resume pref
+    // ignore: unawaited_futures
+    _loadSmartResumePref();
 
     await _loadDeletedAndPinned();
     await _loadUiSettings();
@@ -2343,7 +2349,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _onNetworkReconnected() {
     if (!mounted) return;
-    if (!_connected && !_connecting) return;
+    // Smart Resume: اگه کاربر قبلاً خودش دستی قطع کرده، وصل نشو
+    if (_manualDisconnect) {
+      debugPrint('NetworkReconnected ignored: user manually disconnected');
+      return;
+    }
+    if (!_smartResumeEnabled) {
+      debugPrint('NetworkReconnected ignored: Smart Resume disabled');
+      return;
+    }
+    // اگه کاربر اتصال نداشت، auto-reconnect نکن
+    if (!_connected && !_connecting) {
+      debugPrint('NetworkReconnected ignored: was not connected');
+      return;
+    }
     if (_autoReconnectRunning) return;
     // FIX: اگر ۶۰ ثانیه از زمان اتصال نگذشته، احتمالاً این تغییر شبکه
     // خودِ VPN interface ماست، نه شبکه‌ی واقعی. auto-reconnect نزن.
@@ -3631,6 +3650,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _connecting = true;
         _status = _t('در حال قطع...', 'Disconnecting...');
       });
+      // Smart Resume: کاربر خودش قطع کرد — auto-reconnect نکن
+      _manualDisconnect = true;
       try {
         await _disconnectAll();
       } catch (_) {}
@@ -3730,6 +3751,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _deadStrikes = 0;
       _pollTick = 0;
       if (connected) _lastConnectTime = DateTime.now();
+      if (connected) _manualDisconnect = false;
       setState(() {
         _connected = connected;
         _connecting = false;
