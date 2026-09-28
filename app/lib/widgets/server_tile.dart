@@ -72,10 +72,39 @@ class ServerTile extends StatelessWidget {
       }
       return 'XRAY · $host';
     }
+    // WARP Plus 2-hop: chain:// با vpn:// تودرتو
+    if (server.protocol == VpnProtocol.chain) {
+      final link = server.shareLink;
+      final isWarpChain = link.contains('vpn%3A%2F%2F') ||
+          link.contains('vpn://');
+      if (isWarpChain) {
+        final host = server.host.trim();
+        final t = host.isEmpty || hideHost ? 'WARP+' : 'WARP+ · $host';
+        return '$t · 2-hop';
+      }
+    }
+    // WARP MASQUE
+    if (server.protocol == VpnProtocol.warpMasque) {
+      final host = server.host.trim();
+      if (hideHost || host.isEmpty) return 'WARP MASQUE';
+      return 'MASQUE · $host';
+    }
     final proto = server.protocol.name.toUpperCase();
     final host = server.host.trim();
     if (hideHost || host.isEmpty || host == 'unknown') return proto;
     return '$proto · $host';
+  }
+
+  /// badge های کوچیک برای نشان دادن ویژگی‌های خاص سرور.
+  List<String> get _badges {
+    final out = <String>[];
+    // Desync
+    final profile = server.pingNgProfile;
+    if (profile != null && profile.isNotEmpty && profile != 'Off') {
+      out.add(profile == 'Custom' ? 'DSYNC·C' : 'DSYNC');
+    }
+    if (server.pingNgUdpDesync) out.add('UDP');
+    return out;
   }
 
   /// پینگ واقعی (HTTP از داخل تونل).
@@ -289,14 +318,47 @@ class ServerTile extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 1),
-                      Text(
-                        _caption,
-                        style: TextStyle(
-                          color: AppColors.muted2(context),
-                          fontSize: c ? 9 : 10,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _caption,
+                              style: TextStyle(
+                                color: AppColors.muted2(context),
+                                fontSize: c ? 9 : 10,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (_badges.isNotEmpty && !c) ...[
+                            const SizedBox(width: 4),
+                            for (final b in _badges.take(2))
+                              Padding(
+                                padding: const EdgeInsets.only(left: 3),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 4, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.warn.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(3),
+                                    border: Border.all(
+                                      color: AppColors.warn.withOpacity(0.5),
+                                      width: 0.5,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    b,
+                                    style: TextStyle(
+                                      color: AppColors.warn,
+                                      fontSize: 7.5,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ],
                       ),
                     ],
                   ),
