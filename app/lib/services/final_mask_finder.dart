@@ -184,18 +184,16 @@ class FinalMaskFinder {
     final results = <FinalMaskResult>[];
 
     // Presets سفارشی این سرور (CDN/IR/short-SNI + remembered) + لیست ثابت
-    final List<FinalMaskPreset> effective;
+    List<FinalMaskPreset> effective = presets;
     try {
-      final dynamic = await dynamicPresetsFor(server);
-      // deduplicate by finalMask
+      final dyn = await dynamicPresetsFor(server);
       final seen = <String>{};
-      effective = <FinalMaskPreset>[];
-      for (final p in [...dynamic, ...presets]) {
-        if (seen.add(p.finalMask)) effective.add(p);
+      final merged = <FinalMaskPreset>[];
+      for (final p in [...dyn, ...presets]) {
+        if (seen.add(p.finalMask)) merged.add(p);
       }
-    } catch (_) {
-      effective = presets;
-    }
+      if (merged.isNotEmpty) effective = merged;
+    } catch (_) {}
 
     try {
       for (var i = 0; i < effective.length; i++) {
