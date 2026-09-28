@@ -290,36 +290,49 @@ class WarpShareCodec {
     try {
       final uri = Uri.parse(server.shareLink);
       if (uri.scheme != 'chain') return server.shareLink;
-      final first = uri.queryParameters['first'] ?? '';
-      final second = uri.queryParameters['second'] ?? '';
-      if (first.isEmpty || second.isEmpty) return server.shareLink;
-      final outer = _extractWireGuardFields(first);
-      final inner = _extractWireGuardFields(second);
-      if (outer == null || inner == null) return server.shareLink;
+      // پشتیبانی N-hop (`hops`) و 2-hop (`first`+`second`)
+      final rawHops = uri.queryParameters['hops'] ?? '';
+      final List<String> hopLinks;
+      if (rawHops.isNotEmpty) {
+        hopLinks = rawHops
+            .split(',')
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+      } else {
+        final first = uri.queryParameters['first'] ?? '';
+        final second = uri.queryParameters['second'] ?? '';
+        if (first.isEmpty || second.isEmpty) return server.shareLink;
+        hopLinks = [first, second];
+      }
+      if (hopLinks.length < 2) return server.shareLink;
 
-      final oPayload = [
-        outer.privateKey,
-        outer.publicKey,
-        outer.endpoint,
-        outer.address,
-        outer.reserved ?? '',
-      ].join('|');
-      final iPayload = [
-        inner.privateKey,
-        inner.publicKey,
-        inner.endpoint,
-        inner.address,
-        inner.reserved ?? '',
-      ].join('|');
+      // استخراج payload برای هر hop
+      final payloads = <String>[];
+      for (final link in hopLinks) {
+        final fields = _extractWireGuardFields(link);
+        if (fields == null) return server.shareLink;
+        payloads.add([
+          fields.privateKey,
+          fields.publicKey,
+          fields.endpoint,
+          fields.address,
+          fields.reserved ?? '',
+        ].join('|'));
+      }
 
+      // encode همه hop ها با کلید h0, h1, h2, ...
+      final q = <String, String>{
+        'n': server.displayName,
+        'c': payloads.length.toString(),
+      };
+      for (var i = 0; i < payloads.length; i++) {
+        q['h\$i'] = _b64(payloads[i]);
+      }
       return Uri(
         scheme: 'hasan-warp',
         host: 'p',
-        queryParameters: <String, String>{
-          'o': _b64(oPayload),
-          'i': _b64(iPayload),
-          'n': server.displayName,
-        },
+        queryParameters: q,
       ).toString();
     } catch (_) {
       return server.shareLink;
@@ -327,34 +340,69 @@ class WarpShareCodec {
   }
 
   static VpnServer? _decodePlus(Map<String, String> q, String id) {
-    final oPayload = _unb64(q['o'] ?? '');
-    final iPayload = _unb64(q['i'] ?? '');
-    if (oPayload == null || iPayload == null) return null;
+    // فرمت v2: `h0`, `h1`, ... + `c` (count)
+    // فرمت v1: `o` (outer) + `i` (inner)
+    final List<String> hopLinks = [];
 
-    final outerLink = _wgPayloadToVpnLink(oPayload);
-    final innerLink = _wgPayloadToVpnLink(iPayload);
-    if (outerLink == null || innerLink == null) return null;
+    final countStr = q['c'];
+    if (countStr != null) {
+      final count = int.tryParse(countStr) ?? 0;
+      if (count < 2 || count > 8) return null;
+      for (var i = 0; i < count; i++) {
+        final payload = _unb64(q['h\$i'] ?? '');
+        if (payload == null) return null;
+        final link = _wgPayloadToVpnLink(payload);
+        if (link == null) return null;
+        hopLinks.add(link);
+      }
+    } else {
+      // v1
+      final oPayload = _unb64(q['o'] ?? '');
+      final iPayload = _unb64(q['i'] ?? '');
+      if (oPayload == null || iPayload == null) return null;
+      final outerLink = _wgPayloadToVpnLink(oPayload);
+      final innerLink = _wgPayloadToVpnLink(iPayload);
+      if (outerLink == null || innerLink == null) return null;
+      hopLinks.add(outerLink);
+      hopLinks.add(innerLink);
+    }
+
+    if (hopLinks.length < 2) return null;
 
     final name = (q['n'] ?? '').trim();
-    final display = name.isEmpty ? 'WARP+ 2-hop' : name;
+    final display = name.isEmpty
+        ? 'WARP+ \${hopLinks.length}-hop'
+        : name;
+
+    // برای 2-hop از first/second استفاده کن (سازگاری)
+    // برای N-hop از hops استفاده کن
+    final Map<String, String> chainParams;
+    if (hopLinks.length == 2) {
+      chainParams = <String, String>{
+        'first': hopLinks[0],
+        'second': hopLinks[1],
+        'name': display,
+      };
+    } else {
+      chainParams = <String, String>{
+        'hops': hopLinks.join(','),
+        'name': display,
+      };
+    }
 
     final chainLink = Uri(
       scheme: 'chain',
       host: 'config',
-      queryParameters: <String, String>{
-        'first': outerLink,
-        'second': innerLink,
-        'name': display,
-      },
+      queryParameters: chainParams,
     ).toString();
 
-    // host/port از outer وام می‌گیریم (فقط برای نمایش).
-    final outerFields = _extractWireGuardFields(outerLink);
-    final hostPort = (outerFields?.endpoint ?? '162.159.192.1:2408').split(':');
+    // host/port از outer وام می‌گیریم.
+    final outerFields = _extractWireGuardFields(hopLinks.first);
+    final hostPort =
+        (outerFields?.endpoint ?? '162.159.192.1:2408').split(':');
     final host = hostPort.first;
-    final port = int.tryParse(
-            hostPort.length > 1 ? hostPort[1] : '2408') ??
-        2408;
+    final port =
+        int.tryParse(hostPort.length > 1 ? hostPort[1] : '2408') ?? 2408;
 
     return VpnServer(
       id: id,
