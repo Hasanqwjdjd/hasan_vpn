@@ -21,6 +21,23 @@ class _BackupScreenState extends State<BackupScreen> {
   String _t(String fa, String en) =>
       widget.language == 'fa' ? fa : en;
 
+  /// Human-friendly error string with the exception type so a failed
+  /// restore/export never hides what actually broke.
+  String _formatError(Object e) {
+    if (e is FileSystemException) {
+      return 'File error: ${e.message} (${e.path ?? "?"})';
+    }
+    if (e is FormatException) {
+      return 'Invalid JSON at offset ${e.offset}: ${e.message}';
+    }
+    if (e is PlatformException) {
+      return 'Platform error: ${e.code} ${e.message ?? ""}'.trim();
+    }
+    return 'Error (${e.runtimeType}): $e';
+  }
+
+  static const int _maxImportBytes = 10 * 1024 * 1024;
+
   bool _busy = false;
   String? _status;
   final TextEditingController _importCtrl = TextEditingController();
@@ -49,7 +66,7 @@ class _BackupScreenState extends State<BackupScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _status = 'Error: $e';
+        _status = _formatError(e);
         _busy = false;
       });
     }
@@ -79,7 +96,7 @@ class _BackupScreenState extends State<BackupScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _status = 'Error: $e';
+        _status = _formatError(e);
         _busy = false;
       });
     }
@@ -141,7 +158,43 @@ class _BackupScreenState extends State<BackupScreen> {
         ),
       );
       if (picked == null) return;
+      final size = await picked.length();
+      if (size > _maxImportBytes) {
+        if (!mounted) return;
+        setState(() => _status = _t(
+            'فایل خیلی بزرگ است (${(size / 1048576).toStringAsFixed(1)} MB — حداکثر ۱۰ MB)',
+            'File too large (${(size / 1048576).toStringAsFixed(1)} MB — max 10 MB)'));
+        return;
+      }
       final content = await picked.readAsString();
+      final trimmed = content.trim();
+      if (trimmed.isEmpty) {
+        if (!mounted) return;
+        setState(() => _status = _t('فایل خالی است', 'File is empty'));
+        return;
+      }
+      // Basic format sniff so a wrong file never reaches the restore step.
+      try {
+        final parsed = jsonDecode(trimmed);
+        if (parsed is! Map) {
+          if (!mounted) return;
+          setState(() => _status = _t(
+              'فایل باید یک شیء JSON باشد',
+              'File must be a JSON object'));
+          return;
+        }
+        if (parsed['_version'] == null) {
+          if (!mounted) return;
+          setState(() => _status = _t(
+              'نسخه پشتیبان مشخص نیست (_version missing)',
+              'Backup version unknown (_version missing)'));
+          return;
+        }
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _status = _formatError(e));
+        return;
+      }
       _importCtrl.text = content;
       if (!mounted) return;
       setState(() => _status =
@@ -192,8 +245,39 @@ class _BackupScreenState extends State<BackupScreen> {
       _status = null;
     });
     try {
-      // اعتبارسنجی
-      jsonDecode(text);
+      final dynamic parsed;
+      try {
+        parsed = jsonDecode(text);
+      } on FormatException catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _status = _t(
+              'JSON نامعتبر است (offset ${e.offset}): ${e.message}',
+              'Invalid JSON (offset ${e.offset}): ${e.message}');
+          _busy = false;
+        });
+        return;
+      }
+      if (parsed is! Map) {
+        if (!mounted) return;
+        setState(() {
+          _status = _t(
+              'محتوای پشتیبان باید یک شیء JSON باشد',
+              'Backup content must be a JSON object');
+          _busy = false;
+        });
+        return;
+      }
+      if (parsed['_version'] == null) {
+        if (!mounted) return;
+        setState(() {
+          _status = _t(
+              'نسخه پشتیبان مشخص نیست (_version missing)',
+              'Backup version unknown (_version missing)');
+          _busy = false;
+        });
+        return;
+      }
       final n = await BackupService.restore(text);
       if (!mounted) return;
       setState(() {
@@ -202,10 +286,24 @@ class _BackupScreenState extends State<BackupScreen> {
             '$n keys restored — reopen the app');
         _busy = false;
       });
+    } on FormatException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _status = _t(
+            'خطای فرمت: ${e.message}', 'Format error: ${e.message}');
+        _busy = false;
+      });
+    } on FileSystemException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _status = _t(
+            'خطای فایل: ${e.message}', 'File error: ${e.message}');
+        _busy = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _status = 'Error: $e';
+        _status = _formatError(e);
         _busy = false;
       });
     }
