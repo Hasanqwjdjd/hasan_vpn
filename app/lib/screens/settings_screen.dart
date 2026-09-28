@@ -56,19 +56,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    // removed
+    // WARP Scout
+    _scoutSchedulerEnabled = WarpScoutScheduler.instance.enabled;
+    // ignore: unawaited_futures
+    _loadScoutState();
     _theme = widget.themeMode;
     // ignore: unawaited_futures
     SettingsService.getAutoTestIntervalMin().then((v) {
       if (mounted) setState(() => _autoTestMin = v);
     });
     _lang = widget.language;
+    // ignore: unawaited_futures
     SettingsService.getVpnMode().then((m) {
       if (mounted) setState(() => _vpnMode = m);
     });
   }
 
+  Future<void> _loadScoutState() async {
+    await WarpScoutScheduler.instance.restore();
+    if (!mounted) return;
+    setState(() {
+      _scoutSchedulerEnabled = WarpScoutScheduler.instance.enabled;
+    });
+  }
+
+  // (leftover block removed)
+
   String _t(String fa, String en) => _lang == 'fa' ? fa : en;
+
+  // WARP Scout scheduler state
+  bool _scoutSchedulerEnabled = false;
+
+  List<int> _intervalsForScout() => const [
+        15, 30, 60, 120, 240, 480, 720,
+      ];
 
   /// فقط https و فقط دامنه‌های GitHub (ریپو و دانلود بروزرسانی).
   bool _isAllowedUrl(Uri uri) {
@@ -400,6 +421,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 16),
 
           // ------- DNS بازی -------
+          // ------- WARP Scout ---------
+          _sectionTitle(_t('WARP Scout — اسکن خودکار',
+              'WARP Scout — auto endpoint')),
+
+          _card(
+            context,
+            Column(
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: AppColors.accent,
+                  title: Text(
+                    _t('اسکن دوره‌ای endpoints',
+                        'Periodic endpoint rescan'),
+                    style:
+                        TextStyle(color: AppColors.fg(context), fontSize: 13),
+                  ),
+                  subtitle: Text(
+                    _t(
+                      'هر چند دقیقه یه بار endpoint فعلی رو verify می‌کنه و اگه خراب بود، بهترین رو جایگزین می‌کنه.',
+                      'Verifies the current endpoint periodically and replaces it if degraded.',
+                    ),
+                    style: TextStyle(
+                        color: AppColors.muted2(context),
+                        fontSize: 10.5,
+                        height: 1.4),
+                  ),
+                  value: _scoutSchedulerEnabled,
+                  onChanged: (v) async {
+                    await WarpScoutScheduler.instance.setEnabled(v);
+                    if (!mounted) return;
+                    setState(() => _scoutSchedulerEnabled = v);
+                  },
+                ),
+                if (_scoutSchedulerEnabled)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: Text(
+                      _t('فاصله اسکن', 'Scan interval'),
+                      style:
+                          TextStyle(color: AppColors.fg(context), fontSize: 12),
+                    ),
+                    subtitle: Text(
+                      _t(
+                        '${WarpScoutScheduler.instance.intervalMin} دقیقه',
+                        '${WarpScoutScheduler.instance.intervalMin} min',
+                      ),
+                      style: TextStyle(
+                          color: AppColors.muted2(context), fontSize: 10.5),
+                    ),
+                    trailing: DropdownButton<int>(
+                      value: _intervalsForScout()
+                              .contains(WarpScoutScheduler.instance.intervalMin)
+                          ? WarpScoutScheduler.instance.intervalMin
+                          : 60,
+                      dropdownColor: AppColors.elevated(context),
+                      style: TextStyle(
+                          color: AppColors.fg(context), fontSize: 12),
+                      underline: const SizedBox.shrink(),
+                      items: _intervalsForScout()
+                          .map((m) => DropdownMenuItem(
+                                value: m,
+                                child: Text(
+                                  m >= 60 ? '${m ~/ 60}h' : '${m}m',
+                                ),
+                              ))
+                          .toList(),
+                      onChanged: (v) async {
+                        if (v == null) return;
+                        await WarpScoutScheduler.instance.setIntervalMin(v);
+                        if (!mounted) return;
+                        setState(() {});
+                      },
+                    ),
+                  ),
+                if (_scoutSchedulerEnabled)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    leading: Icon(Icons.play_circle_outline,
+                        color: AppColors.accent, size: 20),
+                    title: Text(
+                      _t('اجرای همین حالا', 'Run now'),
+                      style: TextStyle(
+                          color: AppColors.fg(context), fontSize: 12),
+                    ),
+                    onTap: () async {
+                      _showMsg(_t(
+                        'در حال اجرای اسکن...',
+                        'Running scan...',
+                      ));
+                      await WarpScoutScheduler.instance
+                          .runNow(force: false);
+                      if (!mounted) return;
+                      _showMsg(_t(
+                        'اسکن تمام شد',
+                        'Scan finished',
+                      ));
+                    },
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
           _sectionTitle(_t('DNS بازی', 'Game DNS')),
           _card(
             context,
