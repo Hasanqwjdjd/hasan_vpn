@@ -222,6 +222,30 @@ class WarpEndpointHealthMonitor {
     }
   }
 
+  /// چک سریع یه endpoint (بدون مانیتور) — TCP probe.
+  static Future<bool> quickCheck(
+    String endpoint, {
+    int timeoutMs = 2500,
+  }) async {
+    final parts = endpoint.split(':');
+    if (parts.length < 2) return false;
+    final port = int.tryParse(parts[1]);
+    if (port == null || port < 1 || port > 65535) return false;
+    Socket? sock;
+    try {
+      sock = await Socket.connect(
+        parts[0],
+        port,
+        timeout: Duration(milliseconds: timeoutMs),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      try { sock?.destroy(); } catch (_) {}
+    }
+  }
+
   static Uint8List? _tryDecodeB64(String value) {
     try {
       final normalized = value.replaceAll('-', '+').replaceAll('_', '/');

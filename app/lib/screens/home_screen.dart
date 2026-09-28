@@ -3439,9 +3439,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     });
     // افزودن نمونه به مانیتور کیفیت
-    if (result.ok) {
+    if (result.ok && result.ms != null) {
       _qualityMonitor.addSample(
-        pingMs: result.ms,
+        pingMs: result.ms!,
         jitterMs: result.jitter ?? 0,
       );
     }

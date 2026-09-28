@@ -108,7 +108,8 @@ class QualityScore {
 
 /// مانیتور زنده‌ی کیفیت — چند نمونه ping رو جمع می‌کنه و امتیاز می‌ده.
 class QualityMonitor {
-  QualityMonitor._();
+  /// constructor عمومی — از home_screen ساخته می‌شه.
+  QualityMonitor();
 
   /// میانگین متحرک — چند نمونه آخر.
   static const int sampleWindow = 10;

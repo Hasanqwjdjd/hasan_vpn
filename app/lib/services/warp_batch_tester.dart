@@ -27,7 +27,8 @@ class WarpBatchResult {
 /// session ها جلوگیری شه. حداکثر همزمانی پیش‌فرض ۲ (چون هر تست خودش
 /// تونل کامل بالا می‌آره و منابع سیستم محدوده).
 class WarpBatchTester {
-  WarpBatchTester._();
+  /// constructor عمومی — از home_screen ساخته می‌شه.
+  WarpBatchTester();
 
   static const int defaultParallelism = 2;
 
