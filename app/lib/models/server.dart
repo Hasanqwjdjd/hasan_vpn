@@ -218,6 +218,11 @@ class VpnServer {
   ///   --proto=tls --split 1+s --tlsrec 1+s --disorder 3+s
   String? pingNgArgs;
 
+  /// اگه true باشه، Desync علاوه بر TLS روی UDP هم اعمال می‌شه
+  /// (`--proto=t,u` + `--udp-fake 1`). برای سرورهای Hysteria2/QUIC
+  /// که روی UDP کار می‌کنن لازمه.
+  bool pingNgUdpDesync;
+
   int? ping;
   int? jitter;
   PingKind pingKind;
@@ -240,6 +245,7 @@ class VpnServer {
     this.dns,
     this.pingNgProfile,
     this.pingNgArgs,
+    this.pingNgUdpDesync = false,
     this.ping,
     this.jitter,
     this.pingKind = PingKind.none,
@@ -274,6 +280,7 @@ class VpnServer {
     String? dns,
     String? pingNgProfile,
     String? pingNgArgs,
+    bool? pingNgUdpDesync,
   }) =>
       VpnServer(
         id: id,
@@ -291,6 +298,7 @@ class VpnServer {
         dns: dns ?? this.dns,
         pingNgProfile: pingNgProfile ?? this.pingNgProfile,
         pingNgArgs: pingNgArgs ?? this.pingNgArgs,
+        pingNgUdpDesync: pingNgUdpDesync ?? this.pingNgUdpDesync,
       );
 
   /// پاک‌کردن نتیجه‌ی تست قبلی.

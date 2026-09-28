@@ -589,6 +589,7 @@ class V2RayEngine {
       profile: server.pingNgProfile,
       customArgs: server.pingNgArgs,
       port: port,
+      udpDesync: server.pingNgUdpDesync,
     );
     if (args == null || args.isEmpty) return config;
 

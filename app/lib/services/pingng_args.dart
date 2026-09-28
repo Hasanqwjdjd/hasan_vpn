@@ -69,6 +69,7 @@ class PingNgArgs {
     required String? profile,
     String? customArgs,
     required int port,
+    bool udpDesync = false,
   }) {
     if (port < 1 || port > 65535) return null;
     final normalized = normalizeProfile(profile);
@@ -113,9 +114,34 @@ class PingNgArgs {
         return null;
     }
 
+    // UDP mode: allow both TLS (TCP) and UDP traffic through Desync and
+    // add one fake packet per real UDP datagram. Used for Hysteria2/QUIC
+    // servers where the outer protocol is UDP.
+    final finalStrategy = <String>[];
+    if (udpDesync) {
+      var replacedProto = false;
+      for (final tok in strategy) {
+        if (tok == '--proto=tls') {
+          finalStrategy.add('--proto=t,u');
+          replacedProto = true;
+        } else {
+          finalStrategy.add(tok);
+        }
+      }
+      // اگه preset اصلاً --proto نداشت، اضافه کن
+      if (!replacedProto && !finalStrategy.any((s) => s.startsWith('--proto'))) {
+        finalStrategy.insert(0, '--proto=t,u');
+      }
+      if (!finalStrategy.contains('--udp-fake')) {
+        finalStrategy.addAll(const ['--udp-fake', '1']);
+      }
+    } else {
+      finalStrategy.addAll(strategy);
+    }
+
     return <String>[
       'ciadpi',
-      ...strategy,
+      ...finalStrategy,
       '--ip', '127.0.0.1',
       '--port', port.toString(),
     ];
