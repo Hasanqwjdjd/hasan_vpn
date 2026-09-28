@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../models/server.dart';
+import 'connection_log_service.dart';
 import 'v2ray_engine.dart';
 import 'warp_endpoint_scanner.dart';
 
@@ -75,6 +76,13 @@ class WarpRealTunnelTester {
             debugPrint('warp-verify: ${hit.endpoint} connect failed: '
                 '${V2RayEngine.lastError}');
             onProgress?.call(i + 1, candidates.length, hit.endpoint, -1);
+            // log
+            // ignore: unawaited_futures
+            ConnectionLogService.logWarpScan(
+              server: 'WARP verify',
+              endpoint: hit.endpoint.toString(),
+              reason: 'connect failed',
+            );
             continue;
           }
 
@@ -87,6 +95,12 @@ class WarpRealTunnelTester {
           if (ms > 0) {
             debugPrint('warp-verify: ${hit.endpoint} WORKS in $ms ms');
             onProgress?.call(i + 1, candidates.length, hit.endpoint, ms);
+            // ignore: unawaited_futures
+            ConnectionLogService.logWarpScan(
+              server: 'WARP verify',
+              endpoint: hit.endpoint.toString(),
+              ms: ms,
+            );
             return WarpEndpointHit(
               endpoint: hit.endpoint,
               latencyMs: ms,
@@ -96,6 +110,12 @@ class WarpRealTunnelTester {
 
           debugPrint('warp-verify: ${hit.endpoint} no data-plane response');
           onProgress?.call(i + 1, candidates.length, hit.endpoint, -1);
+          // ignore: unawaited_futures
+          ConnectionLogService.logWarpScan(
+            server: 'WARP verify',
+            endpoint: hit.endpoint.toString(),
+            reason: 'no data-plane',
+          );
         } catch (e) {
           debugPrint('warp-verify: ${hit.endpoint} exception: $e');
           onProgress?.call(i + 1, candidates.length, hit.endpoint, -1);

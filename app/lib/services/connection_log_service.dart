@@ -95,4 +95,36 @@ class ConnectionLogService {
         target: target,
         detail: detail,
       ));
+
+  /// هر endpoint که در scan WARP/WARP+ تست شد.
+  /// [detail] مثلاً "188.114.96.206:878 · 62ms" یا "… · ✕ timeout".
+  static Future<void> logWarpScan({
+    required String server,
+    required String endpoint,
+    int? ms,
+    String? reason,
+  }) {
+    final detail = ms != null && ms > 0
+        ? '$endpoint · ${ms}ms'
+        : '$endpoint · ${reason ?? "no response"}';
+    return add(ConnectionLogEntry(
+      timestamp: DateTime.now(),
+      type: 'warp_scan',
+      target: server,
+      detail: detail,
+    ));
+  }
+
+  /// پایان یک rescan — endpoint برنده + زمان کل.
+  static Future<void> logWarpRescanResult({
+    required String server,
+    required String endpoint,
+    required int ms,
+  }) =>
+      add(ConnectionLogEntry(
+        timestamp: DateTime.now(),
+        type: 'warp_rescan',
+        target: server,
+        detail: 'winner $endpoint · ${ms}ms',
+      ));
 }

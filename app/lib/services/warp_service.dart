@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import 'warp_endpoint_tester.dart';
+import 'connection_log_service.dart';
 import 'warp_real_tunnel_tester.dart';
 import 'warp_endpoint_scanner.dart';
 
@@ -198,6 +199,13 @@ class WarpService {
         done: true,
         lastEndpoint: verified.endpoint.toString(),
         lastMs: verified.latencyMs,
+      );
+      // log نتیجه
+      // ignore: unawaited_futures
+      ConnectionLogService.logWarpRescanResult(
+        server: server.name,
+        endpoint: verified.endpoint.toString(),
+        ms: verified.latencyMs,
       );
       return (
         endpoint: verified.endpoint.toString(),
