@@ -76,7 +76,10 @@ class DesyncTuner {
       ];
 
   /// لیست candidate ها — basic + (اختیاری) advanced.
-  static List<DesyncCandidate> generateCandidates({bool advanced = false}) {
+  static List<DesyncCandidate> generateCandidates({
+    bool advanced = false,
+    bool udpOnly = false,
+  }) {
     final out = <DesyncCandidate>[];
     final seen = <String>{};
 
@@ -141,6 +144,28 @@ class DesyncTuner {
       ));
     }
 
+    // 6) UDP candidates — برای سرورهای Hysteria2/QUIC
+    // Desync روی UDP: split/fake در سطح UDP datagram
+    if (udpOnly) {
+      for (final fake in [1, 2, 3]) {
+        add(DesyncCandidate(
+          label: 'UDP fake $fake',
+          method: 'UDP',
+          args:
+              '--proto=udp --udp-fake $fake --tlsrec 1+s --delay-range 1-3',
+        ));
+      }
+      // ترکیب TCP+UDP برای پروتکل‌های دوگانه
+      for (final fake in [1, 2]) {
+        add(DesyncCandidate(
+          label: 'TCP+UDP fake $fake',
+          method: 'UDP',
+          args:
+              '--proto=t,u --split 1+s --tlsrec 1+s --udp-fake $fake --delay-range 1-3',
+        ));
+      }
+    }
+
     if (advanced) {
       // 6) Split-range
       for (final range in ['1-3', '1-5', '2-4', '3-6']) {
@@ -184,17 +209,18 @@ class DesyncTuner {
     bool stopOnFirstWorking = false,
     bool Function()? advancedProvider,
     bool Function()? isCancelled,
+    bool udpOnly = false,
   }) async {
     if (_running) return null;
     _running = true;
 
     final results = <DesyncResult>[];
     // basic همیشه اجرا می‌شه. advanced فقط اگه provider در طول اسکن true بشه.
-    final basicCandidates = generateCandidates(advanced: false);
+    final basicCandidates = generateCandidates(advanced: false, udpOnly: udpOnly);
     final advancedOnly = <DesyncCandidate>[];
     {
       final seen = basicCandidates.map((c) => c.args).toSet();
-      for (final c in generateCandidates(advanced: true)) {
+      for (final c in generateCandidates(advanced: true, udpOnly: udpOnly)) {
         if (!seen.contains(c.args)) advancedOnly.add(c);
       }
     }
@@ -216,6 +242,7 @@ class DesyncTuner {
         final testServer = server.copyWith(
           pingNgProfile: 'Custom',
           pingNgArgs: c.args,
+          pingNgUdpDesync: udpOnly,
         );
 
         try {
