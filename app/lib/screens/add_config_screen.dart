@@ -114,6 +114,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       TextEditingController(text: WarpMasqueService.defaultSni);
   final TextEditingController _wmqDnsController =
       TextEditingController(text: WarpMasqueService.defaultDns);
+  final TextEditingController _wmqCandidatesController =
+      TextEditingController(
+          text: WarpMasqueService.defaultEndpointCandidates);
   bool _wmqHttp2 = true;
 
   // SOCKS5
@@ -2945,6 +2948,25 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
           color: color,
         ),
         const SizedBox(height: 12),
+        _tunnelField(
+          controller: _wmqCandidatesController,
+          label: _t(
+              'Endpoint pool (اختیاری، scan موازی)',
+              'Endpoint pool (optional, parallel scan)'),
+          hint:
+              '162.159.198.0/24:443,162.159.199.0/24:443,8.6.112.0/24:443',
+          color: color,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _t(
+            'هر توکن host:port یا subnet/24:port. اگه primary endpoint کار نکنه، ۶ تا parallel از این pool تست می‌شه. خالی = پیش‌فرض.',
+            'Each token host:port or subnet/24:port. If the primary endpoint fails, 6 are tried in parallel from this pool. Empty = default.',
+          ),
+          style: TextStyle(
+              color: AppColors.muted2(context), fontSize: 10, height: 1.4),
+        ),
+        const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
@@ -2998,11 +3020,13 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         ? _nameController.text.trim()
         : 'WARP MASQUE · $endpoint';
 
+    final candidates = _wmqCandidatesController.text.trim();
     final internal = <String, String>{
       'endpoint': endpoint,
       'sni': sni.isEmpty ? WarpMasqueService.defaultSni : sni,
       'dns': dns.isEmpty ? WarpMasqueService.defaultDns : dns,
       'h2': _wmqHttp2 ? '1' : '0',
+      if (candidates.isNotEmpty) 'candidates': candidates,
       'name': name,
     };
     final uri = Uri(
@@ -4680,6 +4704,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _wmqEndpointController.dispose();
     _wmqSniController.dispose();
     _wmqDnsController.dispose();
+    _wmqCandidatesController.dispose();
     _mdnsKeyController.dispose();
     _mdnsResolversController.dispose();
     _hy2FragmentLengthController.dispose();
