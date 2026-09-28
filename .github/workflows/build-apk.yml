@@ -207,15 +207,15 @@ jobs:
           CORE_DIR="build_src/android/app/src/main/kotlin/com/v2ray/ang/core"
           mkdir -p "$CORE_DIR"
           cp -f android-extra/kotlin/PingNGProxy.kt "$CORE_DIR/PingNGProxy.kt"
-          if [ -d android-extra/psiphon ] && [ "$(find android-extra/psiphon -name '*.aar' | wc -l)" -gt 0 ]; then
-            echo "Using real Psiphon AAR"
-            cp -f android-extra/kotlin/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
-            mkdir -p build_src/android/app/libs
-            cp -f android-extra/psiphon/*.aar build_src/android/app/libs/
-          else
-            echo "Using Psiphon stub (no AAR)"
-            cp -f android-extra/kotlin-stub/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
-          fi
+          # Psiphon now runs out-of-process via PsiphonRuntimeService +
+          # libpingng_psiphon.so (loaded from pingng_psiphon_runtime.dex).
+          # The legacy AAR is kept in the repository as a fallback but is
+          # NOT bundled, because its go.Seq/libgojni.so collides with
+          # Xray's copy and crashes the process. To fall back to the AAR,
+          # revert this block and remove PsiphonRuntimeService from the
+          # AndroidManifest patch below.
+          cp -f android-extra/kotlin/PsiphonService.kt "$KT_DIR/PsiphonService.kt"
+          echo "Psiphon facade installed (AAR kept in repo, not bundled)"
 
       - name: Install Android widget resources
         run: |
