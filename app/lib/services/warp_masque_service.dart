@@ -146,6 +146,104 @@ class WarpMasqueService {
     }
   }
 
+  /// Rescan MASQUE endpoints — با زیرساخت Kotlin parallel scanner.
+  ///
+  /// فرآیند:
+  ///   1. config موقت با candidates داده‌شده می‌سازیم
+  ///   2. WarpMasqueService.start() رو صدا می‌زنیم
+  ///   3. منتظر می‌مونیم که scanProgress به "Connected" برسه
+  ///   4. winning endpoint رو از آخرین progress می‌خونیم
+  ///   5. سرویس رو stop می‌کنیم
+  ///   6. endpoint رو برمی‌گردونیم
+  ///
+  /// [timeoutSec] — چقدر منتظر اسکن بمونیم (پیش‌فرض ۶۰ ثانیه).
+  static Future<({String? endpoint, int ms, String? error})> rescanEndpoints({
+    required String endpoint,
+    String? endpointCandidates,
+    String sni = defaultSni,
+    String dns = defaultDns,
+    bool http2 = true,
+    int timeoutSec = 60,
+  }) async {
+    try {
+      // ریست progress
+      scanProgress.value = const WarpMasqueScanState();
+
+      // تبدیل به Completer
+      final completer = Completer<({String? endpoint, int ms, String? error})>();
+
+      void listener() {
+        final s = scanProgress.value;
+        if (s.done) {
+          if (s.error.isNotEmpty) {
+            if (!completer.isCompleted) {
+              completer.complete(
+                (endpoint: null, ms: 0, error: s.error),
+              );
+            }
+          } else if (s.endpoint.isNotEmpty) {
+            if (!completer.isCompleted) {
+              completer.complete(
+                (endpoint: s.endpoint, ms: s.ms, error: null),
+              );
+            }
+          }
+        }
+      }
+
+      scanProgress.addListener(listener);
+
+      // شروع اسکن (foreground service در پروسه جدا)
+      final ok = await start(
+        endpoint: endpoint,
+        endpointCandidates: endpointCandidates,
+        sni: sni,
+        dns: dns,
+        http2: http2,
+        timeout: Duration(seconds: timeoutSec),
+      );
+
+      if (!ok) {
+        scanProgress.removeListener(listener);
+        final s = scanProgress.value;
+        return (
+          endpoint: null,
+          ms: 0,
+          error: s.error.isNotEmpty
+              ? s.error
+              : (lastError ?? 'scan failed'),
+        );
+      }
+
+      // اگه reach شد، منتظر completer می‌مونیم یا مستقیم از progress می‌خونیم
+      final result = completer.isCompleted
+          ? await completer.future
+          : await completer.future.timeout(
+              Duration(seconds: timeoutSec),
+              onTimeout: () {
+                final s = scanProgress.value;
+                if (s.endpoint.isNotEmpty) {
+                  return (endpoint: s.endpoint, ms: s.ms, error: null);
+                }
+                return (
+                  endpoint: null,
+                  ms: 0,
+                  error: 'timeout waiting for scan result'
+                );
+              },
+            );
+
+      scanProgress.removeListener(listener);
+
+      // سرویس رو ببند (چون فقط برای اسکن باز شده بود)
+      await stop();
+
+      return result;
+    } catch (e) {
+      return (endpoint: null, ms: 0, error: e.toString());
+    }
+  }
+
   static Future<void> stop() async {
     _running = false;
     scanProgress.value = const WarpMasqueScanState();
