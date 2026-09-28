@@ -9,6 +9,7 @@ import 'package:flutter_vless/flutter_vless.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
+import 'failover_manager.dart';
 import 'dns_advanced_settings.dart';
 import 'dns_auto_retest_service.dart';
 import 'game_booster_settings.dart';
@@ -484,10 +485,44 @@ class V2RayEngine {
     }
   }
 
+  /// Apply multi-address failover (BackPack-derived).
+  ///
+  /// When a server carries backup addresses, probe them all before
+  /// connecting and swap host+port for the winner. The score is
+  /// mean_rtt + 2*jitter + 20*loss% — a steady exit beats a faster
+  /// stuttering one, because a stutter is a lost frame.
+  ///
+  /// On any failure the original server is returned unchanged, so the
+  /// app never fails to connect because the probe failed.
+  static Future<VpnServer> _applyFailover(VpnServer server) async {
+    if (server.backupAddresses.isEmpty) return server;
+    final pool = <String>[
+      '${server.host}:${server.port}',
+      ...server.backupAddresses,
+    ];
+    try {
+      final best = await FailoverManager.pickBest(pool);
+      if (best == null) return server;
+      if (best.host == server.host && best.port == server.port) {
+        return server;
+      }
+      debugPrint(
+          'failover: ${server.host}:${server.port} -> ${best.address} '
+          '(score ${best.score.toStringAsFixed(1)})');
+      return server.copyWith(host: best.host, port: best.port);
+    } catch (e) {
+      debugPrint('failover: probe error $e');
+      return server;
+    }
+  }
+
   static Future<bool> connect(VpnServer server) async {
     lastError = null;
     try {
       await init();
+
+      // Multi-address failover (BackPack-derived).
+      server = await _applyFailover(server);
 
       String config;
       String remark = server.name;

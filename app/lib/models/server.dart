@@ -196,6 +196,11 @@ class VpnServer {
   final VpnProtocol protocol;
   final String host;
   final int port;
+
+  /// Multi-address failover pool — additional host:port backups for this
+  /// server. Ported from BackPack docs/failover-load-balancing.md.
+  /// Empty by default; parsed from the "bk=" share-link query parameter.
+  final List<String> backupAddresses;
   String? sniOrHost;
   bool isDeletable;
   bool isPinned;
@@ -245,6 +250,7 @@ class VpnServer {
     required this.protocol,
     required this.host,
     required this.port,
+    this.backupAddresses = const [],
     this.sniOrHost,
     this.isDeletable = true,
     this.isPinned = false,
@@ -293,6 +299,7 @@ class VpnServer {
     bool? pingNgUdpDesync,
     String? warpEndpointMode,
     String? warpMasqueEndpointCandidates,
+    List<String>? backupAddresses,
   }) =>
       VpnServer(
         id: id,
@@ -313,6 +320,7 @@ class VpnServer {
         pingNgUdpDesync: pingNgUdpDesync ?? this.pingNgUdpDesync,
         warpEndpointMode: warpEndpointMode ?? this.warpEndpointMode,
         warpMasqueEndpointCandidates: warpMasqueEndpointCandidates ?? this.warpMasqueEndpointCandidates,
+        backupAddresses: backupAddresses ?? this.backupAddresses,
       );
 
   /// پاک‌کردن نتیجه‌ی تست قبلی.
