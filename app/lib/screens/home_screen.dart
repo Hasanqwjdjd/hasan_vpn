@@ -24,6 +24,7 @@ import '../models/ssh_profile.dart';
 import '../services/ssh_session_service.dart';
 import '../services/master_dns_session_service.dart';
 import '../services/final_mask_finder.dart';
+import '../services/desync_tuner.dart';
 import '../services/warp_masque_session_service.dart';
 import '../services/geo_assets_service.dart';
 import '../services/xray_settings.dart';
@@ -445,6 +446,187 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     await _editServerFull(server);
+  }
+
+  /// Auto-Tune Desync — پورت Dart از PingNgDesyncTuner.
+  ///
+  /// سرور رو با هر candidate دوباره وصل می‌کنه، سریع‌ترین رو برمی‌گردونه
+  /// و args برنده رو به caller می‌ده که توی فیلد Custom بذاره.
+  Future<String?> _findBestDesync(
+    VpnServer server,
+    BuildContext dialogCtx,
+  ) async {
+    if (DesyncTuner.isRunning) return null;
+
+    final results = <DesyncResult>[];
+    int currentIdx = 0;
+    int total = 0;
+    String currentLabel = '';
+    bool cancelled = false;
+    bool advanced = false;
+
+    Future<void> showProgressDialog() async {
+      if (!mounted) return;
+      return showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dCtx) => StatefulBuilder(
+          builder: (dCtx, setDlg) {
+            _finalMaskDialogRefresh = () {
+              if (dCtx.mounted) setDlg(() {});
+            };
+            return AlertDialog(
+              backgroundColor: AppColors.surface(dCtx),
+              title: Text(
+                _t('در حال اسکن Desync', 'Scanning Desync'),
+                style: TextStyle(color: AppColors.fg(dCtx), fontSize: 16),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    LinearProgressIndicator(
+                      value: total > 0 ? currentIdx / total : 0,
+                      color: AppColors.accent,
+                      backgroundColor: AppColors.border(dCtx),
+                    ),
+                    const SizedBox(height: 10),
+                    Text('$currentIdx / $total',
+                        style: TextStyle(
+                            color: AppColors.muted(dCtx), fontSize: 11)),
+                    const SizedBox(height: 6),
+                    if (currentLabel.isNotEmpty)
+                      Text(
+                        currentLabel,
+                        style: TextStyle(
+                            color: AppColors.fg(dCtx), fontSize: 12),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    const SizedBox(height: 10),
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      decoration: BoxDecoration(
+                        color: AppColors.bg(dCtx),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.border(dCtx)),
+                      ),
+                      child: results.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Text(
+                                _t('شروع...', 'Starting...'),
+                                style: TextStyle(
+                                    color: AppColors.muted2(dCtx),
+                                    fontSize: 11),
+                              ),
+                            )
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: results.length,
+                              itemBuilder: (_, i) {
+                                final r = results[i];
+                                return ListTile(
+                                  dense: true,
+                                  title: Text(
+                                    r.candidate.label,
+                                    style: TextStyle(
+                                        color: AppColors.fg(dCtx),
+                                        fontSize: 11),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  trailing: Text(
+                                    r.ok ? '${r.ms}ms' : '✕',
+                                    style: TextStyle(
+                                      color: r.ok
+                                          ? AppColors.accent
+                                          : AppColors.danger,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: advanced,
+                          onChanged: (v) {
+                            setDlg(() => advanced = v ?? false);
+                          },
+                          activeColor: AppColors.accent,
+                        ),
+                        Text(
+                          _t('حالت پیشرفته (کندتر)', 'Advanced (slower)'),
+                          style: TextStyle(
+                              color: AppColors.muted2(dCtx), fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    cancelled = true;
+                    DesyncTuner.cancel();
+                    try { V2RayEngine.disconnect(); } catch (_) {}
+                    Navigator.pop(dCtx);
+                  },
+                  child: Text(_t('لغو', 'Cancel'),
+                      style: TextStyle(color: AppColors.muted(dCtx))),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    }
+
+    // ignore: unawaited_futures
+    showProgressDialog();
+
+    DesyncResult? best;
+    try {
+      best = await DesyncTuner.findBest(
+        server,
+        advanced: advanced,
+        isCancelled: () => cancelled,
+        onProgress: (idx, t, c) {
+          currentIdx = idx;
+          total = t;
+          currentLabel = c.label;
+          _finalMaskDialogRefresh?.call();
+        },
+        onResult: (r) {
+          results.add(r);
+          _finalMaskDialogRefresh?.call();
+        },
+      );
+    } catch (e) {
+      debugPrint('DesyncTuner error: $e');
+    }
+
+    _finalMaskDialogRefresh = null;
+    if (!mounted) return null;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    if (cancelled) return null;
+    if (best == null) {
+      _showMsg(_t('هیچ preset ای جواب نداد', 'No preset worked'));
+      return null;
+    }
+    _showMsg(_t(
+        'بهترین preset: ${best.candidate.label} (${best.ms}ms)',
+        'Best preset: ${best.candidate.label} (${best.ms}ms)'));
+    return best.candidate.args;
   }
 
   Future<void> _findBestFinalMask(
@@ -886,6 +1068,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ],
                       onChanged: (v) =>
                           setLocal(() => pingNgProfile = v ?? 'Off'),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final picked = await _findBestDesync(
+                            server, ctx,
+                          );
+                          if (picked == null) return;
+                          setLocal(() {
+                            pingNgProfile = 'Custom';
+                            pingNgArgsCtrl.text = picked;
+                          });
+                        },
+                        icon: const Icon(Icons.auto_fix_high, size: 16),
+                        label: Text(
+                          _t(
+                            'Auto-Tune Desync — پیدا کردن بهترین preset',
+                            'Auto-Tune Desync — find the best preset',
+                          ),
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.accent,
+                          side: const BorderSide(color: AppColors.accent),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                      ),
                     ),
                     if (pingNgProfile == 'Custom') ...[
                       const SizedBox(height: 6),
