@@ -17,6 +17,7 @@ import '../services/warp_registration_proxy.dart';
 import '../services/v2ray_engine.dart';
 import '../services/master_dns_service.dart';
 import '../services/warp_masque_service.dart';
+import '../services/mdns_settings.dart';
 import '../services/tor_sni_presets.dart';
 import '../services/xray_json.dart';
 import 'qr_scan_screen.dart';
@@ -114,6 +115,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _mdnsDomainController = TextEditingController();
   final TextEditingController _mdnsKeyController = TextEditingController();
   final TextEditingController _mdnsResolversController = TextEditingController();
+  String? _mdnsAdvancedToml;
   int _mdnsMethod = 1;
 
   // WARP MASQUE
@@ -3274,6 +3276,172 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _showMsg(_t('سرور WARP MASQUE اضافه شد', 'WARP MASQUE server added'));
   }
 
+  /// دیالوگ ویرایش فیلدهای پیشرفته TOML.
+  Future<void> _showMdnsAdvancedDialog() async {
+    var currentToml = _mdnsAdvancedToml ?? '';
+    if (currentToml.isEmpty) {
+      currentToml = _defaultMdnsTomlTemplate();
+    }
+
+    var fields = MdnsSettings.fields(currentToml);
+    fields.sort((a, b) {
+      final c = a.section.compareTo(b.section);
+      if (c != 0) return c;
+      return a.key.compareTo(b.key);
+    });
+
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          return AlertDialog(
+            backgroundColor: AppColors.surface(ctx),
+            title: Text(
+              _t('تنظیمات پیشرفته MasterDNS',
+                  'MasterDNS advanced settings'),
+              style: TextStyle(color: AppColors.fg(ctx), fontSize: 15),
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 500,
+              child: fields.isEmpty
+                  ? Center(
+                      child: Text(
+                        _t('هیچ فیلد پیشرفته‌ای پیدا نشد.',
+                            'No advanced fields found.'),
+                        style: TextStyle(
+                            color: AppColors.muted2(ctx), fontSize: 12),
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: fields.length,
+                      itemBuilder: (_, i) {
+                        final f = fields[i];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _buildMdnsField(ctx, f, (updated) {
+                            setLocal(() {
+                              fields[i] = updated;
+                            });
+                          }),
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(
+                  _t('انصراف', 'Cancel'),
+                  style: TextStyle(color: AppColors.muted(ctx)),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  final check = MdnsSettings.validate(fields);
+                  if (!check.ok) {
+                    _showMsg(_t(
+                      'فیلدهای نامعتبر: ' + check.badKeys.join(', '),
+                      'Invalid fields: ' + check.badKeys.join(', '),
+                    ));
+                    return;
+                  }
+                  var updatedToml = currentToml;
+                  for (final f in fields) {
+                    updatedToml = MdnsSettings.put(
+                      updatedToml,
+                      f.key,
+                      f.value,
+                      f.kind,
+                    );
+                  }
+                  setState(() {
+                    _mdnsAdvancedToml = updatedToml;
+                  });
+                  Navigator.pop(ctx);
+                },
+                child: Text(
+                  _t('ذخیره', 'Save'),
+                  style: const TextStyle(color: AppColors.accent),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildMdnsField(
+    BuildContext ctx,
+    MdnsField f,
+    void Function(MdnsField) onChanged,
+  ) {
+    final key = f.key;
+    final label = key + '  ·  ' + f.section;
+    switch (f.kind) {
+      case MdnsFieldKind.boolean:
+        return SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          activeColor: AppColors.accent,
+          title: Text(
+            key,
+            style: TextStyle(color: AppColors.fg(ctx), fontSize: 12),
+          ),
+          subtitle: Text(
+            f.section,
+            style:
+                TextStyle(color: AppColors.muted2(ctx), fontSize: 10),
+          ),
+          value: f.value == 'true',
+          onChanged: (v) => onChanged(
+            f.copyWith(value: v ? 'true' : 'false'),
+          ),
+        );
+      case MdnsFieldKind.number:
+      case MdnsFieldKind.string:
+        return TextFormField(
+          initialValue: f.value,
+          style: TextStyle(color: AppColors.fg(ctx), fontSize: 12),
+          keyboardType: f.kind == MdnsFieldKind.number
+              ? TextInputType.number
+              : TextInputType.text,
+          decoration: InputDecoration(
+            labelText: label,
+            labelStyle:
+                TextStyle(color: AppColors.muted(ctx), fontSize: 11),
+            isDense: true,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          onChanged: (v) => onChanged(f.copyWith(value: v)),
+        );
+    }
+  }
+
+  /// یه نمونه TOML با فیلدهای رایج.
+  String _defaultMdnsTomlTemplate() {
+    final buf = StringBuffer();
+    buf.writeln('# 1) Connection');
+    buf.writeln('CONNECTION_TIMEOUT_SEC = 30');
+    buf.writeln('RECONNECT_DELAY_SEC = 5');
+    buf.writeln('KEEPALIVE_INTERVAL_SEC = 20');
+    buf.writeln('# 2) MTU');
+    buf.writeln('MTU_SIZE = 1280');
+    buf.writeln('MTU_SCAN_ENABLED = true');
+    buf.writeln('# 3) Advanced');
+    buf.writeln('LOG_LEVEL = "info"');
+    buf.writeln('USE_COMPRESSION = true');
+    buf.writeln('CACHE_DNS_RESPONSES = true');
+    buf.writeln('MAX_CONCURRENT_QUERIES = 8');
+    return buf.toString();
+  }
+
   Widget _buildMasterDnsForm() {
     const color = Color(0xFF00897B);
     return Column(
@@ -3380,6 +3548,30 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
           style: TextStyle(
               color: AppColors.muted2(context), fontSize: 10, height: 1.4),
         ),
+        const SizedBox(height: 14),
+        OutlinedButton.icon(
+          onPressed: _showMdnsAdvancedDialog,
+          icon: const Icon(Icons.tune, size: 16),
+          label: Text(
+            _t('تنظیمات پیشرفته TOML', 'Advanced TOML settings'),
+            style: const TextStyle(fontSize: 12),
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: color,
+            side: BorderSide(color: color),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            minimumSize: const Size(double.infinity, 0),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _t(
+            'فیلدهای پیشرفته TOML مثل MTU، timeout و موارد دیگر.',
+            'Advanced TOML fields like MTU, timeout and more.',
+          ),
+          style: TextStyle(
+              color: AppColors.muted2(context), fontSize: 10, height: 1.4),
+        ),
         const SizedBox(height: 20),
         SizedBox(
           width: double.infinity,
@@ -3406,6 +3598,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     final domain = _mdnsDomainController.text.trim();
     final key = _mdnsKeyController.text.trim();
     final resolvers = _mdnsResolversController.text.trim();
+    final advanced = _mdnsAdvancedToml;
 
     if (domain.isEmpty || key.isEmpty) {
       _showMsg(_t('دامنه و کلید الزامی است', 'Domain and key are required'));
@@ -3421,6 +3614,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       'key': key,
       'method': '$_mdnsMethod',
       if (resolvers.isNotEmpty) 'resolvers': resolvers,
+      if (advanced != null && advanced.isNotEmpty) 'advanced': advanced,
       'name': name,
     };
     final uri = Uri(

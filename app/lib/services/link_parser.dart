@@ -209,6 +209,7 @@ class LinkParser {
       if (domain.isEmpty || key.isEmpty) return null;
       final method = int.tryParse(q['method'] ?? '1')?.clamp(0, 5) ?? 1;
       final resolvers = (q['resolvers'] ?? '').trim();
+      final advanced = (q['advanced'] ?? '').trim();
 
       final name = _cleanName(
         _decode(uri.fragment),
@@ -220,6 +221,7 @@ class LinkParser {
         'key': key,
         'method': '$method',
         if (resolvers.isNotEmpty) 'resolvers': resolvers,
+        if (advanced.isNotEmpty) 'advanced': advanced,
         if (name.isNotEmpty) 'name': name,
       };
       final rebuilt = Uri(
