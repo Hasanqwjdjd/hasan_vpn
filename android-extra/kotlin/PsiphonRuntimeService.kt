@@ -453,9 +453,9 @@ class PsiphonRuntimeService : Service() {
         if (!mode.trim().equals("cdn", ignoreCase = true) && addresses.isEmpty() && names.isEmpty() && sets.isEmpty()) return
         if (addresses.isNotEmpty()) {
             val spec = JSONObject().apply {
-                add("IPCandidates", JSONArray().also { values -> addresses.forEach(values::put) })
+                put("IPCandidates", JSONArray().also { values -> addresses.forEach(values::put) })
                 if (names.isNotEmpty()) {
-                    add("SNIServerNames", JSONArray().also { values -> names.forEach(values::put) })
+                    put("SNIServerNames", JSONArray().also { values -> names.forEach(values::put) })
                 }
             }
             root.put("FrontedMeekCDNScanSpec", spec)
