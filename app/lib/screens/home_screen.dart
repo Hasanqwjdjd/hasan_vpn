@@ -3554,6 +3554,72 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _savePings();
   }
 
+  /// قبل از اتصال به WARP/WARP+/MASQUE، endpoint فعلی رو verify کن.
+  /// اگه سالم نبود، rescan خودکار انجام بده.
+  ///
+  /// برمی‌گردونه: سرور آپدیت‌شده (یا همون سرور اگه چیزی نیاز نبود).
+  Future<VpnServer> _verifyWarpEndpointBeforeConnect(
+      VpnServer server) async {
+    final isWarp = server.protocol == VpnProtocol.amneziaWg ||
+        server.protocol == VpnProtocol.chain ||
+        server.protocol == VpnProtocol.warpMasque;
+    if (!isWarp) return server;
+    if (!server.isDeletable) return server; // built-in
+
+    final endpoint = '${server.host}:${server.port}';
+    try {
+      setState(() => _status = _t(
+          'بررسی endpoint $endpoint ...', 'Verifying endpoint $endpoint ...'));
+      final alive = await WarpEndpointHealthMonitor.quickCheck(
+        endpoint,
+        timeoutMs: 2500,
+      );
+      if (alive) {
+        debugPrint('preconnect: $endpoint is alive');
+        return server;
+      }
+      // خرابه — rescan
+      debugPrint('preconnect: $endpoint dead — rescanning');
+      setState(() => _status = _t(
+          'endpoint خراب — پیدا کردن جایگزین...',
+          'Endpoint dead — finding replacement...'));
+      final rescan = server.protocol == VpnProtocol.warpMasque
+          ? await WarpMasqueService.rescanEndpoints(
+              endpoint: endpoint,
+              endpointCandidates: server.warpMasqueEndpointCandidates,
+              timeoutSec: 60,
+            )
+          : await WarpService.rescanEndpoints(server);
+      if (rescan.endpoint == null) {
+        debugPrint('preconnect: rescan failed — using original');
+        return server;
+      }
+      final parts = rescan.endpoint!.split(':');
+      if (parts.length < 2) return server;
+      final newHost = parts[0];
+      final newPort = int.tryParse(parts[1]) ?? server.port;
+      final updated = server.copyWith(host: newHost, port: newPort);
+      // آپدیت لیست
+      setState(() {
+        final si = _servers.indexWhere((s) => s.id == server.id);
+        if (si >= 0) _servers[si] = updated;
+        final ci = _customServers.indexWhere((s) => s.id == server.id);
+        if (ci >= 0) _customServers[ci] = updated;
+        if (_selected?.id == server.id) _selected = updated;
+      });
+      // ignore: unawaited_futures
+      _saveCustomServers();
+      _showMsg(_t(
+        'endpoint جدید: ${rescan.endpoint} (${rescan.ms}ms)',
+        'New endpoint: ${rescan.endpoint} (${rescan.ms}ms)',
+      ));
+      return updated;
+    } catch (e) {
+      debugPrint('preconnect verify failed: $e');
+      return server;
+    }
+  }
+
   Future<void> _toggleConnection() async {
     if (_connecting) {
       _cancelConnect = true;
@@ -3621,6 +3687,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
 
     try {
+      // Pre-connect verify برای WARP/WARP+/MASQUE
+      selected = await _verifyWarpEndpointBeforeConnect(selected!);
+      if (!mounted) return;
+      if (_cancelConnect) return;
+
       final bool connected;
       final String? error;
       if (selected.isAether) {
