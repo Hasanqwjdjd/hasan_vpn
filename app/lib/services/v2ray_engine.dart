@@ -649,8 +649,8 @@ class V2RayEngine {
       });
 
       cfg['outbounds'] = outbounds;
-      debugPrint('desync: attached to 127.0.0.1:\$boundPort '
-          '(\${server.pingNgProfile})');
+      debugPrint('desync: attached to 127.0.0.1:$boundPort '
+          '(${server.pingNgProfile})');
       return jsonEncode(cfg);
     } catch (e) {
       debugPrint('desync: config inject failed: \$e');
