@@ -1056,5 +1056,5 @@ class WarpScanState {
 class _WgKeys {
   final String privateKey;
   final String publicKey;
-  const _WgKeys({required this.privateKey, required this.publicKey}
+  const _WgKeys({required this.privateKey, required this.publicKey});
 }
