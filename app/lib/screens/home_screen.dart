@@ -31,6 +31,7 @@ import '../services/desync_tuner.dart';
 import '../services/warp_masque_session_service.dart';
 import '../services/warp_masque_service.dart';
 import '../services/warp_service.dart';
+import '../services/warp_endpoint_health_monitor.dart';
 import '../services/warp_cache_codec.dart';
 import '../services/geo_assets_service.dart';
 import '../services/xray_settings.dart';
@@ -117,6 +118,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _autoFastestTimer;
   Timer? _autoTestTimer;
   bool _autoReconnectRunning = false;
+  bool _autoFailoverRunning = false;
+  bool _autoFailoverEnabled = false;
   DateTime? _lastConnectTime;
   VoidCallback? _finalMaskDialogRefresh;
   List<String> _manualOrder = <String>[];
@@ -232,6 +235,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WarpMasqueSessionService.instance.routingCount
         .addListener(_onWarpMasqueRoutingChanged);
     WarpMasqueService.scanProgress.addListener(_onMasqueScanProgress);
+    WarpEndpointHealthMonitor.instance.onDegraded = _onWarpEndpointDegraded;
+    WarpEndpointHealthMonitor.instance.onRecovered = _onWarpEndpointRecovered;
 
     await _loadDeletedAndPinned();
     await _loadUiSettings();
@@ -2409,6 +2414,45 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         : s.phase;
     if (detail == _status) return;
     setState(() => _status = detail);
+  }
+
+  /// health monitor: endpoint فعلی خراب شد → failover به یه endpoint دیگه.
+  void _onWarpEndpointDegraded(String serverId) {
+    if (!mounted) return;
+    if (!_autoFailoverEnabled) return;
+    if (_autoFailoverRunning) return;
+    if (!_connected) return;
+    final active = _active;
+    if (active == null || active.id != serverId) return;
+    _autoFailoverRunning = true;
+    _showMsg(_t(
+      'endpoint فعلی ضعیف شده — تلاش برای پیدا کردن جایگزین...',
+      'Current endpoint degraded — searching for a replacement...',
+    ));
+    // ignore: unawaited_futures
+    _performAutoFailover(active).whenComplete(
+      () => _autoFailoverRunning = false,
+    );
+  }
+
+  void _onWarpEndpointRecovered(String serverId) {
+    if (!mounted) return;
+    final active = _active;
+    if (active == null || active.id != serverId) return;
+    _showMsg(_t('endpoint دوباره سالم شد', 'Endpoint recovered'));
+  }
+
+  /// پیدا کردن endpoint جدید برای سرور فعلی و جایگزینی.
+  Future<void> _performAutoFailover(VpnServer server) async {
+    try {
+      // برای MASQUE از _rescanMasqueServer، برای WARP/WARP+ از _rescanWarpServer
+      final isMasque = server.protocol == VpnProtocol.warpMasque;
+      if (isMasque) {
+        await _rescanMasqueServer(server);
+      } else {
+        await _rescanWarpServer(server);
+      }
+    } catch (_) {}
   }
 
   void _onWarpMasqueRoutingChanged() {
@@ -5653,6 +5697,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _autoFastestTimer?.cancel();
     try {
       WarpMasqueService.scanProgress.removeListener(_onMasqueScanProgress);
+    } catch (_) {}
+    try {
+      WarpEndpointHealthMonitor.instance.onDegraded = null;
+      WarpEndpointHealthMonitor.instance.onRecovered = null;
+      WarpEndpointHealthMonitor.instance.stop();
     } catch (_) {}
     ConnectivityWatcher.instance.stop();
     try {
