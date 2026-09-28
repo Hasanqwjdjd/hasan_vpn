@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/app_colors.dart';
 import '../services/quality_history_service.dart';
@@ -92,6 +93,16 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
           style: TextStyle(color: AppColors.fg(context)),
         ),
         actions: [
+          IconButton(
+            onPressed: _exportToClipboard,
+            icon: const Icon(Icons.ios_share),
+            tooltip: _t('خروجی', 'Export'),
+          ),
+          IconButton(
+            onPressed: _importFromClipboard,
+            icon: const Icon(Icons.download),
+            tooltip: _t('ورودی', 'Import'),
+          ),
           if (_all.isNotEmpty)
             IconButton(
               onPressed: _clear,
