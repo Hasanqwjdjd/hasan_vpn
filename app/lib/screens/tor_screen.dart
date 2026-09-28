@@ -1903,7 +1903,8 @@ class _TorScreenState extends State<TorScreen> {
                             samples: 2,
                           );
                           if (!mounted) return;
-                          setState(() => _bridgePings[b] = r.avgMs);
+                          setState(() => _bridgePings[b] =
+                              BridgePingInfo(result: r, at: DateTime.now()));
                           _snack(r.avgMs == null
                               ? _t('بدون پاسخ', 'No response')
                               : _t('پینگ: ${r.avgMs}ms', 'Ping: ${r.avgMs}ms'));
