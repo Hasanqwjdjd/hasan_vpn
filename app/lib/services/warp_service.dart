@@ -518,7 +518,7 @@ class WarpService {
 
     final container = <String, dynamic>{
       'awg': <String, dynamic>{
-        'port': '\$port',
+        'port': '$port',
         'last_config': jsonEncode(<String, dynamic>{
           'interface': <String, dynamic>{
             'private_key': privateKeyB64,
@@ -542,7 +542,7 @@ class WarpService {
       'containers': <dynamic>[container],
     };
     final rawB64 = base64.encode(utf8.encode(jsonEncode(outer)));
-    return 'vpn://\$rawB64';
+    return 'vpn://$rawB64';
   }
 
   /// ساخت WARP Plus 2-hop — Outer (بدون license) + Inner (با license).
@@ -561,7 +561,7 @@ class WarpService {
 
       // 1) endpoint — یک بار برای هر دو hop
       onProgress?.call('Scanning edge IPs...');
-      var endpoint = '162.159.192.1:\$_warpPort';
+      var endpoint = '162.159.192.1:$_warpPort';
       try {
         final fastest = await _scanFastest(
           timeoutMs: 1500,
@@ -580,7 +580,7 @@ class WarpService {
       if (outerReg.error != null || outerReg.account == null) {
         return (
           server: null,
-          error: 'outer: \${outerReg.error ?? "no account"}',
+          error: 'outer: ${outerReg.error ?? "no account"}',
         );
       }
       final outerLink = _buildVpnLinkFromAccount(
@@ -601,7 +601,7 @@ class WarpService {
       if (innerReg.error != null || innerReg.account == null) {
         return (
           server: null,
-          error: 'inner: \${innerReg.error ?? "no account"}',
+          error: 'inner: ${innerReg.error ?? "no account"}',
         );
       }
       final innerLink = _buildVpnLinkFromAccount(
@@ -627,8 +627,8 @@ class WarpService {
       final port = int.tryParse(endpoint.split(':').last) ?? _warpPort;
 
       final server = VpnServer(
-        id: 'warp_plus_chain_\${DateTime.now().millisecondsSinceEpoch}',
-        name: 'WARP+ · 2-hop · \$host',
+        id: 'warp_plus_chain_${DateTime.now().millisecondsSinceEpoch}',
+        name: 'WARP+ · 2-hop · $host',
         flag: '\u{1F310}',
         shareLink: chainLink,
         protocol: VpnProtocol.chain,
