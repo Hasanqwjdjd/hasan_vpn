@@ -105,6 +105,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _smartResumeEnabled = true;
   int _batchParallelism = 2;
 
+  Future<void> _exportAllServers() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final exportRaw = prefs.getString('quick_export_servers_v1');
+      if (exportRaw == null || exportRaw.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_t(
+                'داده‌ای برای خروجی نیست — اول یه سرور اضافه کن',
+                'Nothing to export — add a server first')),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+      await Clipboard.setData(ClipboardData(text: exportRaw));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_t(
+              'خروجی گرفته شد (' + exportRaw.length.toString() + ' بایت)',
+              'Exported (' + exportRaw.length.toString() + ' bytes)')),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_t('خطا: ' + e.toString(), 'Error: ' + e.toString())),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   Future<void> _loadSmartResumePrefSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
