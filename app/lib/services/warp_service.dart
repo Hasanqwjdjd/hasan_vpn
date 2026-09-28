@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
+import 'warp_endpoint_tester.dart';
+import 'warp_endpoint_scanner.dart';
 
 /// WARP / WARP Plus key generator + endpoint scanner.
 ///
@@ -72,6 +74,8 @@ class WarpService {
     String? proxySocksPort,
     String? endpointOverride,
     int? scanTimeoutMs,
+    WarpEndpointMode mode = WarpEndpointMode.fast,
+    String? customEndpoint,
     void Function(String msg)? onProgress,
   }) async {
     try {
@@ -144,15 +148,26 @@ class WarpService {
       final clientId = (cfg?['client_id'] ?? '').toString();
       final reserved = _decodeReserved(clientId);
 
-      // 3) اسکن edge — سریع‌ترین IP
+      // 3) اسکن edge — WARPSCOUT-style
       String chosenEndpoint = endpointOverride ?? '';
       if (chosenEndpoint.isEmpty) {
-        onProgress?.call('Scanning edge IPs...');
-        final fastest = await _scanFastest(
-          timeoutMs: scanTimeoutMs ?? 1500,
-          onProgress: onProgress,
+        onProgress?.call('Scanning WARP endpoints (${mode.label})...');
+        final hit = await WarpEndpointTester.select(
+          mode: mode,
+          privateKeyB64: privateKeyB64,
+          peerPublicKeyB64: peerPublicKey,
+          customEndpoint: customEndpoint,
+          onProgress: (label, tested, total) {
+            onProgress?.call('$label $tested/$total');
+          },
         );
-        chosenEndpoint = fastest ?? '$peerEndpoint:$_warpPort';
+        if (hit != null) {
+          chosenEndpoint = hit.endpoint.toString();
+          onProgress?.call('Selected ${hit.endpoint} (${hit.latencyMs}ms)');
+        } else {
+          onProgress?.call('Scanner found nothing — falling back to default');
+          chosenEndpoint = '$peerEndpoint:$_warpPort';
+        }
       }
 
       // 4) ساخت VpnServer
@@ -551,6 +566,8 @@ class WarpService {
   static Future<({VpnServer? server, String? error})> generatePlusChain({
     required String license,
     String? proxySocksPort,
+    WarpEndpointMode mode = WarpEndpointMode.fast,
+    String? customEndpoint,
     void Function(String msg)? onProgress,
   }) async {
     try {
@@ -560,15 +577,23 @@ class WarpService {
       }
 
       // 1) endpoint — یک بار برای هر دو hop
-      onProgress?.call('Scanning edge IPs...');
+      onProgress?.call('Scanning endpoints for outer hop (${mode.label})...');
       var endpoint = '162.159.192.1:$_warpPort';
-      try {
-        final fastest = await _scanFastest(
-          timeoutMs: 1500,
-          onProgress: onProgress,
-        );
-        if (fastest != null && fastest.isNotEmpty) endpoint = fastest;
-      } catch (_) {}
+      // outer keypair هنوز ساخته نشده — با keypair موقت اسکن می‌کنیم.
+      final scanKp = await _generateX25519();
+      final hit = await WarpEndpointTester.select(
+        mode: mode,
+        privateKeyB64: scanKp.privateKeyB64,
+        peerPublicKeyB64: scanKp.publicKeyB64,
+        customEndpoint: customEndpoint,
+        onProgress: (label, tested, total) {
+          onProgress?.call('$label $tested/$total');
+        },
+      );
+      if (hit != null) {
+        endpoint = hit.endpoint.toString();
+        onProgress?.call('Endpoint: ${hit.endpoint} (${hit.latencyMs}ms)');
+      }
 
       // 2) OUTER — keypair تازه، بدون license
       onProgress?.call('Registering outer WARP...');
