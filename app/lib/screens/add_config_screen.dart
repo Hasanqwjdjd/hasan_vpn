@@ -13,6 +13,7 @@ import '../services/psiphon_auto.dart';
 import '../services/psiphon_service.dart';
 import '../services/warp_service.dart';
 import '../services/warp_endpoint_tester.dart';
+import '../services/warp_registration_proxy.dart';
 import '../services/v2ray_engine.dart';
 import '../services/master_dns_service.dart';
 import '../services/warp_masque_service.dart';
@@ -2684,10 +2685,10 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       _warpProgress = _t('شروع...', 'Starting...');
     });
 
-    // FIX: اگه یه VPN فعال هست (Xray/Tor/WARP MASQUE/...)، از پورت SOCKS
-    // محلی برای register استفاده کن. بدون این، Cloudflare API روی نت
-    // ایران فیلتره و register شکست می‌خوره.
+    // 1) اگه VPN فعال داری، از SOCKS محلی همون استفاده کن.
+    // 2) اگه نه، proxy داخلی رو خودکار راه بنداز.
     String? proxyPort;
+    bool startedInternalProxy = false;
     try {
       final p = V2RayEngine.localSocksPort;
       if (V2RayEngine.isConnected && p > 0) {
@@ -2695,10 +2696,22 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
       }
     } catch (_) {}
 
-    if (plus && proxyPort == null) {
+    if (proxyPort == null) {
+      final internal = await WarpRegistrationProxy.ensureStarted(
+        onProgress: (m) {
+          if (mounted) setState(() => _warpProgress = m);
+        },
+      );
+      if (internal != null && internal > 0) {
+        proxyPort = '$internal';
+        startedInternalProxy = true;
+      }
+    }
+
+    if (proxyPort == null) {
       _showMsg(_t(
-        'برای WARP Plus باید اول یه VPN (WARP/Tor/vless) وصل باشی تا register از داخلش رد شه.',
-        'For WARP Plus you must connect a VPN first (WARP/Tor/vless) so register goes through it.',
+        'اتصال به Cloudflare API ممکن نشد. یه VPN دیگه (WARP/Tor/vless) وصل کن و دوباره تلاش کن.',
+        'Could not reach the Cloudflare API. Connect another VPN (WARP/Tor/vless) and retry.',
       ));
       setState(() => _warpGenerating = false);
       return;
@@ -2760,6 +2773,12 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         _warpProgress = _t('خطا', 'Failed');
       });
       _showMsg(_t('خطا: $e', 'Error: $e'));
+    } finally {
+      if (startedInternalProxy) {
+        try {
+          await WarpRegistrationProxy.stop();
+        } catch (_) {}
+      }
     }
   }
 
@@ -2777,6 +2796,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     });
 
     String? proxyPort;
+    bool startedInternalProxy = false;
     try {
       final p = V2RayEngine.localSocksPort;
       if (V2RayEngine.isConnected && p > 0) {
@@ -2785,9 +2805,21 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     } catch (_) {}
 
     if (proxyPort == null) {
+      final internal = await WarpRegistrationProxy.ensureStarted(
+        onProgress: (m) {
+          if (mounted) setState(() => _warpProgress = m);
+        },
+      );
+      if (internal != null && internal > 0) {
+        proxyPort = '$internal';
+        startedInternalProxy = true;
+      }
+    }
+
+    if (proxyPort == null) {
       _showMsg(_t(
-        'برای WARP+ 2-hop باید اول یه VPN وصل باشی تا register از داخلش رد شه.',
-        'For WARP+ 2-hop you must connect a VPN first so register goes through it.',
+        'اتصال به Cloudflare API ممکن نشد. یه VPN دیگه (WARP/Tor/vless) وصل کن و دوباره تلاش کن.',
+        'Could not reach the Cloudflare API. Connect another VPN (WARP/Tor/vless) and retry.',
       ));
       setState(() => _warpGenerating = false);
       return;
@@ -2840,6 +2872,12 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         _warpProgress = _t('خطا', 'Failed');
       });
       _showMsg(_t('خطا: $e', 'Error: $e'));
+    } finally {
+      if (startedInternalProxy) {
+        try {
+          await WarpRegistrationProxy.stop();
+        } catch (_) {}
+      }
     }
   }
 
