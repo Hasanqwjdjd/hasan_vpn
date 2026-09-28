@@ -75,7 +75,7 @@ class CoreEngines {
       currentVersion: '0.4.9.11-dev',
       githubRepo: 'torproject/tor',
       githubUrl: 'https://github.com/torproject/tor',
-      icon: Icons.onion,
+      icon: Icons.privacy_tip_outlined,
     ),
     CoreEngine(
       id: 'usque',
