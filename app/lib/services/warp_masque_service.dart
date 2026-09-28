@@ -1,12 +1,51 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Wrapper for `WarpMasqueService.kt` — runs `libwarpmasque.so` (usque)
 /// as a foreground service and exposes a local SOCKS5 on 127.0.0.1:1819.
+/// وضعیت زنده اسکن MASQUE — قابل listen در UI.
+class WarpMasqueScanState {
+  final String phase;
+  final int tested;
+  final int total;
+  final String endpoint;
+  final int ms;
+  final bool done;
+  final String error;
+
+  const WarpMasqueScanState({
+    this.phase = '',
+    this.tested = 0,
+    this.total = 0,
+    this.endpoint = '',
+    this.ms = 0,
+    this.done = false,
+    this.error = '',
+  });
+
+  WarpMasqueScanState fromMap(Map<dynamic, dynamic> m) => WarpMasqueScanState(
+        phase: m['phase']?.toString() ?? '',
+        tested: (m['tested'] as num?)?.toInt() ?? 0,
+        total: (m['total'] as num?)?.toInt() ?? 0,
+        endpoint: m['endpoint']?.toString() ?? '',
+        ms: (m['ms'] as num?)?.toInt() ?? 0,
+        done: m['done'] == true,
+        error: m['error']?.toString() ?? '',
+      );
+
+  double get progress => total > 0 ? tested / total : 0.0;
+  bool get active => !done && phase.isNotEmpty;
+}
+
 class WarpMasqueService {
   WarpMasqueService._();
+
+  /// وضعیت زنده اسکن — از MethodChannel پر می‌شه.
+  static final ValueNotifier<WarpMasqueScanState> scanProgress =
+      ValueNotifier(const WarpMasqueScanState());
 
   static const MethodChannel _ch =
       MethodChannel('com.hasan.hasan_vpn/warpmasque');
@@ -44,6 +83,15 @@ class WarpMasqueService {
           lastError = call.arguments?.toString();
           onError?.call(lastError ?? 'unknown');
           return null;
+        case 'onProgress':
+          try {
+            final args = call.arguments;
+            if (args is Map) {
+              scanProgress.value =
+                  const WarpMasqueScanState().fromMap(args);
+            }
+          } catch (_) {}
+          return null;
       }
       return null;
     });
@@ -61,6 +109,7 @@ class WarpMasqueService {
   }) async {
     _ensureListener();
     lastError = null;
+    scanProgress.value = const WarpMasqueScanState();
 
     try {
       final ok = await _ch.invokeMethod<bool>('start', {
@@ -99,6 +148,7 @@ class WarpMasqueService {
 
   static Future<void> stop() async {
     _running = false;
+    scanProgress.value = const WarpMasqueScanState();
     try {
       await _ch.invokeMethod('stop');
     } catch (_) {}
