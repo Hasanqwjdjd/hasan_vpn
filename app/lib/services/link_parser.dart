@@ -163,11 +163,14 @@ class LinkParser {
         fallback: 'WARP MASQUE · $endpoint',
       );
 
+      final candidates = (q['candidates'] ?? q['cn'] ?? '').trim();
+
       final internal = <String, String>{
         'endpoint': endpoint,
         'sni': sni,
         'dns': dns,
         'h2': h2 ? '1' : '0',
+        if (candidates.isNotEmpty) 'candidates': candidates,
         if (name.isNotEmpty) 'name': name,
       };
       final rebuilt = Uri(
@@ -190,6 +193,7 @@ class LinkParser {
         host: host,
         port: port,
         sniOrHost: sni,
+        warpMasqueEndpointCandidates: candidates.isEmpty ? null : candidates,
       );
     } catch (_) {
       return null;

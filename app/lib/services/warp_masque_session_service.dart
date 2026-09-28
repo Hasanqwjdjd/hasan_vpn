@@ -71,6 +71,7 @@ class WarpMasqueSessionService {
   Future<void> connect(
     String serverId, {
     required String endpoint,
+    String? endpointCandidates,
     String sni = WarpMasqueService.defaultSni,
     String dns = WarpMasqueService.defaultDns,
     bool http2 = true,
@@ -91,7 +92,8 @@ class WarpMasqueSessionService {
 
     final ok = await WarpMasqueService.start(
       endpoint: endpoint,
-      endpointCandidates: WarpMasqueService.defaultEndpointCandidates,
+      endpointCandidates: endpointCandidates ??
+          WarpMasqueService.defaultEndpointCandidates,
       sni: sni,
       dns: dns,
       http2: http2,

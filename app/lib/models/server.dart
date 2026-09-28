@@ -251,6 +251,7 @@ class VpnServer {
     this.pingNgArgs,
     this.pingNgUdpDesync = false,
     this.warpEndpointMode,
+    this.warpMasqueEndpointCandidates,
     this.ping,
     this.jitter,
     this.pingKind = PingKind.none,
@@ -287,6 +288,7 @@ class VpnServer {
     String? pingNgArgs,
     bool? pingNgUdpDesync,
     String? warpEndpointMode,
+    String? warpMasqueEndpointCandidates,
   }) =>
       VpnServer(
         id: id,
@@ -306,6 +308,7 @@ class VpnServer {
         pingNgArgs: pingNgArgs ?? this.pingNgArgs,
         pingNgUdpDesync: pingNgUdpDesync ?? this.pingNgUdpDesync,
         warpEndpointMode: warpEndpointMode ?? this.warpEndpointMode,
+        warpMasqueEndpointCandidates: warpMasqueEndpointCandidates ?? this.warpMasqueEndpointCandidates,
       );
 
   /// پاک‌کردن نتیجه‌ی تست قبلی.
