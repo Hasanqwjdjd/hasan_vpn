@@ -101,7 +101,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _batchAutoEnabled = false;
   int _qualityThreshold = 40;
   bool _qualityAlertEnabled = true;
+  bool _smartResumeEnabled = true;
   int _batchParallelism = 2;
+
+  Future<void> _loadSmartResumePrefSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _smartResumeEnabled = prefs.getBool('smart_resume_v1') ?? true;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _saveSmartResume(bool v) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('smart_resume_v1', v);
+    } catch (_) {}
+  }
 
   Future<void> _loadQualityPrefs() async {
     try {
@@ -302,6 +320,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 16),
 
           // ------- منابع تلگرام -------
+          // ------- Smart Resume ---------
+          _sectionTitle(_t('اتصال هوشمند', 'Smart Resume')),
+
+          _card(
+            context,
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              activeColor: AppColors.accent,
+              title: Text(
+                _t('اتصال خودکار بعد از بازگشت شبکه',
+                    'Auto-reconnect on network return'),
+                style:
+                    TextStyle(color: AppColors.fg(context), fontSize: 13),
+              ),
+              subtitle: Text(
+                _t(
+                  'وقتی شبکه از قطع به وصل برگرده، خودکار به آخرین سرور وصل شه. اگه دستی قطع کنی، وصل نمی‌شه.',
+                  'Reconnects to the last server when network comes back. Does not reconnect if you manually disconnected.',
+                ),
+                style: TextStyle(
+                    color: AppColors.muted2(context),
+                    fontSize: 10.5,
+                    height: 1.4),
+              ),
+              value: _smartResumeEnabled,
+              onChanged: (v) async {
+                setState(() => _smartResumeEnabled = v);
+                await _saveSmartResume(v);
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+
           _sectionTitle(_t('منابع تلگرام (سرور رایگان)',
               'Telegram sources (free servers)')),
           _card(
