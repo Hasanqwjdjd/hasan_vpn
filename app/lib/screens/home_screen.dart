@@ -2416,6 +2416,77 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => _status = detail);
   }
 
+  /// شروع مانیتور برای سرور متصل فعلی.
+  Future<void> _startHealthMonitorFor(VpnServer server) async {
+    try {
+      String? pkB64;
+      String? peerB64;
+      // استخراج کلید از shareLink برای WARP/WARP+
+      if (server.protocol == VpnProtocol.amneziaWg) {
+        final fields = _extractWgKeysFromVpn(server.shareLink);
+        pkB64 = fields?.privateKey;
+        peerB64 = fields?.publicKey;
+      } else if (server.protocol == VpnProtocol.chain) {
+        final uri = Uri.parse(server.shareLink);
+        final inner = uri.queryParameters['second'] ?? '';
+        if (inner.isNotEmpty) {
+          final fields = _extractWgKeysFromVpn(inner);
+          pkB64 = fields?.privateKey;
+          peerB64 = fields?.publicKey;
+        }
+      }
+      // endpoint فعلی از host:port
+      final endpoint = '${server.host}:${server.port}';
+      WarpEndpointHealthMonitor.instance.start(
+        serverId: server.id,
+        endpoint: endpoint,
+        privateKeyB64: pkB64,
+        peerPublicKeyB64: peerB64,
+      );
+    } catch (_) {}
+  }
+
+  /// استخراج کلیدها از یه vpn:// link.
+  ({String privateKey, String publicKey})? _extractWgKeysFromVpn(
+      String link) {
+    try {
+      if (!link.startsWith('vpn://')) return null;
+      final b64 = link.substring('vpn://'.length).trim();
+      final raw = utf8.decode(
+        base64.decode(base64.normalize(b64)),
+        allowMalformed: true,
+      );
+      final outer = jsonDecode(raw);
+      if (outer is! Map) return null;
+      Map? awg;
+      final containers = outer['containers'];
+      if (containers is List) {
+        for (final c in containers) {
+          if (c is Map && c['awg'] is Map) {
+            awg = Map<String, dynamic>.from(c['awg'] as Map);
+            break;
+          }
+        }
+      }
+      if (awg == null) return null;
+      final lastCfg = (awg['last_config'] ?? '').toString();
+      if (lastCfg.isEmpty) return null;
+      final inner = jsonDecode(lastCfg);
+      if (inner is! Map) return null;
+      final iface = inner['interface'];
+      final peer = inner['peer'];
+      if (iface is! Map || peer is! Map) return null;
+      final priv =
+          (iface['private_key'] ?? iface['privateKey'] ?? '').toString();
+      final pub =
+          (peer['public_key'] ?? peer['publicKey'] ?? '').toString();
+      if (priv.isEmpty || pub.isEmpty) return null;
+      return (privateKey: priv, publicKey: pub);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// health monitor: endpoint فعلی خراب شد → failover به یه endpoint دیگه.
   void _onWarpEndpointDegraded(String serverId) {
     if (!mounted) return;
@@ -3015,6 +3086,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _livePing = null;
     _deadStrikes = 0;
     _pollTick = 0;
+    // توقف health monitor
+    try {
+      WarpEndpointHealthMonitor.instance.stop();
+    } catch (_) {}
+    _autoFailoverEnabled = false;
     if (!mounted) return;
     setState(() {
       _connected = false;
@@ -3247,6 +3323,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await SettingsService.setLastServer(selected.id);
         // ignore: unawaited_futures
         AnnouncementService.onConnected(selected.displayName);
+        // health monitor — فقط برای WARP/WARP+/MASQUE
+        if (selected.protocol == VpnProtocol.amneziaWg ||
+            selected.protocol == VpnProtocol.chain ||
+            selected.protocol == VpnProtocol.warpMasque) {
+          _autoFailoverEnabled = true;
+          // ignore: unawaited_futures
+          _startHealthMonitorFor(selected);
+        } else {
+          _autoFailoverEnabled = false;
+        }
         await Future<void>.delayed(const Duration(milliseconds: 800));
         await _measureLive();
         // نمایش IP خروجی از داخل تونل (الهام از ZedSecure)
