@@ -404,6 +404,18 @@ jobs:
                   1,
               )
               echo_manifest_ok = True
+          if 'PsiphonRuntimeService' not in text:
+              text = text.replace(
+                  "</application>",
+                  '    <service\n'
+                  '        android:name="com.hasan.hasan_vpn.PsiphonRuntimeService"\n'
+                  '        android:enabled="true"\n'
+                  '        android:exported="false"\n'
+                  '        android:foregroundServiceType="specialUse"\n'
+                  '        android:process=":PingNGPsiphon" />\n'
+                  '</application>',
+                  1,
+              )
           if 'WarpMasqueService' not in text:
               text = text.replace(
                   "</application>",
