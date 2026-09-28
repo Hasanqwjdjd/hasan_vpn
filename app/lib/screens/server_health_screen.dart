@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/app_colors.dart';
+import '../services/link_test.dart';
 import '../services/mtu_probe.dart';
+import 'link_test_screen.dart';
 import '../services/server_health.dart';
 import '../services/xray_settings.dart';
 
@@ -220,6 +222,18 @@ class _ServerHealthScreenState extends State<ServerHealthScreen> {
             icon: const Icon(Icons.ios_share),
             tooltip: _t('خروجی گزارش', 'Export report'),
             onPressed: _export,
+          ),
+          IconButton(
+            icon: const Icon(Icons.network_check),
+            tooltip: _t('تست لینک', 'Link test'),
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      LinkTestScreen(language: widget.language),
+                ),
+              );
+            },
           ),
         ],
       ),
