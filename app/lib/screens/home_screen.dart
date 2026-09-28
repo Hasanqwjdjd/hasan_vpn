@@ -29,6 +29,7 @@ import '../services/desync_service.dart';
 import '../services/pingng_args.dart';
 import '../services/desync_tuner.dart';
 import '../services/warp_masque_session_service.dart';
+import '../services/warp_service.dart';
 import '../services/geo_assets_service.dart';
 import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
@@ -4439,6 +4440,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onEdit: () => _editServerName(server),
       onTest: () => _testOne(server),
       onHomeWidget: () => _pinServerToHome(server),
+      onRescanWarp: (server.protocol == VpnProtocol.amneziaWg ||
+              server.protocol == VpnProtocol.chain)
+          ? () => _rescanWarpServer(server)
+          : null,
     );
   }
 
