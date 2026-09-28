@@ -3211,6 +3211,143 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _showMsg(_t('لینک کپی شد', 'Link copied'));
   }
 
+  /// Rescan endpoint برای WARP/WARP+ — یه دیالوگ زنده که وضعیت
+  /// scan/verify رو نشون می‌ده، بعد endpoint رو ذخیره می‌کنه.
+  Future<void> _rescanWarpServer(VpnServer server) async {
+    if (WarpService.scanProgress.value.active) {
+      _showMsg(_t('اسکن قبلی هنوز در حال اجراست',
+          'Previous scan still running'));
+      return;
+    }
+
+    // شروع اسکن در پس‌زمینه + دیالوگ زنده
+    final rescanFuture = WarpService.rescanEndpoints(server);
+
+    // نمایش دیالوگ در پس‌زمینه بدون await
+    // ignore: unawaited_futures
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface(ctx),
+        title: Text(
+          _t('اسکن endpoint ها', 'Rescanning endpoints'),
+          style: TextStyle(color: AppColors.fg(ctx), fontSize: 15),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ValueListenableBuilder<WarpScanState>(
+            valueListenable: WarpService.scanProgress,
+            builder: (_, state, __) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LinearProgressIndicator(
+                    value: state.total > 0 ? state.progress : null,
+                    color: AppColors.accent,
+                    backgroundColor: AppColors.border(ctx),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    state.phase.isNotEmpty ? state.phase : '…',
+                    style: TextStyle(color: AppColors.fg(ctx), fontSize: 12),
+                  ),
+                  if (state.total > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '${state.tested}/${state.total}',
+                        style: TextStyle(
+                            color: AppColors.muted2(ctx), fontSize: 11),
+                      ),
+                    ),
+                  if (state.lastEndpoint != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '${state.lastEndpoint}'
+                        '${state.lastMs != null ? " · ${state.lastMs}ms" : ""}',
+                        style: TextStyle(
+                            color: state.lastMs != null
+                                ? AppColors.accent
+                                : AppColors.muted(ctx),
+                            fontSize: 11),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  if (state.error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        state.error!,
+                        style: TextStyle(
+                            color: AppColors.danger, fontSize: 11),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+        actions: [
+          ValueListenableBuilder<WarpScanState>(
+            valueListenable: WarpService.scanProgress,
+            builder: (_, state, __) => TextButton(
+              onPressed:
+                  state.done ? () => Navigator.pop(ctx) : null,
+              child: Text(
+                _t('بستن', 'Close'),
+                style: TextStyle(
+                    color: state.done
+                        ? AppColors.accent
+                        : AppColors.muted2(ctx)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final rescanResult = await rescanFuture;
+
+    if (!mounted) return;
+    if (Navigator.of(context, rootNavigator: true).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+
+    if (rescanResult.endpoint == null) {
+      _showMsg(_t(
+        'اسکن ناموفق: ${rescanResult.error ?? "unknown"}',
+        'Rescan failed: ${rescanResult.error ?? "unknown"}',
+      ));
+      return;
+    }
+
+    final hostPort = rescanResult.endpoint!.split(':');
+    final newHost = hostPort.first;
+    final newPort = int.tryParse(
+            hostPort.length > 1 ? hostPort[1] : '') ??
+        server.port;
+
+    final updated = server.copyWith(host: newHost, port: newPort);
+    setState(() {
+      final idx = _customServers.indexWhere((s) => s.id == server.id);
+      if (idx >= 0) _customServers[idx] = updated;
+      final si = _servers.indexWhere((s) => s.id == server.id);
+      if (si >= 0) _servers[si] = updated;
+      if (_selected?.id == server.id) _selected = updated;
+    });
+    // ignore: unawaited_futures
+    _saveCustomServers();
+
+    _showMsg(_t(
+      'بهترین endpoint: ${rescanResult.endpoint} (${rescanResult.ms}ms)',
+      'Best endpoint: ${rescanResult.endpoint} (${rescanResult.ms}ms)',
+    ));
+  }
+
   void _shareServer(VpnServer server) {
     Navigator.push(
       context,
