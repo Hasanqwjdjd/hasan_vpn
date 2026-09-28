@@ -43,6 +43,9 @@ import java.util.concurrent.Executors
 class FlutterVlessPlugin : FlutterPlugin, ActivityAware, PluginRegistry.ActivityResultListener, MethodChannel.MethodCallHandler {
 
     private val executor = Executors.newSingleThreadExecutor()
+    // اجرای delay probe موازی — چون getServerDelay هر بار پروسه Xray
+    // موقت جدا می‌سازه و thread-safe هست، ۴x parallel امن است.
+    private val delayExecutor = Executors.newFixedThreadPool(4)
     private lateinit var vpnControlMethod: MethodChannel
     private lateinit var vpnStatusEvent: EventChannel
     private var vpnStatusSink: EventChannel.EventSink? = null
