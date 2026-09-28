@@ -5053,10 +5053,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildServerTile(VpnServer server, {bool compact = false}) {
     final tileKey = _tileKeys.putIfAbsent(server.id, () => GlobalKey());
+    // Live badge — از batch tester یا WARP scan progress
+    return ValueListenableBuilder<WarpBatchState>(
+      valueListenable: _batchTester.state,
+      builder: (_, batchState, __) {
+        String? live;
+        if (batchState.running &&
+            batchState.currentServer == server.displayName) {
+          live = 'SCAN ${batchState.tested}/${batchState.total}';
+        } else if (batchState.running) {
+          // در حال تست batch هست ولی این سرور فعلی نیست
+          final done = batchState.results
+              .any((r) => r.server.id == server.id);
+          if (done) {
+            final r = batchState.results
+                .firstWhere((r) => r.server.id == server.id);
+            live = r.ok ? '✓ ${r.latencyMs}ms' : '✕';
+          }
+        }
+        return _buildServerTileInner(server, compact, tileKey, live);
+      },
+    );
+  }
+
+  Widget _buildServerTileInner(
+    VpnServer server,
+    bool compact,
+    GlobalKey tileKey,
+    String? liveBadge,
+  ) {
     return ServerTile(
       key: tileKey,
       server: server,
       compact: compact,
+      liveBadge: liveBadge,
       selected: _selected?.id == server.id,
       active: _connected && _active?.id == server.id,
       onTap: () async {

@@ -20,6 +20,8 @@ class ServerTile extends StatelessWidget {
   final VoidCallback? onTest;
   final VoidCallback? onHomeWidget;
   final VoidCallback? onRescanWarp;
+  /// متن زنده — مثلاً "Scanning · 3/5" در زمان اسکن فعال.
+  final String? liveBadge;
   final VoidCallback? onLongPress;
   /// حالت گرید دوستونی: آیکون‌ها و padding فشرده می‌شن تا همپوشانی نشه.
   final bool compact;
@@ -38,6 +40,7 @@ class ServerTile extends StatelessWidget {
     this.onTest,
     this.onHomeWidget,
     this.onRescanWarp,
+    this.liveBadge,
     this.onLongPress,
     this.compact = false,
   });
@@ -133,6 +136,11 @@ class ServerTile extends StatelessWidget {
         _ => 'SCAN',
       };
       out.add(abbrev);
+    }
+    // Live badge — جایگزین پیش‌فرض
+    final live = liveBadge;
+    if (live != null && live.isNotEmpty) {
+      out.insert(0, live);
     }
     return out;
   }
