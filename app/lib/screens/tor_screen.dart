@@ -11,6 +11,7 @@ import '../services/home_widget_service.dart';
 import '../services/network_prober.dart';
 import '../services/socks_probe.dart';
 import '../services/tor_bridges.dart';
+import '../services/bridge_ping_info.dart';
 import '../services/tor_service.dart';
 import '../services/tor_sni_presets.dart';
 import '../services/v2ray_engine.dart';
@@ -74,7 +75,14 @@ class _TorScreenState extends State<TorScreen> {
   bool _routing = false;
 
   /// پینگ TCP هر خط پل (کلید = خود خط پل)
-  final Map<String, int?> _bridgePings = {};
+  final Map<String, BridgePingInfo> _bridgePings = {};
+
+  /// میانگین latency این پل (null اگه پینگ نشده یا fail).
+  int? _pingMsOf(String bridge) {
+    final info = _bridgePings[bridge];
+    if (info == null || !info.ok) return null;
+    return info.avgMs;
+  }
   bool _pingingBridges = false;
   /// پل‌های رایگان اضافه از دکمه «جدید»
   final List<String> _extraFreeBridges = [];
@@ -832,7 +840,8 @@ class _TorScreenState extends State<TorScreen> {
         if (r.avgMs != null) {
           scored.add((bridge: line, ms: r.avgMs!));
           if (mounted) {
-            setState(() => _bridgePings[line] = r.avgMs);
+            setState(() => _bridgePings[line] =
+                BridgePingInfo(result: r, at: DateTime.now()));
           }
         }
       } catch (_) {}
@@ -1205,31 +1214,54 @@ class _TorScreenState extends State<TorScreen> {
       _pingingBridges = true;
       _bridgePings.clear();
     });
+    // Probe با ۳ نمونه برای دقت بیشتر + jitter/loss
     await NetworkProber.runBatched<String>(
       list,
       6,
       (line) async {
         final ep = TorBridges.parseEndpoint(line);
         if (ep == null) {
-          if (mounted) setState(() => _bridgePings[line] = null);
+          if (mounted) {
+            setState(() => _bridgePings[line] = const BridgePingInfo(
+                  error: 'endpoint not parsed',
+                ));
+          }
           return;
         }
-        final r = await NetworkProber.probeTcp(
-          ep.host,
-          port: ep.port,
-          samples: 2,
-          timeout: const Duration(seconds: 2),
-        );
-        if (!mounted) return;
-        setState(() => _bridgePings[line] = r.avgMs);
+        try {
+          final r = await NetworkProber.probeTcp(
+            ep.host,
+            port: ep.port,
+            samples: 3,
+            timeout: const Duration(seconds: 3),
+          );
+          if (!mounted) return;
+          setState(() => _bridgePings[line] =
+              BridgePingInfo(result: r, at: DateTime.now()));
+        } catch (e) {
+          if (!mounted) return;
+          setState(() => _bridgePings[line] = BridgePingInfo(
+                error: e.toString().split('\n').first,
+              ));
+        }
       },
     );
     if (!mounted) return;
     setState(() => _pingingBridges = false);
-    final ok = _bridgePings.values.where((v) => v != null && v > 0).length;
+    final ok = _bridgePings.values.where((v) => v.ok).length;
+    final fastest = _bridgePings.entries
+        .where((e) => e.value.ok)
+        .toList()
+      ..sort((a, b) => a.value.score.compareTo(b.value.score));
+    final fastestText = fastest.isEmpty
+        ? ''
+        : _t(
+            ' — سریع‌ترین: ${fastest.first.key.split(' ').first} ${fastest.first.value.avgMs}ms',
+            ' — fastest: ${fastest.first.key.split(' ').first} ${fastest.first.value.avgMs}ms',
+          );
     _snack(_t(
-      'پینگ $ok پل انجام شد',
-      'Pinged $ok bridges',
+      'پینگ $ok پل انجام شد$fastestText',
+      'Pinged $ok bridges$fastestText',
     ));
   }
 
@@ -1238,18 +1270,18 @@ class _TorScreenState extends State<TorScreen> {
     if (_customBridges.isNotEmpty) {
       final withPing = List<String>.from(_customBridges);
       withPing.sort((a, b) {
-        final pa = _bridgePings[a] ?? 99999;
-        final pb = _bridgePings[b] ?? 99999;
-        return pa.compareTo(pb);
+        final sa = _bridgePings[a]?.score ?? 99999;
+        final sb = _bridgePings[b]?.score ?? 99999;
+        return sa.compareTo(sb);
       });
       return withPing.take(4).toList();
     }
     final free = TorBridges.forType(_bridgeType, sni: _selectedSni);
     final sorted = List<String>.from(free);
     sorted.sort((a, b) {
-      final pa = _bridgePings[a] ?? 99999;
-      final pb = _bridgePings[b] ?? 99999;
-      return pa.compareTo(pb);
+      final sa = _bridgePings[a]?.score ?? 99999;
+      final sb = _bridgePings[b]?.score ?? 99999;
+      return sa.compareTo(sb);
     });
     return sorted.take(4).toList();
   }
@@ -1820,19 +1852,36 @@ class _TorScreenState extends State<TorScreen> {
                       if (_bridgePings.containsKey(b))
                         Padding(
                           padding: const EdgeInsets.only(right: 4),
-                          child: Text(
-                            _bridgePings[b] == null
-                                ? '—'
-                                : '${_bridgePings[b]}ms',
-                            style: TextStyle(
-                              color: (_bridgePings[b] ?? 999) < 200
-                                  ? Colors.green
-                                  : ((_bridgePings[b] ?? 999) < 500
-                                      ? Colors.orange
-                                      : AppColors.danger),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
+                          child: Builder(
+                            builder: (_) {
+                              final info = _bridgePings[b]!;
+                              final color = switch (info.colorTier) {
+                                0 => const Color(0xFF4CAF50),
+                                1 => const Color(0xFF8BC34A),
+                                2 => Colors.orange,
+                                3 => AppColors.danger,
+                                _ => AppColors.muted2(context),
+                              };
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: color.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                      color: color.withOpacity(0.5),
+                                      width: 0.8),
+                                ),
+                                child: Text(
+                                  info.label,
+                                  style: TextStyle(
+                                    color: color,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         ),
                       IconButton(
