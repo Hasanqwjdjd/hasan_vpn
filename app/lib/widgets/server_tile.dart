@@ -79,9 +79,19 @@ class ServerTile extends StatelessWidget {
           link.contains('vpn://');
       if (isWarpChain) {
         final host = server.host.trim();
+        final mode = server.warpEndpointMode ?? '';
+        final modeTag = mode.isNotEmpty ? ' · $mode' : '';
         final t = host.isEmpty || hideHost ? 'WARP+' : 'WARP+ · $host';
-        return '$t · 2-hop';
+        return '$t · 2-hop$modeTag';
       }
+    }
+    // WARP تک‌هاپ با mode
+    if (server.protocol == VpnProtocol.amneziaWg &&
+        server.warpEndpointMode != null) {
+      final host = server.host.trim();
+      final mode = server.warpEndpointMode!;
+      if (hideHost || host.isEmpty) return 'WARP · $mode';
+      return 'WARP · $host · $mode';
     }
     // WARP MASQUE
     if (server.protocol == VpnProtocol.warpMasque) {
@@ -104,6 +114,24 @@ class ServerTile extends StatelessWidget {
       out.add(profile == 'Custom' ? 'DSYNC·C' : 'DSYNC');
     }
     if (server.pingNgUdpDesync) out.add('UDP');
+    // WarpScout — فقط برای WARP/WARP+/MASQUE با mode ست‌شده
+    final mode = server.warpEndpointMode;
+    final isWarpLike = server.protocol == VpnProtocol.amneziaWg ||
+        server.protocol == VpnProtocol.warpMasque ||
+        (server.protocol == VpnProtocol.chain &&
+            (server.shareLink.contains('vpn://') ||
+                server.shareLink.contains('vpn%3A%2F%2F')));
+    if (isWarpLike && mode != null && mode.isNotEmpty) {
+      // علامت اختصاری برای mode
+      final abbrev = switch (mode) {
+        'Fast' => 'SCAN·F',
+        'Medium' => 'SCAN·M',
+        'Slow' => 'SCAN·S',
+        'Custom' => 'SCAN·C',
+        _ => 'SCAN',
+      };
+      out.add(abbrev);
+    }
     return out;
   }
 
