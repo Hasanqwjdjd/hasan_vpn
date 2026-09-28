@@ -17,6 +17,11 @@ class WarpMasqueService {
   static const String defaultSni = 'soft98.ir';
   static const String defaultDns = '1.1.1.1,1.0.0.1';
 
+  /// لیست پیش‌فرض candidate برای parallel fallback scan.
+  /// هر توکن می‌تونه `host:port` یا `subnet/24:port` باشه.
+  static const String defaultEndpointCandidates =
+      '162.159.198.0/24:443,162.159.199.0/24:443,8.6.112.0/24:443';
+
   static bool _running = false;
   static bool get isRunning => _running;
 
@@ -46,6 +51,7 @@ class WarpMasqueService {
 
   static Future<bool> start({
     String endpoint = defaultEndpoint,
+    String? endpointCandidates,
     String sni = defaultSni,
     String dns = defaultDns,
     bool http2 = true,
@@ -59,6 +65,7 @@ class WarpMasqueService {
     try {
       final ok = await _ch.invokeMethod<bool>('start', {
         'endpoint': endpoint.trim(),
+        'endpointCandidates': endpointCandidates?.trim(),
         'sni': sni.trim(),
         'dns': dns.trim(),
         'http2': http2,

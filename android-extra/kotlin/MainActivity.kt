@@ -301,6 +301,7 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "start" -> {
                         val endpoint = call.argument<String>("endpoint") ?: "162.159.198.238:443"
+                        val endpointCandidates = call.argument<String>("endpointCandidates")
                         val sni = call.argument<String>("sni") ?: "soft98.ir"
                         val dns = call.argument<String>("dns") ?: "1.1.1.1,1.0.0.1"
                         val http2 = call.argument<Boolean>("http2") ?: true
@@ -308,8 +309,8 @@ class MainActivity : FlutterActivity() {
                         val desyncPort = call.argument<Int>("desyncSocksPort") ?: 0
                         try {
                             WarpMasqueService.start(
-                                applicationContext, endpoint, sni, dns, http2,
-                                desyncEnabled, desyncPort,
+                                applicationContext, endpoint, endpointCandidates,
+                                sni, dns, http2, desyncEnabled, desyncPort,
                             )
                             result.success(true)
                         } catch (e: Exception) {

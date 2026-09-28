@@ -91,6 +91,7 @@ class WarpMasqueSessionService {
 
     final ok = await WarpMasqueService.start(
       endpoint: endpoint,
+      endpointCandidates: WarpMasqueService.defaultEndpointCandidates,
       sni: sni,
       dns: dns,
       http2: http2,
