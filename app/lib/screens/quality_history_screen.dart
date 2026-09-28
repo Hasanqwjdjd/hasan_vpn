@@ -21,6 +21,7 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
   List<QualitySample> _all = const [];
   List<QualitySample> _filtered = const [];
   Duration? _window = const Duration(hours: 24);
+  String _selectedServerId = ''; // '' = all
   bool _loading = true;
 
   @override
@@ -40,12 +41,15 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
   }
 
   void _applyFilter() {
-    _filtered = _window == null
-        ? _all
-        : _all
-            .where((s) =>
-                s.at.isAfter(DateTime.now().subtract(_window!)))
-            .toList();
+    var list = _all;
+    if (_selectedServerId.isNotEmpty) {
+      list = list.where((s) => s.serverId == _selectedServerId).toList();
+    }
+    if (_window != null) {
+      final cutoff = DateTime.now().subtract(_window!);
+      list = list.where((s) => s.at.isAfter(cutoff)).toList();
+    }
+    _filtered = list;
   }
 
   Future<void> _clear() async {
@@ -215,6 +219,7 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      _buildServerSelector(),
                       _buildWindowSelector(),
                       const SizedBox(height: 16),
                       _buildStatsRow(stats),
@@ -253,6 +258,52 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
                       ),
                     ],
                   ),
+      ),
+    );
+  }
+
+  Widget _buildServerSelector() {
+    final counts = QualityHistoryService.serverIdsWithCounts;
+    if (counts.isEmpty) return const SizedBox.shrink();
+
+    final entries = <MapEntry<String, int>>[
+      const MapEntry('', 0), // all
+      ...counts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value)),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        value: _selectedServerId,
+        dropdownColor: AppColors.elevated(context),
+        style: TextStyle(color: AppColors.fg(context), fontSize: 12),
+        decoration: InputDecoration(
+          labelText: _t('فیلتر سرور', 'Filter server'),
+          labelStyle:
+              TextStyle(color: AppColors.muted(context), fontSize: 11),
+          isDense: true,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        items: entries.map((e) {
+          final isAll = e.key.isEmpty;
+          final label = isAll
+              ? _t('همه سرورها', 'All servers')
+              : '${e.key.substring(0, e.key.length > 12 ? 12 : e.key.length)}… · ${e.value}';
+          return DropdownMenuItem<String>(
+            value: e.key,
+            child: Text(label),
+          );
+        }).toList(),
+        onChanged: (v) {
+          if (v == null) return;
+          setState(() {
+            _selectedServerId = v;
+            _applyFilter();
+          });
+        },
       ),
     );
   }
