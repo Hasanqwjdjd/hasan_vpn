@@ -2886,6 +2886,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (WarpMasqueSessionService.instance.anyRouting) {
         await WarpMasqueSessionService.instance.disconnect();
       }
+      // Desync listener برای outer TLS WARP MASQUE
+      if (DesyncService.isRunning) {
+        await DesyncService.stop();
+      }
     } catch (_) {}
     // 2) قطع Aether و Psiphon و Xray (اگر قبلاً چیزی run بود)
     try {
