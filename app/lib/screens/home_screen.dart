@@ -4475,6 +4475,59 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// میانگین امتیاز کیفیت سرورهای یه گروه.
+  ///
+  /// برمی‌گردونه: null اگه نمونه‌ای نباشه، وگرنه int (0-100).
+  int? _avgQualityForServers(Iterable<VpnServer> servers) {
+    final ids = servers.map((s) => s.id).toSet();
+    if (ids.isEmpty) return null;
+    final samples = QualityHistoryService.cached;
+    var sum = 0;
+    var count = 0;
+    // آخرین نمونه هر سرور
+    final latestByServer = <String, int>{};
+    for (final sample in samples) {
+      if (!ids.contains(sample.serverId)) continue;
+      final prev = latestByServer[sample.serverId];
+      if (prev == null) {
+        latestByServer[sample.serverId] = sample.score;
+      } else {
+        // آخرین رو نگه دار (چون samples از قدیم به جدید sort شدن)
+        latestByServer[sample.serverId] = sample.score;
+      }
+    }
+    for (final score in latestByServer.values) {
+      sum += score;
+      count++;
+    }
+    if (count == 0) return null;
+    return (sum / count).round();
+  }
+
+  /// سرورهای یه subscription با id داده‌شده.
+  Iterable<VpnServer> _serversForSubscription(String subId) {
+    if (subId == TelegramSourceService.groupId) {
+      return _freeServers;
+    }
+    if (subId.startsWith('ugroup:')) {
+      final gname = subId.substring('ugroup:'.length);
+      final ids = _userGroups[gname] ?? const <String>[];
+      return _servers.where((s) => ids.contains(s.id));
+    }
+    // از لینک‌های subscription — serverها id دارن
+    return _servers.where((s) => s.id.startsWith(subId));
+  }
+
+  /// رنگ نقطه‌ی کیفیت.
+  Color _qualityDotColor(int? avgScore) {
+    if (avgScore == null) return AppColors.muted2(context);
+    if (avgScore >= 85) return AppColors.accent;
+    if (avgScore >= 70) return const Color(0xFF8BC34A);
+    if (avgScore >= 50) return AppColors.warn;
+    if (avgScore >= 30) return const Color(0xFFFF7043);
+    return AppColors.danger;
+  }
+
   Widget _buildSubTabs() {
     if (widget.subscriptions.isEmpty && _userGroups.isEmpty) {
       return const SizedBox.shrink();
@@ -4531,6 +4584,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _subTab(String? subId, String label, [int count = 0]) {
     final active = _selectedSubId == subId;
     final short = label.length > 14 ? '${label.substring(0, 13)}…' : label;
+    // quality dot (اگه نمونه داشتیم)
+    int? avgQ;
+    if (subId != null) {
+      avgQ = _avgQualityForServers(_serversForSubscription(subId));
+    }
     return GestureDetector(
       onTap: () => _selectSubscription(subId),
       child: Container(
@@ -4545,13 +4603,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ),
         child: Center(
-          child: Text(
-            count > 0 ? '$short ($count)' : short,
-            style: TextStyle(
-              color: active ? AppColors.accent : AppColors.fg(context),
-              fontSize: 12.5,
-              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (avgQ != null && !active) ...[
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: _qualityDotColor(avgQ),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                count > 0 ? '$short ($count)' : short,
+                style: TextStyle(
+                  color: active ? AppColors.accent : AppColors.fg(context),
+                  fontSize: 12.5,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
           ),
         ),
       ),
