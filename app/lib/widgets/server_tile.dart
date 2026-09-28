@@ -140,6 +140,10 @@ class ServerTile extends StatelessWidget {
       };
       out.add(abbrev);
     }
+    // Multi-address failover pool (BackPack-derived).
+    if (server.backupAddresses.isNotEmpty) {
+      out.add('MULTI·${server.backupAddresses.length + 1}');
+    }
     // Live badge — جایگزین پیش‌فرض
     final live = liveBadge;
     if (live != null && live.isNotEmpty) {

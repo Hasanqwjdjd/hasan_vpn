@@ -880,6 +880,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final dnsCtrl = TextEditingController(text: server.dns ?? '');
     final sniPoolCtrl =
         TextEditingController(text: server.tls.sniPool.join(', '));
+    final backupCtrl =
+        TextEditingController(text: server.backupAddresses.join(', '));
 
     String pingNgProfile = server.pingNgProfile ?? 'Off';
     bool pingNgUdp = server.pingNgUdpDesync;
@@ -949,6 +951,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         _t(
                           'اگه پر باشه، هر اتصال یه دامنه تصادفی از این لیست انتخاب می‌کنه (دور زدن DPI بر اساس SNI). خالی = فقط SNI بالا.',
                           'If set, each connection picks a random domain from this list (SNI-based DPI bypass). Empty = only the SNI above.',
+                        ),
+                        style: TextStyle(
+                            color: AppColors.muted2(ctx),
+                            fontSize: 10,
+                            height: 1.4),
+                      ),
+                    ),
+                    field(
+                        _t('آدرس‌های پشتیبان (Multi-address failover)',
+                            'Backup addresses (failover)'),
+                        backupCtrl,
+                        hint: '1.2.3.4:443, 5.6.7.8:8443'),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        _t(
+                          'اگه پر باشه، قبل از هر اتصال همهٔ آدرس‌ها probe می‌شن و بهترین انتخاب می‌شه (score = mean_rtt + 2×jitter + 20×loss). فرمت: host:port با کاما.',
+                          'If set, all addresses are probed before each connect and the best is chosen (score = mean_rtt + 2*jitter + 20*loss). Format: host:port, comma-separated.',
                         ),
                         style: TextStyle(
                             color: AppColors.muted2(ctx),
@@ -1236,6 +1256,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   'targetStrategy': targetStratCtrl.text.trim(),
                   'pingNgProfile': pingNgProfile,
                   'pingNgUdp': pingNgUdp,
+                  'backupAddresses': backupCtrl.text.trim(),
                   'pingNgArgs': pingNgProfile == 'Custom'
                       ? pingNgArgsCtrl.text.trim()
                       : null,
@@ -1286,6 +1307,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final newPingArgs = (result['pingNgArgs'] as String?)?.trim();
       final newPingUdp = result['pingNgUdp'] == true;
 
+      // Multi-address failover (BackPack-derived).
+      final newBackups = ((result['backupAddresses'] as String?) ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+
       final updated = server.copyWith(
         name: newName.isNotEmpty ? newName : null,
         nameOverride: newName.isNotEmpty ? newName : null,
@@ -1298,6 +1326,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ? null
             : newPingArgs,
         pingNgUdpDesync: newPingUdp,
+        backupAddresses: newBackups,
       );
 
       // آپدیت sniOrHost (nullable final است؛ مستقیم ست می‌کنیم)
