@@ -34,6 +34,7 @@ import '../services/warp_service.dart';
 import '../services/warp_endpoint_health_monitor.dart';
 import '../services/connection_quality.dart';
 import '../services/quality_history_service.dart';
+import '../services/telemetry_service.dart';
 import 'quality_history_screen.dart';
 import '../services/warp_batch_tester.dart';
 import '../services/warp_scout_scheduler.dart';
