@@ -905,14 +905,10 @@ class V2RayEngine {
       final second = q['second'] ?? '';
       if (first.isEmpty || second.isEmpty) return '';
 
-      final p1 = FlutterVless.parse(first);
-      final p2 = FlutterVless.parse(second);
-      final cfg1 = jsonDecode(p1.getFullConfiguration());
-      final cfg2 = jsonDecode(p2.getFullConfiguration());
-      if (cfg1 is! Map || cfg2 is! Map) return '';
 
-      final ob1 = ((cfg1['outbounds'] as List?)?.first ?? {}) as Map;
-      final ob2 = ((cfg2['outbounds'] as List?)?.first ?? {}) as Map;
+      final ob1 = _chainOutboundFromLink(first);
+      final ob2 = _chainOutboundFromLink(second);
+      if (ob1 == null || ob2 == null) return '';
 
       final relay = Map<String, dynamic>.from(ob1);
       relay['tag'] = 'relay';
