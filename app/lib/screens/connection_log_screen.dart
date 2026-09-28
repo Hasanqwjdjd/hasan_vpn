@@ -22,7 +22,20 @@ class _ConnectionLogScreenState extends State<ConnectionLogScreen> {
   @override
   void initState() {
     super.initState();
+    ConnectionLogService.revision.addListener(_onLogChanged);
     _load();
+  }
+
+  void _onLogChanged() {
+    if (!mounted) return;
+    // ignore: unawaited_futures
+    _load();
+  }
+
+  @override
+  void dispose() {
+    ConnectionLogService.revision.removeListener(_onLogChanged);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -124,11 +137,15 @@ class _ConnectionLogScreenState extends State<ConnectionLogScreen> {
                           color: AppColors.muted(context), fontSize: 13),
                     ),
                   )
-                : ListView.builder(
+                : Column(
+                    children: [
+                      _buildFilterRow(),
+                      Expanded(
+                        child: ListView.builder(
                     padding: const EdgeInsets.all(12),
-                    itemCount: _entries.length,
+                    itemCount: _filtered.length,
                     itemBuilder: (ctx, i) {
-                      final e = _entries[i];
+                      final e = _filtered[i];
                       return Container(
                         margin: const EdgeInsets.only(bottom: 6),
                         padding: const EdgeInsets.symmetric(
@@ -210,6 +227,9 @@ class _ConnectionLogScreenState extends State<ConnectionLogScreen> {
                         ),
                       );
                     },
+                  ),
+                      ),
+                    ],
                   ),
       ),
     );

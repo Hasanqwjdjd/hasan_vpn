@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// یک رکورد اتصال (اتصال/قطع/خطا).
@@ -39,6 +40,14 @@ class ConnectionLogService {
   static const String _key = 'connection_log_v1';
   static const int _maxEntries = 200;
 
+  /// Notifier که UI می‌تونه listen کنه — هر بار add/clear صدا زده می‌شه.
+  static final ValueNotifier<int> revision = ValueNotifier<int>(0);
+
+  /// signal برای rebuild
+  static void _bump() {
+    revision.value = revision.value + 1;
+  }
+
   static Future<List<ConnectionLogEntry>> load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_key);
@@ -66,11 +75,13 @@ class ConnectionLogService {
       _key,
       jsonEncode(list.map((e) => e.toJson()).toList()),
     );
+    _bump();
   }
 
   static Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_key);
+    _bump();
   }
 
   /// helper برای ثبت سریع
