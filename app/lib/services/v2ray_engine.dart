@@ -901,35 +901,94 @@ class V2RayEngine {
       final link = server.shareLink;
       if (!link.startsWith('chain://')) return '';
       final q = Uri.parse(link).queryParameters;
-      final first = q['first'] ?? '';
-      final second = q['second'] ?? '';
-      if (first.isEmpty || second.isEmpty) return '';
+      // پشتیبانی از 2-hop (`first`+`second`) و N-hop (`hops` با کاما)
+      final rawHops = q['hops'] ?? '';
+      final List<String> hopLinks;
+      if (rawHops.isNotEmpty) {
+        hopLinks = rawHops
+            .split(',')
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+      } else {
+        final first = q['first'] ?? '';
+        final second = q['second'] ?? '';
+        if (first.isEmpty || second.isEmpty) return '';
+        hopLinks = [first, second];
+      }
+      if (hopLinks.length < 2) return '';
 
 
-      final ob1 = _chainOutboundFromLink(first);
-      final ob2 = _chainOutboundFromLink(second);
-      if (ob1 == null || ob2 == null) return '';
+      // ساخت outbound برای هر hop
+      final hopOutbounds = <Map<String, dynamic>>[];
+      for (var i = 0; i < hopLinks.length; i++) {
+        final ob = _chainOutboundFromLink(hopLinks[i]);
+        if (ob == null) return '';
+        hopOutbounds.add(ob);
+      }
 
-      final relay = Map<String, dynamic>.from(ob1);
-      relay['tag'] = 'relay';
-      final proxy = Map<String, dynamic>.from(ob2);
+      // chain: proxy(exit) → middle... → relay(outer, dialer)
+      // هر hop به hop بعدی به سمت exit وصل می‌شه (dialerProxy)
+      final proxy = Map<String, dynamic>.from(hopOutbounds.last);
       proxy['tag'] = 'proxy';
 
-      final stream = Map<String, dynamic>.from(
-          proxy['streamSettings'] as Map? ?? {});
-      final sockopt = Map<String, dynamic>.from(
-          stream['sockopt'] as Map? ?? {});
-      sockopt['dialerProxy'] = 'relay';
-      stream['sockopt'] = sockopt;
-      // WireGuard روی UDP است؛ network: tcp از پیش‌فرض باعث گیر کردن می‌شود.
-      if (proxy['protocol'] == 'wireguard') {
-        stream['network'] = null;
+      final middleHops = <Map<String, dynamic>>[];
+      for (var i = 1; i < hopOutbounds.length - 1; i++) {
+        final hop = Map<String, dynamic>.from(hopOutbounds[i]);
+        hop['tag'] = 'relay-$i';
+        middleHops.add(hop);
       }
-      proxy['streamSettings'] = stream;
-      // Outer WireGuard (relay) نباید streamSettings داشته باشد.
+      final relay = Map<String, dynamic>.from(hopOutbounds[0]);
+      relay['tag'] = 'relay';
+
+      // ۱) proxy → آخرین middle یا relay
+      final dialerTagForProxy = middleHops.isNotEmpty
+          ? (middleHops.last['tag'] as String)
+          : 'relay';
+      {
+        final stream = Map<String, dynamic>.from(
+            proxy['streamSettings'] as Map? ?? {});
+        final sockopt = Map<String, dynamic>.from(
+            stream['sockopt'] as Map? ?? {});
+        sockopt['dialerProxy'] = dialerTagForProxy;
+        stream['sockopt'] = sockopt;
+        if (proxy['protocol'] == 'wireguard') {
+          stream['network'] = null;
+        }
+        proxy['streamSettings'] = stream;
+      }
+
+      // ۲) middle hops: هر کدوم به hop *قبل* از خودش (به سمت relay/outer)
+      // chain: proxy → middle_last → ... → middle_0 → relay → net
+      for (var i = 0; i < middleHops.length; i++) {
+        final hop = middleHops[i];
+        final prevTag = i == 0
+            ? 'relay'
+            : (middleHops[i - 1]['tag'] as String);
+        final stream = Map<String, dynamic>.from(
+            hop['streamSettings'] as Map? ?? {});
+        final sockopt = Map<String, dynamic>.from(
+            stream['sockopt'] as Map? ?? {});
+        sockopt['dialerProxy'] = prevTag;
+        stream['sockopt'] = sockopt;
+        if (hop['protocol'] == 'wireguard') {
+          stream['network'] = null;
+        }
+        hop['streamSettings'] = stream;
+      }
+
+      // ۳) relay (outer) — خودش هیچ dialerProxy نداره
+      // (برای wireguard، streamSettings رو کلاً حذف کن چون network=tcp
+      // باعث گیر کردن UDP می‌شه)
       if (relay['protocol'] == 'wireguard') {
         relay.remove('streamSettings');
       }
+
+      final allHops = <Map<String, dynamic>>[
+        relay,
+        ...middleHops,
+        proxy,
+      ];
 
       final cfg = <String, dynamic>{
         'log': {'loglevel': 'warning'},
@@ -947,8 +1006,7 @@ class V2RayEngine {
           },
         ],
         'outbounds': [
-          proxy,
-          relay,
+          ...allHops,
           {'tag': 'direct', 'protocol': 'freedom'},
           {
             'tag': 'block',
