@@ -49,6 +49,27 @@ class WarpMasqueService : Service() {
 
         private const val MAX_PARALLEL_MASQUE_ATTEMPTS = 6
         private const val MAX_PARALLEL_ENDPOINT_PROBES = 64
+
+        // SNI rotation — لیست SNI های معتبر که هر probe یکی رو انتخاب می‌کنه.
+        // از Cloudflare fronted hosts که برای MASQUE کار می‌کنن.
+        private val SNI_POOL = listOf(
+            "soft98.ir",
+            "www.speedtest.net",
+            "cloudflare.com",
+            "www.cloudflare.com",
+            "dash.cloudflare.com",
+            "1.1.1.1",
+            "cloudflare-dns.com",
+            "one.one.one.one",
+            "cf.workers.dev",
+        )
+
+        /** انتخاب SNI چرخشی بر اساس index برای پخش load. */
+        private fun pickSni(baseSni: String, attemptIdx: Int): String {
+            // اگه کاربر SNI سفارشی داده، ازش استفاده کن
+            if (baseSni.isNotBlank() && baseSni != "soft98.ir") return baseSni
+            return SNI_POOL[attemptIdx % SNI_POOL.size]
+        }
         private const val FALLBACK_POOL = (
             "162.159.198.0/24:443," +
                 "162.159.199.0/24:443," +
@@ -344,6 +365,9 @@ class WarpMasqueService : Service() {
             baseConfig.copyTo(attemptConfig, overwrite = true)
             patchHttpProxy(attemptConfig, desyncProxyUrl)
 
+            // SNI rotation — hash از endpoint به index
+            val sniIdx = kotlin.math.abs(endpoint.host.hashCode() + endpoint.port)
+            val effectiveSni = pickSni(sni, sniIdx)
             val args = mutableListOf(
                 binary.absolutePath,
                 "-c", attemptConfig.absolutePath,
@@ -351,7 +375,7 @@ class WarpMasqueService : Service() {
                 "-b", "127.0.0.1",
                 "-p", listenPort.toString(),
                 "-P", endpoint.port.toString(),
-                "-s", sni,
+                "-s", effectiveSni,
             )
             dns.split(",").map { it.trim() }.filter { it.isNotEmpty() }.forEach {
                 args.add("-d"); args.add(it)
