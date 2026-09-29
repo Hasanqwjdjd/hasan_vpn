@@ -134,6 +134,22 @@ class ServerTile extends StatelessWidget {
     return false;
   }
 
+  /// Side-strip color: ping-tier at a glance.
+  /// green = good (<700ms), amber = ok (<1400ms), red = poor, grey = unknown.
+  Color _sideStripColor(BuildContext context) {
+    final p = server.ping;
+    final status = server.status;
+    if (status == ServerStatus.offline) return AppColors.danger;
+    if (p == null || p <= 0) return AppColors.muted2(context);
+    if (server.pingKind == PingKind.tcp) {
+      // TCP-only is approximate; keep it neutral but slightly cooler.
+      return p < 700 ? AppColors.accent : AppColors.warn;
+    }
+    if (p < 700) return AppColors.accent;
+    if (p < 1400) return AppColors.warn;
+    return AppColors.danger;
+  }
+
   /// badge های کوچیک برای نشان دادن ویژگی‌های خاص سرور.
   List<String> get _badges {
     final out = <String>[];
@@ -308,6 +324,9 @@ class ServerTile extends StatelessWidget {
     // حالت compact: گرید دوستونی — آیکون‌ها فشرده،
     // Pin / Test / CDN-badge مخفی، متن ellipsis.
     final c = compact;
+    // The side strip conveys ping-tier at a glance, matching PingNG:
+    // green = good, amber = ok, red = poor, grey = untested / offline.
+    final stripColor = _sideStripColor(context);
     return Container(
       margin: EdgeInsets.only(bottom: c ? 0 : 6),
       decoration: BoxDecoration(
@@ -320,8 +339,15 @@ class ServerTile extends StatelessWidget {
           width: selected ? 1.5 : 1,
         ),
       ),
-      child: Material(
-        color: Colors.transparent,
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 4-px tier bar on the leading edge.
+          Container(width: 4, color: stripColor),
+          Expanded(
+            child: Material(
+              color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: onTap,
@@ -617,6 +643,10 @@ class ServerTile extends StatelessWidget {
             ),
           ),
         ),
+      ),
+            ),
+          ),
+        ],
       ),
     );
   }
