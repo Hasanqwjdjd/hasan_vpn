@@ -2449,15 +2449,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _startAutoTestTimer() async {
+    // Manual-only by design. The periodic auto test has been removed
+    // because it was the single biggest contributor to heat and battery
+    // drain and because the user asked for manual runs only.
     _autoTestTimer?.cancel();
-    try {
-      final min = await SettingsService.getAutoTestIntervalMin();
-      if (min <= 0) return;
-      _autoTestTimer = Timer.periodic(
-        Duration(minutes: min),
-        (_) => _runAutoTestAll(),
-      );
-    } catch (_) {}
+    _autoTestTimer = null;
   }
 
   Future<void> _runAutoTestAll() async {
