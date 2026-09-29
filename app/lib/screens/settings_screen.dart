@@ -74,6 +74,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     SettingsService.getAutoTestIntervalMin().then((v) {
       if (mounted) setState(() => _autoTestMin = v);
     });
+    // ignore: unawaited_futures
+    SettingsService.getAutoConnectBoot().then((v) {
+      if (mounted) setState(() => _autoConnectBoot = v);
+    });
     _lang = widget.language;
     // ignore: unawaited_futures
     SettingsService.getVpnMode().then((m) {

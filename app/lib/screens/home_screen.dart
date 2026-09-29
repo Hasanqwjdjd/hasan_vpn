@@ -1630,6 +1630,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _jumpToSelected() async {
+    // Uses jumpTo below for the same reason as scrollToTop: animation with
+    // thousands of items rebuilds every frame and stutters.
     final selected = _selected;
     if (selected == null) {
       _showMsg(_t('هیچ سروری انتخاب نشده', 'No server selected'));
@@ -5067,21 +5069,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _rebuildServerList();
   }
 
-  Future<void> _scrollToTop() async {
+  /// Jump, not animate. With thousands of servers an animated scroll makes
+  /// the framework build every intermediate frame, which is what made the
+  /// app stutter and heat up. jumpTo lands in one frame.
+  void _scrollToTop() {
     if (!_listScrollController.hasClients) return;
-    await _listScrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeOut,
-    );
+    _listScrollController.jumpTo(0);
   }
 
-  Future<void> _scrollToBottom() async {
+  void _scrollToBottom() {
     if (!_listScrollController.hasClients) return;
-    await _listScrollController.animateTo(
+    _listScrollController.jumpTo(
       _listScrollController.position.maxScrollExtent,
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeOut,
     );
   }
 
