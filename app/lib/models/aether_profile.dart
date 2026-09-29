@@ -394,24 +394,21 @@ class AetherProfile {
     }
 
     if (protocol == 'auto') {
-      // mobile-first: TCP/443 (MASQUE H2) و تودرتو (GOOL/MIM) قبل از H3/QUIC.
-      // روی Irancell/MCI اغلب UDP/QUIC سخت‌تر است ولی HTTPS-مانند شانس دارد.
+      // Short, ordered ladder. It used to be eight attempts wide, each
+      // with its own 30 s timeout — so a single tap on "connect" ran the
+      // phone for up to four minutes and burned battery until the last
+      // protocol gave up. Three attempts is enough: the first two cover
+      // the two families that win on Iranian mobile (H2/443 and WG-in-WG)
+      // and the third is the H3 fallback for when UDP/QUIC happens to be
+      // open. Anything past that was only reached on a network where
+      // nothing was going to work anyway.
       final fixedScan = scan == 'smart' ? null : scan;
       attempts.add(_attempt('masque', true, fixedScan ?? 'balanced',
-          forceNoize: 'gfw')); // H2 / TCP 443
-      attempts.add(_attempt('masque', true, fixedScan ?? 'thorough',
-          forceNoize: 'aggressive'));
+          forceNoize: 'gfw')); // H2 / TCP 443 — fastest on 4G
       attempts.add(_attempt('gool', false, fixedScan ?? 'balanced',
           forceNoize: 'gfw')); // WG-in-WG for hostile nets
-      attempts.add(_attempt('mim', true, fixedScan ?? 'balanced',
-          forceNoize: 'gfw')); // MASQUE-in-MASQUE over H2
-      attempts.add(_attempt('masque', false, fixedScan ?? 'turbo')); // H3
-      attempts.add(_attempt('wg', false, fixedScan ?? 'balanced',
-          forceNoize: 'gfw'));
-      attempts.add(_attempt('gool', false, fixedScan ?? 'balanced',
-          forceNoize: 'aggressive'));
-      attempts.add(_attempt('mim', false, fixedScan ?? 'thorough',
-          forceNoize: 'gfw'));
+      attempts.add(_attempt('masque', false, fixedScan ?? 'balanced'));
+      // H3 / QUIC
     } else {
       final String proto;
       final bool h2;

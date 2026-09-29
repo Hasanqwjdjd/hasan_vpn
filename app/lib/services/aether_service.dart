@@ -286,19 +286,34 @@ class AetherService {
     }
 
 
-    final started = await _channel.invokeMethod<bool>(
-          'start',
-          <String, dynamic>{
-            'env': jsonEncode(env),
-            'remark': server.name,
-          },
-        ) ??
-        false;
+    // The native service can refuse to start; give the call a bound so
+    // one hung start cannot block the whole attempt.
+    bool started = false;
+    try {
+      final r = await _channel
+          .invokeMethod<bool>(
+            'start',
+            <String, dynamic>{
+              'env': jsonEncode(env),
+              'remark': server.name,
+            },
+          )
+          .timeout(const Duration(seconds: 12));
+      started = r ?? false;
+    } catch (e) {
+      debugPrint('Aether start invoke failed: $e');
+      started = false;
+    }
 
     if (!started) {
       final status = await nativeStatus();
       lastError = status['error']?.toString() ??
           'Aether service could not be started';
+      // Ensure the process is stopped before the next attempt spawns a
+      // new one, otherwise a failed attempt leaves its binary running.
+      try {
+        await _stopNative();
+      } catch (_) {}
       return false;
     }
 
@@ -308,6 +323,10 @@ class AetherService {
     while (DateTime.now().isBefore(deadline)) {
       if (cancelled()) return false;
 
+      // The status poll is a MethodChannel round trip; without a sleep it
+      // fires hundreds of times a second and heats the phone all on its
+      // own. 400 ms is fast enough to feel live and slow enough to be free.
+      await Future<void>.delayed(const Duration(milliseconds: 400));
       final status = await nativeStatus();
 
       final line = _shorten(status['lastLine']?.toString() ?? '');
