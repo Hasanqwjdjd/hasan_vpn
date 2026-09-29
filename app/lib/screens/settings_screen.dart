@@ -83,6 +83,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     SettingsService.getVpnMode().then((m) {
       if (mounted) setState(() => _vpnMode = m);
     });
+    // These three loaders exist but were never called, which is why the
+    // toggles/sliders kept falling back to their hard-coded defaults every
+    // time the screen opened: the value was saved, then never read back.
+    // ignore: unawaited_futures
+    _loadSmartResumePrefSettings();
+    // ignore: unawaited_futures
+    _loadQualityPrefs();
+    // ignore: unawaited_futures
+    _loadBatchPrefs();
   }
 
   Future<void> _loadScoutState() async {
