@@ -517,29 +517,63 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                             style: TextStyle(
                                 color: AppColors.muted2(ctx), fontSize: 12))
                       else
-                        ...List.generate(links.length, (i) {
-                          final link = links[i];
-                          final short = link.length > 48
-                              ? '${link.substring(0, 48)}…'
-                              : link;
-                          return ListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(short,
+                        // Rendering every link inline was the freeze: a
+                        // subscription with 3000 configs built 3000 tiles
+                        // inside a SingleChildScrollView, so the whole
+                        // list was laid out on open. Cap the preview at 30
+                        // and let the user scroll a bounded ListView for
+                        // the rest, and use the built-in multi-line text
+                        // view for the raw list (no widgets at all).
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (links.length > 30)
+                              Text(
+                                _t(
+                                  'پیش‌نمایش ۳۰ کانفیگ اول (کل: ${links.length}). برای مشاهده/حذف بقیه از textarea پایین استفاده کن.',
+                                  'Preview of first 30 of ${links.length}. Edit the raw list in the textarea below.',
+                                ),
                                 style: TextStyle(
-                                    color: AppColors.fg(ctx),
-                                    fontSize: 11),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.close,
-                                  color: AppColors.danger, size: 16),
-                              onPressed: () {
-                                setLocal(() => links.removeAt(i));
-                              },
+                                    color: AppColors.muted2(ctx),
+                                    fontSize: 10,
+                                    height: 1.4),
+                              ),
+                            const SizedBox(height: 4),
+                            SizedBox(
+                              height: links.length > 6 ? 220 : null,
+                              child: ListView.builder(
+                                shrinkWrap: links.length <= 6,
+                                itemCount:
+                                    links.length > 30 ? 30 : links.length,
+                                itemBuilder: (_, i) {
+                                  final link = links[i];
+                                  final short = link.length > 48
+                                      ? '${link.substring(0, 48)}…'
+                                      : link;
+                                  return ListTile(
+                                    dense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(short,
+                                        style: TextStyle(
+                                            color: AppColors.fg(ctx),
+                                            fontSize: 11),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis),
+                                    trailing: IconButton(
+                                      icon: const Icon(Icons.close,
+                                          color: AppColors.danger,
+                                          size: 16),
+                                      onPressed: () {
+                                        setLocal(
+                                            () => links.removeAt(i));
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
                             ),
-                          );
-                        }),
+                          ],
+                        ),
                       const SizedBox(height: 10),
                       Text(
                         _t(

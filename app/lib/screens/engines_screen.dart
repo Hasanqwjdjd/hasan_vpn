@@ -27,7 +27,20 @@ class _EnginesScreenState extends State<EnginesScreen> {
     EngineVersionChecker.instance.onUpdated = () {
       if (mounted) setState(() => _checking = false);
     };
-    _check();
+    // Do not hit the GitHub API just because the screen opened. The
+    // updater is now driven by the Refresh button only; cached results
+    // from a previous run are shown immediately.
+    _checking = false;
+    _loadCachedOnly();
+  }
+
+  /// Populate the version badges from the on-disk cache without any
+  /// network call. Called once in initState.
+  Future<void> _loadCachedOnly() async {
+    try {
+      await EngineVersionChecker.instance.loadCached();
+      if (mounted) setState(() {});
+    } catch (_) {}
   }
 
   @override
