@@ -30,6 +30,18 @@ class MainActivity : FlutterActivity() {
         @Volatile var warpMasqueChannel: MethodChannel? = null
     }
 
+    /// When the activity is being destroyed, sweep any notification this
+    /// app left behind. Foreground-service notifications are normally
+    /// removed by STOP_FOREGROUND_REMOVE when the service stops, but a
+    /// crash or an unclean process kill leaves the row in the shade.
+    /// cancelAll() is idempotent — safe to call even when nothing is left.
+    override fun onDestroy() {
+        try {
+            NotificationHelper.cancelAll(applicationContext)
+        } catch (_: Exception) {}
+        super.onDestroy()
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 

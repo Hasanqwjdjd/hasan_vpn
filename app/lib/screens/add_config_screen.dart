@@ -745,30 +745,77 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
 
     if (!mounted) return;
 
-    // استخراج outer/inner از log پردازه (فارسی یا انگلیسی)
+    // Extract outer/inner from the Aether process log. The log lines have
+    // changed wording across releases, so try several patterns before
+    // giving up. Format is always host:port, IPv4 or bracketed IPv6.
     String outer = '';
     String inner = '';
     if (ok) {
       try {
         final log = await AetherService.nativeLog();
-        // مسیر بیرونی 188.114.96.132:878 و مسیر درونی 188.114.96.1:1701 پیدا شد
+
+        // helper: first host:port match in a string, ignoring the label
+        String? firstHostPort(String text) {
+          final m = RegExp(
+            r'(\d{1,3}(?:\.\d{1,3}){3}:\d{1,5}|\[[0-9a-fA-F:]+\]:\d{1,5})',
+          ).firstMatch(text);
+          return m?.group(1);
+        }
+
+        // 1) Persian: "مسیر بیرونی X و مسیر درونی Y پیدا شد"
         final faRe = RegExp(
-            r'مسیر بیرونی\s+(\S+)\s+و مسیر درونی\s+(\S+)\s+پیدا شد');
+            r'مسیر بیرونی\s+(\S+?)\s+و\s+مسیر درونی\s+(\S+?)\s+پیدا',
+            unicode: true);
         var m = faRe.firstMatch(log);
         if (m != null) {
           outer = m.group(1) ?? '';
           inner = m.group(2) ?? '';
-        } else {
-          // using cloudflare edge X:Y (outer) and Z:W (inner)
+        }
+
+        // 2) English: "cloudflare edge X (outer) and Y (inner)"
+        if (outer.isEmpty || inner.isEmpty) {
           final enRe = RegExp(
-              r'cloudflare edge\s+(\S+)\s+\(outer\)\s+and\s+(\S+)\s+\(inner\)');
+              r'cloudflare edge\s+(\S+)\s*\(outer\)\s*and\s*(\S+)\s*\(inner\)',
+              caseSensitive: false);
           m = enRe.firstMatch(log);
           if (m != null) {
             outer = m.group(1) ?? '';
             inner = m.group(2) ?? '';
           }
         }
-      } catch (_) {}
+
+        // 3) generic "outer" / "inner" lines (any order, any language)
+        if (outer.isEmpty) {
+          final om = RegExp(r'outer[^\n]*?(\d{1,3}(?:\.\d{1,3}){3}:\d{1,5})',
+                  caseSensitive: false)
+              .firstMatch(log);
+          if (om != null) outer = om.group(1) ?? '';
+        }
+        if (inner.isEmpty) {
+          final im = RegExp(r'inner[^\n]*?(\d{1,3}(?:\.\d{1,3}){3}:\d{1,5})',
+                  caseSensitive: false)
+              .firstMatch(log);
+          if (im != null) inner = im.group(1) ?? '';
+        }
+
+        // 4) Last resort: scan the last "Found ... route" block for two
+        //    host:port tokens in order — first is outer, second is inner.
+        if (outer.isEmpty || inner.isEmpty) {
+          final tail = log.length > 2000
+              ? log.substring(log.length - 2000)
+              : log;
+          final found = RegExp(
+                  r'(\d{1,3}(?:\.\d{1,3}){3}:\d{1,5})')
+              .allMatches(tail)
+              .map((e) => e.group(1) ?? '')
+              .where((s) => s.isNotEmpty)
+              .toList();
+          if (outer.isEmpty && found.isNotEmpty) outer = found.first;
+          if (inner.isEmpty && found.length > 1) inner = found[1];
+        }
+      } catch (e) {
+        debugPrint('aether scan parse error: $e');
+      }
     }
 
     setState(() {
