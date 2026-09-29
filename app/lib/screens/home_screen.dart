@@ -1768,6 +1768,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             })
         .toList();
     await prefs.setString(_customKey, jsonEncode(data));
+    // Keep the export cache in step. Quality history and server health
+    // screens read `quick_export_servers_v1`; the cache was only built in
+    // initState, so after adding or editing a server those screens kept
+    // looking at a snapshot from app launch.
+    unawaited(_refreshExportCache());
   }
 
   Future<void> _saveDeleted() async {
@@ -2380,6 +2385,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _servers = <VpnServer>[...pinned, ...unpinned];
     }
     setState(() {});
+  
+    // The export cache feeds the quality / health screens — refresh
+    // it whenever the list actually changes.
+    unawaited(_refreshExportCache());
   }
 
   Future<void> _loadSmartResumePref() async {
