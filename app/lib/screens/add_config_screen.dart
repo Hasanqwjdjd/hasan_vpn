@@ -5101,9 +5101,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   ),
                 ),
               ),
-            ] else if (_selectedType == 'aether' ||
-                false) ...[
-                            _buildAetherForm(),
+            ] else if (_selectedType == 'aether') ...[
+              _buildAetherForm(),
               const SizedBox(height: 16),
             ] else if (_selectedType == 'hysteria2') ...[
               _buildHysteria2Form(),
@@ -5112,18 +5111,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               _buildSiphonForm(),
             ] else if (_selectedType == 'tor') ...[
               _buildTorForm(),
- else if (_selectedType == 'warp') ...[
-              _buildWarpForm(),
-              const SizedBox(height: 16),
-            ] else if (_selectedType == 'masterdns') ...[
-              _buildMasterDnsForm(),
-              const SizedBox(height: 16),
-            ] else if (_selectedType == 'warpmasque') ...[
-              _buildWarpMasqueForm(),
-              const SizedBox(height: 16),
-            ] else if (_selectedType == 'ssh') ...[
-              _buildSshForm(),
- else if (_selectedType == 'chain') ...[
+            ] else if (_selectedType == 'chain') ...[
               _buildChainForm(),
             ],
           ],
