@@ -5444,7 +5444,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               // instead of the default 250-pixel margin; with thousands of
               // servers that margin was building dozens of tiles per frame.
               cacheExtent: 120.0,
-              addRepaintBoundaries: true,
               proxyDecorator: (child, index, animation) {
                 return Material(
                   color: Colors.transparent,
