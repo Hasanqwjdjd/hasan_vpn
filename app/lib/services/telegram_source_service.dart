@@ -277,12 +277,34 @@ class TelegramSourceService {
     final url = 'https://t.me/s/$channel';
     final urlAlt = 'https://telegram.me/s/$channel';
 
-    // FIX: ترتیب جدید — اول direct (چون v2ray vless خودش tun داره و
-    // direct ترافیک از Xray رد می‌شه)، بعد SOCKS، بعد proxy عمومی.
-    // اگر Tor وصله، SOCKS اول میاد چون direct blocked می‌شه.
+    // Order matters. There are three transports in play:
+    //   1) The Xray VPN, if active — the OS routes every socket through it,
+    //      so a plain http.get already leaves Iran via the tunnel. Going
+    //      through the local SOCKS port on top of that double-proxies and
+    //      some servers reject the second hop.
+    //   2) Tor, if active — t.me is not reachable directly, only through
+    //      the SOCKS on 9050.
+    //   3) No tunnel — direct will fail on the Iranian filter, so try the
+    //      public readers, and only the ones that actually exist today.
+    final vpnActive = V2RayEngine.isConnected;
 
-    // 1) SOCKS (وقتی Tor یا Aether وصلن)
-    if (socksPort > 0) {
+    // VPN first: plain HTTP (the OS already routes through the tunnel).
+    if (vpnActive) {
+      for (final u in [url, urlAlt]) {
+        try {
+          final r = await http.get(Uri.parse(u),
+              headers: {'User-Agent': _ua, 'Accept': 'text/html'}).timeout(
+              const Duration(seconds: 15));
+          if (r.statusCode == 200) {
+            final l = _extractLinks(r.body);
+            if (l.isNotEmpty) return l;
+          }
+        } catch (_) {}
+      }
+    }
+
+    // Tor SOCKS.
+    if (socksPort > 0 && socksPort != V2RayEngine.localSocksPort) {
       for (final u in [url, urlAlt]) {
         final html = await _nativeFetch(u, socksPort);
         if (html != null) {
@@ -292,7 +314,7 @@ class TelegramSourceService {
       }
     }
 
-    // 2) direct (وقتی VPN سرور وصله یا کاربر اپ رو بدون تونل باز کرده)
+    // Direct HTTP (works when VPN is active but the SOCKS path was flaky).
     for (final u in [url, urlAlt]) {
       try {
         final r = await http.get(Uri.parse(u),
@@ -305,11 +327,13 @@ class TelegramSourceService {
       } catch (_) {}
     }
 
-    // 3+4) public proxies (وقتی Iran block کامل شده)
+    // Public readers. corsproxy.io was dropped (it now requires an API
+    // key and returns 401); the remaining two are tried with a longer
+    // timeout because they are the last resort before giving up.
     final paths = <String>[
       'https://r.jina.ai/$url',
       'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}',
-      'https://corsproxy.io/?${Uri.encodeComponent(url)}',
+      'https://api.codetabs.com/v1/proxy/?quest=${Uri.encodeComponent(url)}',
     ];
     for (final p in paths) {
       try {

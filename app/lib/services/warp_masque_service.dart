@@ -59,7 +59,11 @@ class WarpMasqueService {
   /// لیست پیش‌فرض candidate برای parallel fallback scan.
   /// هر توکن می‌تونه `host:port` یا `subnet/24:port` باشه.
   static const String defaultEndpointCandidates =
-      '162.159.198.0/24:443,162.159.199.0/24:443,8.6.112.0/24:443';
+      '162.159.198.0/24:443,162.159.199.0/24:443,'
+      '162.159.192.0/24:443,162.159.193.0/24:443,'
+      '162.159.195.0/24:443,188.114.96.0/24:443,'
+      '188.114.97.0/24:443,188.114.98.0/24:443,'
+      '188.114.99.0/24:443';
 
   static bool _running = false;
   static bool get isRunning => _running;

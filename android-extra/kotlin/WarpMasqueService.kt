@@ -71,10 +71,20 @@ class WarpMasqueService : Service() {
             if (baseSni.isNotBlank() && baseSni != "soft98.ir") return baseSni
             return SNI_POOL[attemptIdx % SNI_POOL.size]
         }
+        // Cloudflare WARP/MASQUE anycast subnets. 8.6.112.0/24 was
+        // removed — it is not a Cloudflare range and every probe there
+        // was wasted time. The 162.159.192-199 block is where usque
+        // registers, and 188.114.96-99 fronts most workers.dev routes.
         private const val FALLBACK_POOL = (
-            "162.159.198.0/24:443," +
+            "162.159.192.0/24:443," +
+                "162.159.193.0/24:443," +
+                "162.159.195.0/24:443," +
+                "162.159.198.0/24:443," +
                 "162.159.199.0/24:443," +
-                "8.6.112.0/24:443"
+                "188.114.96.0/24:443," +
+                "188.114.97.0/24:443," +
+                "188.114.98.0/24:443," +
+                "188.114.99.0/24:443"
             )
 
         const val SOCKS_PORT = 1819
