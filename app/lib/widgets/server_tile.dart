@@ -113,6 +113,27 @@ class ServerTile extends StatelessWidget {
     return '$proto · $host';
   }
 
+  /// Does this host sit inside a Cloudflare-owned IPv4 range? Used to put
+  /// a "CF" badge on MASQUE / WARP+ / chain servers that are fronted.
+  static bool _isCloudflareHost(String host) {
+    if (host.isEmpty) return false;
+    final parts = host.split('.');
+    if (parts.length != 4) return false;
+    final a = int.tryParse(parts[0]);
+    final b = int.tryParse(parts[1]);
+    if (a == null || b == null) return false;
+    // Ranges Cloudflare actually announces for WARP/MASQUE + their Anycast
+    // edge pool (162.159.192.0/24 is what usque registers against).
+    if (a == 162 && b == 159) return true;
+    if (a == 104 && b >= 16 && b <= 31) return true;
+    if (a == 172 && b >= 64 && b <= 71) return true;
+    if (a == 188 && b == 114) return true;
+    if (a == 190 && b == 93) return true;
+    if (a == 197 && b == 234) return true;
+    if (a == 198 && b == 41) return true;
+    return false;
+  }
+
   /// badge های کوچیک برای نشان دادن ویژگی‌های خاص سرور.
   List<String> get _badges {
     final out = <String>[];
@@ -122,15 +143,27 @@ class ServerTile extends StatelessWidget {
       out.add(profile == 'Custom' ? 'DSYNC·C' : 'DSYNC');
     }
     if (server.pingNgUdpDesync) out.add('UDP');
-    // WarpScout — فقط برای WARP/WARP+/MASQUE با mode ست‌شده
+
+    // MASQUE servers are always fronted by Cloudflare Anycast; the parallel
+    // scanner always runs, so show "CF" and "SCAN·P" even without a mode.
+    if (server.protocol == VpnProtocol.warpMasque) {
+      final candidates = server.warpMasqueEndpointCandidates ?? '';
+      if (candidates.isNotEmpty) {
+        final n = candidates.split(',').length;
+        out.add('SCAN·P$n');
+      } else {
+        out.add('SCAN·P');
+      }
+      if (_isCloudflareHost(server.host)) out.add('CF');
+    }
+
+    // WarpScout — فقط برای WARP/WARP+ با mode ست‌شده
     final mode = server.warpEndpointMode;
     final isWarpLike = server.protocol == VpnProtocol.amneziaWg ||
-        server.protocol == VpnProtocol.warpMasque ||
         (server.protocol == VpnProtocol.chain &&
             (server.shareLink.contains('vpn://') ||
                 server.shareLink.contains('vpn%3A%2F%2F')));
     if (isWarpLike && mode != null && mode.isNotEmpty) {
-      // علامت اختصاری برای mode
       final abbrev = switch (mode) {
         'Fast' => 'SCAN·F',
         'Medium' => 'SCAN·M',
@@ -139,6 +172,10 @@ class ServerTile extends StatelessWidget {
         _ => 'SCAN',
       };
       out.add(abbrev);
+    }
+    // Cloudflare-fronted WARP+ too
+    if (isWarpLike && _isCloudflareHost(server.host)) {
+      out.add('CF');
     }
     // Multi-address failover pool (BackPack-derived).
     if (server.backupAddresses.isNotEmpty) {
@@ -393,7 +430,7 @@ class ServerTile extends StatelessWidget {
                           ),
                           if (_badges.isNotEmpty && !c) ...[
                             const SizedBox(width: 4),
-                            for (final b in _badges.take(2))
+                            for (final b in _badges.take(3))
                               Padding(
                                 padding: const EdgeInsets.only(left: 3),
                                 child: Container(
