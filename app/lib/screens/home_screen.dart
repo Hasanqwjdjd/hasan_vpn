@@ -5171,7 +5171,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             padding: const EdgeInsets.symmetric(horizontal: 4),
             constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
           ),
-          // Overflow menu — find / top / bottom / sort / selection.
+          // Settings — was removed by mistake; users had no way to reach it.
+          IconButton(
+            icon: Icon(Icons.settings,
+                color: AppColors.muted(context), size: 20),
+            onPressed: widget.onOpenSettings,
+            tooltip: _t('تنظیمات', 'Settings'),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          ),
+          // Overflow menu — top / bottom / sort / selection.
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert,
                 color: AppColors.accent, size: 20),

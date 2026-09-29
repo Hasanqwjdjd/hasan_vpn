@@ -88,6 +88,7 @@ class TelegramSourceService {
 
   /// پورت SOCKS فعال (9050=Tor، 10808=Xray) یا 0.
   static Future<int> _detectSocksPort() async {
+    // 1) Tor, if running.
     try {
       final st = await TorService.status();
       if (st['running'] == true) {
@@ -95,9 +96,18 @@ class TelegramSourceService {
         if (p > 0) return p;
       }
     } catch (_) {}
+    // 2) Any running Xray session, at whatever port it actually bound.
+    //    The old code assumed 10808; the registration proxy binds a random
+    //    port, and any user with a non-default port was silently falling
+    //    through to "no proxy" and getting the filter page from t.me.
     try {
-      if (V2RayEngine.isConnected) return 10808;
+      if (V2RayEngine.isConnected) {
+        final p = V2RayEngine.localSocksPort;
+        if (p > 0) return p;
+      }
     } catch (_) {}
+    // 3) No active tunnel — return 0 so the caller knows the fetch will
+    //    fail on the Iranian network and can surface that to the user.
     return 0;
   }
 

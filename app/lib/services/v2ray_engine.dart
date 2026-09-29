@@ -586,8 +586,11 @@ class V2RayEngine {
           XrayJson.looksLike(server.shareLink);
 
       if (isSelfContainedJson) {
+        // Leave the config's own inbounds exactly as written: configs like
+        // Serverless-v51 already declare a mixed-in at 10808 with its own
+        // sockopt tuning. Adding a second inbound collides with it and
+        // breaks routing. We only adjust the log level and asset paths.
         config = _applyJsonLogLevelOnly(config);
-        config = _ensureLocalInbound(config);
         config = await _applyGeoAssetPaths(config);
       } else {
         // BLOCKER 1: every setting must land in the runtime config for ALL
