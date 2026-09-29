@@ -397,7 +397,6 @@ jobs:
               text = text.replace(
                   "</application>",
                   '    <service\n'
-                  '        android:name="com.hasan.hasan_vpn.MasterDnsService"\n'
                   '        android:enabled="true"\n'
                   '        android:exported="false"\n'
                   '        android:foregroundServiceType="specialUse" />\n'
@@ -421,7 +420,6 @@ jobs:
               text = text.replace(
                   "</application>",
                   '    <service\n'
-                  '        android:name="com.hasan.hasan_vpn.WarpMasqueService"\n'
                   '        android:enabled="true"\n'
                   '        android:exported="false"\n'
                   '        android:foregroundServiceType="specialUse" />\n'
@@ -440,7 +438,6 @@ jobs:
                   android:exported="false"
                   android:foregroundServiceType="specialUse" />
               <service
-                  android:name="com.hasan.hasan_vpn.TunnelService"
                   android:enabled="true"
                   android:exported="false"
                   android:foregroundServiceType="specialUse" />

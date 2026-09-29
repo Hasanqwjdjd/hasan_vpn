@@ -19,15 +19,11 @@ class MainActivity : FlutterActivity() {
     private val monitorChannel = "com.hasan.hasan_vpn/monitor"
     private val widgetChannel = "com.hasan.hasan_vpn/widget"
     private val logsChannel = "com.hasan.hasan_vpn/logs"
-    private val masterDnsChannelName = "com.hasan.hasan_vpn/masterdns"
-    private val warpMasqueChannelName = "com.hasan.hasan_vpn/warpmasque"
     private val desyncChannelName = "com.hasan.hasan_vpn/desync"
 
     private var widgetChannelRef: MethodChannel? = null
 
     companion object {
-        @Volatile var masterDnsChannel: MethodChannel? = null
-        @Volatile var warpMasqueChannel: MethodChannel? = null
     }
 
     /// When the activity is being destroyed, sweep any notification this
@@ -304,27 +300,6 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.hasan.hasan_vpn/tunnel")
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "start" -> {
-                        val binary = call.argument<String>("binary") ?: ""
-                        val args = call.argument<List<String>>("args") ?: emptyList()
-                        val env = call.argument<Map<String, String>>("env") ?: emptyMap()
-                        val remark = call.argument<String>("remark") ?: "Tunnel"
-                        val ok = TunnelService.start(
-                            applicationContext, binary, args, env, remark,
-                        )
-                        result.success(ok)
-                    }
-                    "stop" -> {
-                        TunnelService.stop(applicationContext)
-                        result.success(true)
-                    }
-                    "status" -> result.success(TunnelService.status())
-                    else -> result.notImplemented()
-                }
-            }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, torChannel)
             .setMethodCallHandler { call, result ->
@@ -355,53 +330,6 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        val wmqCh = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, warpMasqueChannelName)
-        warpMasqueChannel = wmqCh
-        wmqCh.setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "start" -> {
-                        val endpoint = call.argument<String>("endpoint") ?: "162.159.198.238:443"
-                        val endpointCandidates = call.argument<String>("endpointCandidates")
-                        val sni = call.argument<String>("sni") ?: "soft98.ir"
-                        val dns = call.argument<String>("dns") ?: "1.1.1.1,1.0.0.1"
-                        val http2 = call.argument<Boolean>("http2") ?: true
-                        val desyncEnabled = call.argument<Boolean>("desyncEnabled") ?: false
-                        val desyncPort = call.argument<Int>("desyncSocksPort") ?: 0
-                        val deviceName = call.argument<String>("deviceName") ?: "Hasan-VPN"
-                        // set progress bridge
-                        WarpMasqueService.setProgressCallback { map ->
-                            runOnUiThread {
-                                try {
-                                    warpMasqueChannel?.invokeMethod("onProgress", map)
-                                } catch (_: Throwable) {}
-                            }
-                        }
-                        try {
-                            WarpMasqueService.start(
-                                applicationContext, endpoint, endpointCandidates,
-                                sni, dns, http2, desyncEnabled, desyncPort,
-                                deviceName,
-                            )
-                            result.success(true)
-                        } catch (e: Exception) {
-                            result.error("start_failed", e.message, null)
-                        }
-                    }
-                    "stop" -> {
-                        WarpMasqueService.setProgressCallback(null)
-                        WarpMasqueService.stop(applicationContext)
-                        result.success(true)
-                    }
-                    "status" -> {
-                        result.success(mapOf("running" to WarpMasqueService.isActive()))
-                    }
-                    "cancelStartup" -> {
-                        WarpMasqueService.cancelStartup()
-                        result.success(true)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
 
         val desyncCh = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, desyncChannelName)
         desyncCh.setMethodCallHandler { call, result ->
@@ -430,40 +358,6 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        val mdnsCh = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, masterDnsChannelName)
-        masterDnsChannel = mdnsCh
-        mdnsCh.setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "start" -> {
-                        val domain = call.argument<String>("domain") ?: ""
-                        val key = call.argument<String>("key") ?: ""
-                        val method = call.argument<Int>("method") ?: 1
-                        val resolvers = call.argument<String>("resolvers") ?: ""
-                        val advanced = call.argument<String>("advanced")
-                        try {
-                            MasterDnsService.start(
-                                applicationContext, domain, key, method,
-                                resolvers, advanced,
-                            )
-                            result.success(true)
-                        } catch (e: Exception) {
-                            result.error("start_failed", e.message, null)
-                        }
-                    }
-                    "stop" -> {
-                        MasterDnsService.stop(applicationContext)
-                        result.success(true)
-                    }
-                    "status" -> {
-                        result.success(mapOf("running" to MasterDnsService.isActive()))
-                    }
-                    "cancelStartup" -> {
-                        MasterDnsService.cancelStartup()
-                        result.success(true)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, logsChannel)
             .setMethodCallHandler { call, result ->
