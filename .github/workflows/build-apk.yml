@@ -200,8 +200,6 @@ jobs:
           cp -f android-extra/kotlin/WidgetHeadlessActivity.kt "$KT_DIR/WidgetHeadlessActivity.kt"
           cp -f android-extra/kotlin/NotificationHelper.kt "$KT_DIR/NotificationHelper.kt"
           cp -f android-extra/kotlin/MasterDnsService.kt "$KT_DIR/MasterDnsService.kt"
-          cp -f android-extra/kotlin/WarpMasqueService.kt "$KT_DIR/WarpMasqueService.kt"
-          cp -f android-extra/kotlin/WarpMasqueDesyncProxy.kt "$KT_DIR/WarpMasqueDesyncProxy.kt"
           cp -f android-extra/kotlin/PsiphonRuntimeService.kt "$KT_DIR/PsiphonRuntimeService.kt"
           cp -f android-extra/kotlin/PsiphonStatus.kt "$KT_DIR/PsiphonStatus.kt"
           cp -f android-extra/kotlin/DesyncEngine.kt "$KT_DIR/DesyncEngine.kt"

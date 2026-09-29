@@ -4896,26 +4896,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: const Color(0xFFEF6C00),
             ),
             _buildTypeCard(
-              title: 'WARP / WARP+',
-              subtitle: _t(
-                'WireGuard رایگان کلاودفلر — تولید خودکار کلید + انتخاب بهترین edge',
-                'Cloudflare free WireGuard — auto key + best edge pick',
-              ),
-              icon: Icons.cloud_outlined,
-              type: 'warp',
-              color: const Color(0xFF1976D2),
-            ),
-            _buildTypeCard(
-              title: 'WARP MASQUE/H2',
-              subtitle: _t(
-                'Cloudflare usque — SOCKS5 محلی روی MASQUE',
-                'Cloudflare usque — local SOCKS5 over MASQUE',
-              ),
-              icon: Icons.cloud_queue,
-              type: 'warpmasque',
-              color: const Color(0xFF3949AB),
-            ),
-            _buildTypeCard(
               title: 'MasterDNS',
               subtitle: _t(
                 'تونل DNS با MasterDnsVPN — سرور اختصاصی لازم داره',
