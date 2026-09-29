@@ -644,8 +644,6 @@ class ServerTile extends StatelessWidget {
           ),
         ),
       ),
-            ),
-          ),
         ],
       ),
     );
