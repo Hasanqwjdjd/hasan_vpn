@@ -1,0 +1,88 @@
+name: Build Psiphon Console (arm64)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      ANDROID_API: 24
+      NDK_VERSION: "r26d"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Set up NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+
+      - name: Clone psiphon-tunnel-core at 2.0.41
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v2.0.41 \
+            https://github.com/Psiphon-Labs/psiphon-tunnel-core.git src
+          cd src
+          ls -la ConsoleClient/
+          echo "=== go.mod ==="
+          head -20 go.mod
+
+      - name: Build ConsoleClient for arm64
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          cd src/ConsoleClient
+          NDK_BIN="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC="${NDK_BIN}/aarch64-linux-android${ANDROID_API}-clang"
+          export CXX="${NDK_BIN}/aarch64-linux-android${ANDROID_API}-clang++"
+          export CGO_ENABLED=1
+          export GOOS=android
+          export GOARCH=arm64
+          # Some deps use vendored native code with no 16KB alignment, so
+          # use the standard Android linker flags plus PIE.
+          export CGO_LDFLAGS="-Wl,-z,max-page-size=16384"
+          go build -tags "netcgo" \
+            -trimpath -ldflags "-s -w" \
+            -o /tmp/psiphon-tunnel-core .
+          ls -lh /tmp/psiphon-tunnel-core
+          file /tmp/psiphon-tunnel-core
+
+      - name: Verify it's an aarch64 ELF
+        run: |
+          set -euo pipefail
+          file /tmp/psiphon-tunnel-core | grep -q "aarch64" || {
+            echo "Not an aarch64 binary"; exit 1
+          }
+          echo "OK"
+
+      - name: Install into assets/pt/
+        run: |
+          set -euo pipefail
+          mkdir -p android-extra/assets/pt
+          cp /tmp/psiphon-tunnel-core android-extra/assets/pt/psiphon-tunnel-core
+          chmod +x android-extra/assets/pt/psiphon-tunnel-core
+          ls -lh android-extra/assets/pt/
+
+      - name: Commit binary back to repo
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android-extra/assets/pt/psiphon-tunnel-core
+          git diff --cached --quiet && { echo "no change"; exit 0; }
+          git commit -m "[skip ci] chore(aether): ship psiphon-tunnel-core 2.0.41 console binary for arm64"
+          git push
