@@ -761,32 +761,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             context,
             Column(
               children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  activeColor: AppColors.accent,
-                  title: Text(
-                    _t('اجرا در شروع برنامه',
-                        'Run on app start'),
-                    style:
-                        TextStyle(color: AppColors.fg(context), fontSize: 13),
-                  ),
-                  subtitle: Text(
-                    _t(
-                      'هر بار که برنامه باز می‌شه، بهترین endpoint برای همه سرورهای WARP پیدا می‌شه.',
-                      'Every app start, finds the best endpoint for all WARP servers.',
-                    ),
-                    style: TextStyle(
-                        color: AppColors.muted2(context),
-                        fontSize: 10.5,
-                        height: 1.4),
-                  ),
-                  value: _batchAutoEnabled,
-                  onChanged: (v) async {
-                    setState(() => _batchAutoEnabled = v);
-                    await _saveBatchPref('batch_auto_v1', v);
-                  },
-                ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   dense: true,
@@ -1295,35 +1269,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final min in const [0, 15, 30, 60, 120, 240])
-                      ChoiceChip(
-                        label: Text(min == 0
-                            ? _t('خاموش', 'Off')
-                            : (min < 60
-                                ? '$min ${_t('دقیقه', 'min')}'
-                                : '${min ~/ 60} ${_t('ساعت', 'h')}')),
-                        selected: _autoTestMin == min,
-                        onSelected: (_) async {
-                          setState(() => _autoTestMin = min);
-                          await SettingsService
-                              .setAutoTestIntervalMin(min);
-                        },
-                        selectedColor:
-                            AppColors.accent.withOpacity(0.25),
-                        backgroundColor: AppColors.surface(context),
-                        labelStyle: TextStyle(
-                          color: _autoTestMin == min
-                              ? AppColors.accent
-                              : AppColors.fg(context),
-                          fontSize: 12,
-                        ),
-                      ),
-                  ],
-                ),
+                // Manual-only by design: this used to run a full test of
+                // every server on a timer, which is the single biggest
+                // contributor to heat and battery drain. The setting stays
+                // in storage for backward compatibility but the UI no
+                // longer offers it.
               ],
             ),
           ),
