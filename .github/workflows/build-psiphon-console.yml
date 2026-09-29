@@ -22,10 +22,11 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          # psiphon-tunnel-core pulls github.com/wlynxg/anet, which
-          # references internal fields (net.zoneCache) that Go 1.24+
-          # removed. Pinning to the last known-good minor line.
-          go-version: '1.23.4'
+          # psiphon-tunnel-core v2.0.41's go.mod requires Go 1.26. Go 1.24+
+          # removed net.zoneCache, which its github.com/wlynxg/anet dep
+          # still referenced; newer anet releases fixed that, so the build
+          # step upgrades anet after checkout.
+          go-version: '1.26.x'
 
       - name: Set up NDK
         uses: nttld/setup-ndk@v1
@@ -50,10 +51,16 @@ jobs:
           # toolchain auto-upgrade then pulled Go 1.26 which removed
           # net.zoneCache (used by its github.com/wlynxg/anet dep).
           # Force the installed 1.23 toolchain to be used as-is.
-          GOTOOLCHAIN: local
         run: |
           set -euo pipefail
-          cd src/ConsoleClient
+          cd src
+          # anet stopped reaching into net.zoneCache in its recent releases;
+          # psiphon's pin still referenced it. Bump the dep before we build.
+          go get github.com/wlynxg/anet@latest || true
+          go mod tidy || true
+          cd ConsoleClient
+          go get github.com/wlynxg/anet@latest || true
+          go mod tidy || true
           NDK_BIN="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
           export CC="${NDK_BIN}/aarch64-linux-android${ANDROID_API}-clang"
           export CXX="${NDK_BIN}/aarch64-linux-android${ANDROID_API}-clang++"
