@@ -420,6 +420,34 @@ class AetherService : Service() {
             return
         }
 
+        // Aether's internal Psiphon chain looks for the console client at
+        // <aether-dir>/pt/psiphon-tunnel-core (see libaether.so strings:
+        // "in a 'pt' folder beside it"). Hasan ships it as an asset; we
+        // extract it once into filesDir/pt and let Aether find it next to
+        // its cwd. Only do this when the user has selected a Psiphon
+        // mode — otherwise we waste 22 MB of private storage.
+        if (env.keys.any { it == "AETHER_PSIPHON" }) {
+            try {
+                val ptDir = File(filesDir, "pt").apply { mkdirs() }
+                val dst = File(ptDir, "psiphon-tunnel-core")
+                if (!dst.exists() || dst.length() < 1_000_000L) {
+                    assets.open("pt/psiphon-tunnel-core").use { input ->
+                        dst.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    dst.setExecutable(true, false)
+                }
+                // Point Aether at it explicitly so the lookup never falls
+                // through to PATH (which is empty on Android).
+                env["AETHER_PSIPHON_BIN"] = dst.absolutePath
+                // cwd is filesDir, so 'pt/psiphon-tunnel-core' would also
+                // resolve; being explicit costs nothing.
+            } catch (e: Exception) {
+                SafeLog.w(TAG, "failed to stage psiphon-tunnel-core", e)
+                // Not fatal — the register will fail with the same message
+                // Aether already prints, and PsiphonService still works.
+            }
+        }
+
         // اگر اپ قبلاً ناگهانی بسته شده باشد ممکن است یک Aether یتیم مانده باشد.
         killLeftover()
         destroyProcess()

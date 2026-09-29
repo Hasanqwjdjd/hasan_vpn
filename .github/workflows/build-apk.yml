@@ -252,6 +252,13 @@ jobs:
             cp -f android-extra/assets/pingng_psiphon_runtime.dex "$ASSET_DIR/pingng_psiphon_runtime.dex"
             cp -f android-extra/assets/pingng_psiphon_config.json "$ASSET_DIR/pingng_psiphon_config.json"
             cp -f android-extra/assets/pingng_psiphon_server_entries.txt "$ASSET_DIR/pingng_psiphon_server_entries.txt"
+          fi
+          # Aether's own Psiphon chain: the binary it looks for at
+          # <aether-dir>/pt/psiphon-tunnel-core. Extracted at runtime
+          # by AetherService so it can be chmod +x'd.
+          if [ -f android-extra/assets/pt/psiphon-tunnel-core ]; then
+            mkdir -p "$ASSET_DIR/pt"
+            cp -f android-extra/assets/pt/psiphon-tunnel-core "$ASSET_DIR/pt/psiphon-tunnel-core"
             echo "Psiphon runtime assets copied"
           fi
           if [ -f android-extra/assets/server_entries.txt ]; then
