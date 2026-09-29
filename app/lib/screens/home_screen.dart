@@ -3445,50 +3445,59 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// FIX: قبل از هر اتصال جدید، همه‌ی session های فعلی رو ببند.
   /// این تضمین می‌کنه که هیچ‌وقت دو تونل همزمان فعال نباشن —
   /// مثلاً کاربر وسط Tor هست، روی یه vless می‌زنه: Tor باید بمیره.
-  Future<void> _disconnectAllSessionsForNewConnect() async {
-    // 1) قطع session سرویس‌های اختصاصی (هرکدوم جدا)
+  /// Bounded await. Every teardown in the switch path is now guarded:
+  /// if a service will not stop within [sec] seconds, we give up on it
+  /// and continue instead of blocking the whole UI. This is what made
+  /// protocol switching freeze — a single stuck Psiphon/Aether stop
+  /// could hang the flow forever.
+  Future<void> _bounded(Future<void> Function() task, {int sec = 4}) async {
     try {
+      await task().timeout(Duration(seconds: sec));
+    } catch (_) {}
+  }
+
+  Future<void> _disconnectAllSessionsForNewConnect() async {
+    // 1) Session services. Each capped at 4 s.
+    await _bounded(() async {
       if (TorSessionService.instance.anyRouting) {
         await TorSessionService.instance.disconnect();
       }
-    } catch (_) {}
-    try {
+    });
+    await _bounded(() async {
       if (TunnelSessionService.instance.anyRouting) {
         await TunnelSessionService.instance.disconnect();
       }
-    } catch (_) {}
-    try {
+    });
+    await _bounded(() async {
       if (SshSessionService.instance.anyRouting) {
         await SshSessionService.instance.disconnect();
       }
-    } catch (_) {}
-    try {
+    });
+    await _bounded(() async {
       if (MasterDnsSessionService.instance.anyRouting) {
         await MasterDnsSessionService.instance.disconnect();
       }
-    } catch (_) {}
-    try {
+    });
+    await _bounded(() async {
       if (WarpMasqueSessionService.instance.anyRouting) {
         await WarpMasqueSessionService.instance.disconnect();
       }
-      // Desync listener برای outer TLS WARP MASQUE
+    });
+    await _bounded(() async {
       if (DesyncService.isRunning) {
         await DesyncService.stop();
       }
-    } catch (_) {}
-    // 2) قطع Aether و Psiphon و Xray (اگر قبلاً چیزی run بود)
-    try {
-      await AetherService.disconnect();
-    } catch (_) {}
-    try {
-      await PsiphonService.stop();
-    } catch (_) {}
-    try {
+    });
+    // 2) Process-backed sessions.
+    await _bounded(() => AetherService.disconnect());
+    await _bounded(() => PsiphonService.stop());
+    await _bounded(() async {
       if (V2RayEngine.isConnected) {
         await V2RayEngine.disconnect();
       }
-    } catch (_) {}
-    // 3) ریست state داخلی
+    });
+    // 3) Reset local state regardless — the user's new connect must not
+    //    be blocked by a stuck teardown.
     if (mounted) {
       setState(() {
         _connected = false;
@@ -3499,9 +3508,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _disconnectAll() async {
-    await AetherService.disconnect();
-    await PsiphonService.stop();
-    await V2RayEngine.disconnect();
+    await _bounded(() => AetherService.disconnect());
+    await _bounded(() => PsiphonService.stop());
+    await _bounded(() => V2RayEngine.disconnect());
   }
 
   void _markDisconnected(String status) {
