@@ -582,6 +582,10 @@ class WarpService {
     String? license,
   }) async {
     try {
+      // 'referrer': 'warp' was removed. Cloudflare now returns
+      // 400 code 1070 ("We are no longer accepting referral codes")
+      // for that field, which is what showed as "تولید ناموفق" every
+      // time. A free WARP account registers with no referral at all.
       final body = {
         'key': publicKeyB64,
         'install_id': '',
@@ -590,7 +594,6 @@ class WarpService {
         'model': 'PC',
         'serial_number': '',
         'locale': 'en_US',
-        'referrer': 'warp',
       };
       final r = await _apiPost('/reg', body, proxySocksPort: proxySocksPort);
 

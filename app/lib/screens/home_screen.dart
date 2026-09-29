@@ -5399,26 +5399,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                if (_selectedSubId == TelegramSourceService.groupId)
-                  _freeFetching
-                      ? Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Text(
-                            '$_freeFetchProgress / $_freeFetchTotal',
-                            style: TextStyle(
-                                color: AppColors.muted2(context),
-                                fontSize: 10),
-                          ),
-                        )
-                      : IconButton(
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          icon: const Icon(Icons.refresh,
-                              color: AppColors.accent, size: 18),
-                          tooltip: _t('بروزرسانی', 'Refresh'),
-                          onPressed: () => _refreshFreeServers(),
-                        )
-                else if (_testing)
+                if (_testing)
                   Text(
                     '$_tested / $_total',
                     style: TextStyle(

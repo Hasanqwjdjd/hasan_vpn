@@ -73,19 +73,20 @@ class SubscriptionService {
   /// اشتراک‌های پیش‌فرض. لینک‌ها اینجا نیستند: از جدول رمزشدهٔ
   /// [ProtectedDefaults] (ساخته‌شده در CI) فقط لحظهٔ دانلود خوانده می‌شوند.
   static List<Subscription> get defaultSubscriptions => [
-        // گروه پیش‌فرض با کانفیگ‌های بسته‌بندی‌شده — همیشه در بالای لیست.
+        // Hasan Built-in — the only bundled group besides Netra.
         Subscription(
           id: BuiltinConfigs.groupId,
           name: BuiltinConfigs.groupName,
           url: '',
           isDefault: true,
         ),
+        // Netra is the only protected default kept. Every other entry
+        // that used to come from the CI secret is dropped at this point
+        // — they were noise in the subscriptions list and the user asked
+        // to keep only Built-in and Netra.
         for (final e in ProtectedDefaults.entries)
-          // Aetris / GitVerse / Morning-Shape از پیش‌فرض‌ها حذف می‌شوند
-          if (!e[1].toLowerCase().contains('aetris') &&
-              !e[1].toLowerCase().contains('gitverse') &&
-              !e[1].toLowerCase().contains('morning') &&
-              !e[0].toLowerCase().contains('morning'))
+          if (e[1].toLowerCase().contains('netra') ||
+              e[0].toLowerCase().contains('netra'))
             Subscription(id: e[0], name: e[1], url: '', isDefault: true),
       ];
 
