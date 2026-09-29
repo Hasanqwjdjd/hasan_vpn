@@ -254,20 +254,32 @@ class AetherService {
   }) async {
     final env = profile.buildEnv(attempt, port);
 
-    // Aether's own env var for its upstream relay is AETHER_UPSTREAM (see
-    // libaether.so strings: "AETHER_UPSTREAM"). ALL_PROXY / HTTPS_PROXY
-    // are ignored by its reqwest/hyper stack — that is why every register
-    // attempt printed "error sending request for url api.cloudflareclient.com"
-    // even though we passed a SOCKS proxy. The value format the binary
-    // expects is a URL, e.g. "socks5://127.0.0.1:PORT".
+    // Aether's own env var for its upstream relay is AETHER_UPSTREAM.
+    // ALL_PROXY / HTTPS_PROXY are ignored by its reqwest/hyper stack —
+    // that is why every register attempt printed "error sending request
+    // for url api.cloudflareclient.com" even though we passed a SOCKS
+    // proxy. The value format the binary expects is a URL.
+    //
+    // Two sources for the proxy, in order of reliability:
+    //
+    //   1. The active Xray session, if one is connected. Whatever the user
+    //      already trusts is what Aether should dial through. This is the
+    //      only path that actually reaches Cloudflare from Iran.
+    //
+    //   2. The bundled WarpRegistrationProxy VLESS — a fallback used
+    //      before any server is connected. It runs on 127.0.0.1 and, when
+    //      its own upstream is itself filtered, cannot finish the
+    //      registration handshake. That is why the fallback keeps failing
+    //      even though the binary correctly reports "dialling out through
+    //      the socks5 proxy at 127.0.0.1".
     try {
-      final up = V2RayEngine.isConnected ? V2RayEngine.localSocksPort : 0;
-      final proxyPort = up > 0
-          ? up
+      final activePort =
+          V2RayEngine.isConnected ? V2RayEngine.localSocksPort : 0;
+      final proxyPort = activePort > 0
+          ? activePort
           : await WarpRegistrationProxy.ensureStarted();
       if (proxyPort != null && proxyPort > 0) {
         env['AETHER_UPSTREAM'] = 'socks5://127.0.0.1:$proxyPort';
-        // Belt and braces for whichever crate looks at these.
         env['ALL_PROXY'] = 'socks5h://127.0.0.1:$proxyPort';
         env['HTTPS_PROXY'] = 'socks5h://127.0.0.1:$proxyPort';
         env['http_proxy'] = 'socks5h://127.0.0.1:$proxyPort';
