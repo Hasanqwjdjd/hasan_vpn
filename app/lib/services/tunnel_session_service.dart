@@ -151,8 +151,9 @@ class TunnelSessionService {
 
   void _startPolling() {
     _pollTimer?.cancel();
+    // 2 s. Same reasoning as Tor — the 900 ms tick was pure heat.
     _pollTimer = Timer.periodic(
-      const Duration(milliseconds: 900),
+      const Duration(seconds: 2),
       (_) => _poll(),
     );
   }

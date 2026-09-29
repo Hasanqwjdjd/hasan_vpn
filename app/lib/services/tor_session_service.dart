@@ -143,8 +143,11 @@ class TorSessionService {
 
   void _startPolling() {
     _pollTimer?.cancel();
+    // 2 s. The 700 ms tick queried the native service 85 times a minute
+    // to read a progress value that changes at most a few times during a
+    // bootstrap.
     _pollTimer = Timer.periodic(
-        const Duration(milliseconds: 700), (_) => _poll());
+        const Duration(seconds: 2), (_) => _poll());
   }
 
   Future<void> _poll() async {

@@ -136,9 +136,13 @@ class _TorScreenState extends State<TorScreen> {
         await _toggle();
       }
     });
-    _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
+    // 2 s / 5 s. The 1 s poll redrew the whole bootstrap bar 60 times a
+    // minute even when nothing had changed, and the widget sync doubled
+    // the write cost. Tor bootstrap is slow; two seconds feels the same
+    // and does not heat the phone.
+    _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _poll());
     _widgetSyncTimer =
-        Timer.periodic(const Duration(seconds: 2), (_) => _syncTorWidget());
+        Timer.periodic(const Duration(seconds: 5), (_) => _syncTorWidget());
   }
 
   /// نوشتن binding + progress در FlutterSharedPreferences تا ویجت Tor
