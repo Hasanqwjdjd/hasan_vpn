@@ -134,7 +134,7 @@ class ServerTile extends StatelessWidget {
     return false;
   }
 
-  /// Side-strip color: ping-tier at a glance.
+  /// Side-strip color: ping-tier at a glance, matching PingNG.
   /// green = good (<700ms), amber = ok (<1400ms), red = poor, grey = unknown.
   Color _sideStripColor(BuildContext context) {
     final p = server.ping;
@@ -142,7 +142,6 @@ class ServerTile extends StatelessWidget {
     if (status == ServerStatus.offline) return AppColors.danger;
     if (p == null || p <= 0) return AppColors.muted2(context);
     if (server.pingKind == PingKind.tcp) {
-      // TCP-only is approximate; keep it neutral but slightly cooler.
       return p < 700 ? AppColors.accent : AppColors.warn;
     }
     if (p < 700) return AppColors.accent;
@@ -324,8 +323,6 @@ class ServerTile extends StatelessWidget {
     // حالت compact: گرید دوستونی — آیکون‌ها فشرده،
     // Pin / Test / CDN-badge مخفی، متن ellipsis.
     final c = compact;
-    // The side strip conveys ping-tier at a glance, matching PingNG:
-    // green = good, amber = ok, red = poor, grey = untested / offline.
     final stripColor = _sideStripColor(context);
     return Container(
       margin: EdgeInsets.only(bottom: c ? 0 : 6),
@@ -339,15 +336,18 @@ class ServerTile extends StatelessWidget {
           width: selected ? 1.5 : 1,
         ),
       ),
+      // The side strip conveys ping-tier at a glance. Drawn as a left
+      // border on a foreground layer so the widget tree is untouched —
+      // previous attempts to wrap in a Row broke the closing brackets.
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border(
+          left: BorderSide(color: stripColor, width: 4),
+        ),
+      ),
       clipBehavior: Clip.antiAlias,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 4-px tier bar on the leading edge.
-          Container(width: 4, color: stripColor),
-          Expanded(
-            child: Material(
-              color: Colors.transparent,
+      child: Material(
+        color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: onTap,
@@ -643,7 +643,6 @@ class ServerTile extends StatelessWidget {
             ),
           ),
         ),
-        ],
       ),
     );
   }
