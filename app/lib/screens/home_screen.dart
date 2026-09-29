@@ -2062,28 +2062,83 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _syncRealConnectionState() async {
     if (!mounted || _connecting) return;
     try {
-      // FIX: اگه یه session ابزاری (Tor/Aether/Psiphon/SSH/Tunnel) داره
-      // routing می‌کنه، *هرگز* auto-connect نکن — چون V2RayEngine
-      // برای این session ها isConnected=true می‌ده ولی سرور کاربر
-      // واقعاً وصل نشده.
-      if (TorSessionService.instance.anyRouting ||
-          TunnelSessionService.instance.anyRouting ||
-          SshSessionService.instance.anyRouting ||
-          V2RayEngine.isUtilitySession) {
-        return;
+      // Ask every engine that could be live right now, not just V2Ray.
+      // Utility sessions (Tor/Aether/Psiphon/SSH/Tunnel) route through
+      // their own services, so V2Ray's flag alone tells us nothing.
+      bool alive = false;
+      String? source;
+
+      // Utility session services expose a notifier per server and an
+      // anyRouting flag; the one that is up also has a notifier with
+      // running = true.
+      if (TorSessionService.instance.anyRouting) {
+        alive = true;
+        source = 'tor';
+      } else if (TunnelSessionService.instance.anyRouting) {
+        alive = true;
+        source = 'tunnel';
+      } else if (SshSessionService.instance.anyRouting) {
+        alive = true;
+        source = 'ssh';
+      } else if (WarpMasqueSessionService.instance.anyRouting) {
+        alive = true;
+        source = 'warpmasque';
+      } else if (V2RayEngine.isUtilitySession) {
+        // Aether / Psiphon proxy through Xray under the hood.
+        try {
+          alive = await AetherService.syncStatus();
+        } catch (_) {}
+        if (!alive) {
+          try {
+            final st = await PsiphonService.status();
+            alive = st['running'] == true;
+          } catch (_) {}
+        }
+        if (alive) source = 'utility';
+      } else if (V2RayEngine.isConnected) {
+        alive = true;
+        source = 'v2ray';
       }
-      // FIX: به‌جای auto-connect، فقط اگه اتصال *قبلاً* برقرار بود
-      // (یعنی _active قبلاً ست شده) sync کن. اگه کاربر دستی قطع کرده
-      // ولی V2RayEngine هنوز فکر می‌کنه وصله، auto-connect نکن.
-      final alive = V2RayEngine.isConnected;
+
       if (!mounted) return;
+
+      // 1) The tunnel is really up but the app thinks it is down.
+      //    This is the "VPN is on in the status bar but the app says
+      //    disconnected" case: the Flutter activity was recreated while
+      //    the VpnService kept running, and the fresh Dart state started
+      //    from false.
+      if (alive && (!_connected || _active == null)) {
+        final prefs = await SharedPreferences.getInstance();
+        final lastId = prefs.getString('last_active_server_id_v1') ?? '';
+        VpnServer? srv;
+        if (lastId.isNotEmpty) {
+          final i = _servers.indexWhere((s) => s.id == lastId);
+          if (i >= 0) srv = _servers[i];
+        }
+        srv ??= _selected;
+        if (srv == null && _servers.isNotEmpty) srv = _servers.first;
+        if (srv != null && mounted) {
+          setState(() {
+            _connected = true;
+            _connecting = false;
+            _active = srv;
+            _status = _t('متصل است', 'Connected');
+          });
+          // ignore: unawaited_futures
+          ConnectionLogService.logConnect(srv.displayName);
+          // ignore: unawaited_futures
+          _startWidgetTimerRefresh();
+          HomeWidgetService.setConnectedStart(DateTime.now());
+        }
+      }
+
+      // 2) The tunnel is really down but the app thinks it is up.
       if (!alive && _connected) {
-        // واقعاً قطع شد
         _markDisconnected(_t('اتصال قطع شد', 'Connection lost'));
       }
-      // نکته: دیگه هیچ auto-connect ای اینجا نداریم. کاربر خودش
-      // باید روی دکمه Connect بزنه.
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('_syncRealConnectionState: $e');
+    }
   }
 
   // ------------------------------------------------------------- list
@@ -3523,6 +3578,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _markDisconnected(String status) {
+    // The persisted id only matters while a tunnel is up. Clearing it
+    // stops the resume hook from resurrecting a session the user ended.
+    // ignore: unawaited_futures
+    SharedPreferences.getInstance()
+        .then((p) => p.remove('last_active_server_id_v1'))
+        .catchError((_) {});
     // ignore: unawaited_futures
     ConnectionLogService.logError('TRACE',
         'UI._markDisconnected status="$status" active=\${_active?.id} connected=\$_connected');
@@ -3936,6 +3997,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _pollTick = 0;
       if (connected) _lastConnectTime = DateTime.now();
       if (connected) _manualDisconnect = false;
+      if (connected && selected != null) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('last_active_server_id_v1', selected.id);
+        } catch (_) {}
+      }
       if (connected) {
         // widget timer start + refresh دوره‌ای
         // ignore: unawaited_futures
