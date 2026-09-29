@@ -514,6 +514,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     bool cancelled = false;
     bool advanced = false;
     bool udpOnly = false;
+    // The cancel button closes the progress dialog itself; without this flag
+    // the outer flow would pop a second time and take the edit dialog with it,
+    // dumping the user back on the home screen.
+    bool dialogPopped = false;
 
     Future<void> showProgressDialog() async {
       if (!mounted) return;
@@ -647,6 +651,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     cancelled = true;
                     DesyncTuner.cancel();
                     try { V2RayEngine.disconnect(); } catch (_) {}
+                    dialogPopped = true;
                     Navigator.pop(dCtx);
                   },
                   child: Text(_t('لغو', 'Cancel'),
@@ -686,7 +691,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     _finalMaskDialogRefresh = null;
     if (!mounted) return null;
-    Navigator.of(context, rootNavigator: true).pop();
+    if (!dialogPopped) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
 
     if (cancelled) return null;
     if (best == null) {
@@ -4025,6 +4032,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       timeoutSec: 90,
     );
 
+    bool masqueDialogPopped = false;
     // ignore: unawaited_futures
     showDialog<void>(
       context: context,
@@ -4098,14 +4106,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ValueListenableBuilder<WarpMasqueScanState>(
             valueListenable: WarpMasqueService.scanProgress,
             builder: (_, state, __) => TextButton(
-              onPressed:
-                  state.done ? () => Navigator.pop(ctx) : null,
+              // Always enabled: during a scan the user must be able to
+              // dismiss the dialog. The scan continues in the background
+              // and its result is still consumed by the await below.
+              onPressed: () {
+                masqueDialogPopped = true;
+                Navigator.pop(ctx);
+              },
               child: Text(
-                _t('بستن', 'Close'),
-                style: TextStyle(
-                    color: state.done
-                        ? AppColors.accent
-                        : AppColors.muted2(ctx)),
+                _t(state.done ? 'بستن' : 'لغو',
+                    state.done ? 'Close' : 'Cancel'),
+                style: const TextStyle(color: AppColors.accent),
               ),
             ),
           ),
@@ -4116,7 +4127,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final result = await rescanFuture;
 
     if (!mounted) return;
-    if (Navigator.of(context, rootNavigator: true).canPop()) {
+    if (!masqueDialogPopped &&
+        Navigator.of(context, rootNavigator: true).canPop()) {
       Navigator.of(context, rootNavigator: true).pop();
     }
 

@@ -26,6 +26,10 @@ object NotificationHelper {
     private const val CHANNEL_NAME = "Hasan VPN"
     private const val CHANNEL_DESC = "اتصال VPN و وضعیت تونل"
 
+    /// All notifications share this group key so Android stacks them under
+    /// one header in the shade instead of showing several separate rows.
+    const val GROUP_KEY = "hasan_vpn_group"
+
     /// Notification ID های یکتا برای هر سرویس foreground.
     /// اینا نباید تغییر کنن چون به startForeground گره خوردن.
     const val ID_TELEMETRY = 4240
@@ -59,12 +63,17 @@ object NotificationHelper {
     /// ساخت builder با تنظیمات پیش‌فرض (channel واحد).
     fun builder(context: Context): Notification.Builder {
         ensureChannel(context)
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(context, CHANNEL_ID)
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(context)
         }
+        // Stack every Hasan VPN notification under one group header.
+        b.setGroup(GROUP_KEY)
+        // Update the same row instead of buzzing on every progress tick.
+        b.setOnlyAlertOnce(true)
+        return b
     }
 
     /// آیکون کوچک امن.
