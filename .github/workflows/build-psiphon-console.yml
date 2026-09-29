@@ -46,6 +46,11 @@ jobs:
       - name: Build ConsoleClient for arm64
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          # psiphon-tunnel-core's go.mod asks for a very recent Go, and the
+          # toolchain auto-upgrade then pulled Go 1.26 which removed
+          # net.zoneCache (used by its github.com/wlynxg/anet dep).
+          # Force the installed 1.23 toolchain to be used as-is.
+          GOTOOLCHAIN: local
         run: |
           set -euo pipefail
           cd src/ConsoleClient
