@@ -16,7 +16,6 @@ import '../services/announcement_service.dart';
 import '../services/app_colors.dart';
 import '../services/server_tester.dart';
 import '../services/tor_session_service.dart';
-import '../services/telegram_source_service.dart';
 import '../services/connectivity_watcher.dart';
 import '../services/connection_log_service.dart';
 import '../services/tunnel_session_service.dart';
@@ -119,10 +118,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _twoColumnGrid = false;
 
   // ─── گروه «سرور رایگان» (تلگرام) ───
-  List<VpnServer> _freeServers = [];
-  bool _freeFetching = false;
-  int _freeFetchProgress = 0;
-  int _freeFetchTotal = 0;
 
   // ─── auto fastest interval + reconnect ───
   Timer? _autoFastestTimer;
@@ -223,9 +218,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _bootstrap();
-    // بارگذاری سرورهای رایگان + refresh خودکار هر ۷ ساعت
-    // ignore: unawaited_futures
-    _bootstrapFreeServers();
     // رصد تغییرات شبکه — اتصال مجدد خودکار
     ConnectivityWatcher.instance.start(_onNetworkReconnected);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1982,9 +1974,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      // چک کن اگه ۷ ساعت گذشته، سرورهای رایگان رو refresh کن
-      // ignore: unawaited_futures
-      _bootstrapFreeServers();
       _syncRealConnectionState();
       // ویجت ممکن است وقتی اپ در پس‌زمینه بوده extras نوشته باشد
       // ignore: unawaited_futures
@@ -2321,20 +2310,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     var list = allServers;
-    if (_selectedSubId == TelegramSourceService.groupId) {
-      // گروه «سرور رایگان» — فقط سرورهای fetch‌شده از تلگرام
-      list = List<VpnServer>.from(_freeServers);
-    } else if (_selectedSubId != null && _selectedSubId!.startsWith('ugroup:')) {
+    if (_selectedSubId != null && _selectedSubId!.startsWith('ugroup:')) {
       final gname = _selectedSubId!.substring('ugroup:'.length);
       final ids = (_userGroups[gname] ?? const <String>[]).toSet();
-      // FIX1: free telegram servers must be visible inside a user group too
-      final withFree = <VpnServer>[...list, ..._freeServers];
-      final seenIds = <String>{};
-      final merged = <VpnServer>[];
-      for (final s in withFree) {
-        if (seenIds.add(s.id)) merged.add(s);
-      }
-      list = merged.where((s) => ids.contains(s.id)).toList();
+      list = list.where((s) => ids.contains(s.id)).toList();
     } else if (_selectedSubId != null) {
       final sub = widget.subscriptions.firstWhere(
         (s) => s.id == _selectedSubId,
@@ -2820,58 +2799,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  Future<void> _bootstrapFreeServers() async {
-    if (_freeFetching) return;
-    await _loadFreeServers();
-    if (await TelegramSourceService.shouldRefresh()) {
-      await _refreshFreeServers(silent: true);
-    }
-  }
-
-  Future<void> _loadFreeServers() async {
-    try {
-      final list = await TelegramSourceService.buildServers();
-      if (!mounted) return;
-      setState(() => _freeServers = list);
-    } catch (_) {}
-  }
-
-  Future<void> _refreshFreeServers({bool silent = false}) async {
-    if (_freeFetching) return;
-    setState(() {
-      _freeFetching = true;
-      _freeFetchProgress = 0;
-      _freeFetchTotal = 24;
-    });
-    try {
-      // silent=true یعنی از bootstrap خودکار اومده — Tor رو خودکار
-      // استارت نکن. silent=false یعنی کاربر دستی زده — اجازه‌ی auto-Tor.
-      final n = await TelegramSourceService.refresh(
-        allowAutoTor: !silent,
-        onProgress: (d, t) {
-          if (!mounted) return;
-          setState(() {
-            _freeFetchProgress = d;
-            _freeFetchTotal = t;
-          });
-        },
-      );
-      await _loadFreeServers();
-      if (!mounted) return;
-      if (!silent) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_t('$n سرور رایگان بروز شد',
-                '$n free servers updated')),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _freeFetching = false);
-    }
-  }
 
   void _selectSubscription(String? subId) {
     setState(() => _selectedSubId = subId);
@@ -4622,9 +4549,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// سرورهای یه subscription با id داده‌شده.
   Iterable<VpnServer> _serversForSubscription(String subId) {
-    if (subId == TelegramSourceService.groupId) {
-      return _freeServers;
-    }
     if (subId.startsWith('ugroup:')) {
       final gname = subId.substring('ugroup:'.length);
       final ids = _userGroups[gname] ?? const <String>[];
@@ -4652,11 +4576,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final tabs = <Widget>[];
     final showAll = _showAllTab;
     if (showAll) tabs.add(_subTab(null, _t('همه', 'All')));
-    tabs.add(_subTab(
-      TelegramSourceService.groupId,
-      TelegramSourceService.groupTitle(_isFa),
-      _freeServers.length,
-    ));
     for (final sub in widget.subscriptions) {
       tabs.add(_subTab(sub.id, sub.name, sub.serverCount));
     }
@@ -5427,12 +5346,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ],
             ),
           ),
-          if (_selectedSubId == TelegramSourceService.groupId &&
-              _freeFetching)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: LinearProgressIndicator(minHeight: 2),
-            ),
           Expanded(
             child: _twoColumnGrid
                 ? ReorderableGridView.builder(
@@ -5912,7 +5825,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final allServers = <VpnServer>[
       ..._customServers,
       ...widget.extraServers,
-      ..._freeServers,
     ];
     if (allServers.isEmpty) {
       _showMsg(_t('سروری برای گروه‌بندی نیست', 'No servers to group'));
