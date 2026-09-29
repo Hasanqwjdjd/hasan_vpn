@@ -389,17 +389,6 @@ jobs:
           if '<queries>' not in text:
               text = text.replace("</manifest>", queries + "</manifest>", 1)
           # ثبت TorForegroundService در Manifest
-          if 'MasterDnsService' not in text:
-              text = text.replace(
-                  "</application>",
-                  '    <service\n'
-                  '        android:enabled="true"\n'
-                  '        android:exported="false"\n'
-                  '        android:foregroundServiceType="specialUse" />\n'
-                  '</application>',
-                  1,
-              )
-              echo_manifest_ok = True
           if 'PsiphonRuntimeService' not in text:
               text = text.replace(
                   "</application>",
@@ -412,16 +401,6 @@ jobs:
                   '</application>',
                   1,
               )
-          if 'WarpMasqueService' not in text:
-              text = text.replace(
-                  "</application>",
-                  '    <service\n'
-                  '        android:enabled="true"\n'
-                  '        android:exported="false"\n'
-                  '        android:foregroundServiceType="specialUse" />\n'
-                  '</application>',
-                  1,
-              )
           if 'TorForegroundService' not in text:
               svc = """    <service
                   android:name="com.hasan.hasan_vpn.TorForegroundService"
@@ -430,10 +409,6 @@ jobs:
                   android:foregroundServiceType="specialUse" />
               <service
                   android:name="com.hasan.hasan_vpn.AetherService"
-                  android:enabled="true"
-                  android:exported="false"
-                  android:foregroundServiceType="specialUse" />
-              <service
                   android:enabled="true"
                   android:exported="false"
                   android:foregroundServiceType="specialUse" />
