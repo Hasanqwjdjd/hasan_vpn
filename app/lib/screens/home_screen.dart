@@ -293,7 +293,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await V2RayEngine.init();
     await V2RayEngine.loadDelayUrl();
     if (!mounted) return;
-    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _poll());
+    // 12 s, not 4 s. The 4 s tick was building and probing the tunnel
+    // every 4 seconds of every session, which is most of the heat.
+    // A tunnel that dies takes longer to notice but the user sees a
+    // "lost" state within one poll cycle either way.
+    _pollTimer = Timer.periodic(const Duration(seconds: 12), (_) => _poll());
     _startAutoFastestInterval();
     _startAutoTestTimer();
     // ویجت صفحهٔ اصلی: درخواست معلق اتصال
@@ -3584,7 +3588,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       _deadStrikes = 0;
       _pollTick++;
-      if (_pollTick % 3 == 1) await _measureLive();
+      // Every 6th poll = ~72 s between live probes. Every 3rd was 36 s
+      // and dominated battery use; the notification only needs to feel
+      // alive, not be truthful to the second.
+      if (_pollTick % 6 == 1) await _measureLive();
     } finally {
       _polling = false;
     }

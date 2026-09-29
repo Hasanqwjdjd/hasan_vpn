@@ -752,19 +752,20 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     String inner = '';
     if (ok) {
       try {
-        final log = await AetherService.nativeLog();
-
-        // helper: first host:port match in a string, ignoring the label
-        String? firstHostPort(String text) {
-          final m = RegExp(
-            r'(\d{1,3}(?:\.\d{1,3}){3}:\d{1,5}|\[[0-9a-fA-F:]+\]:\d{1,5})',
-          ).firstMatch(text);
-          return m?.group(1);
-        }
+        final s = await AetherService.nativeStatus();
+        // The native side gives us three views of the process output: the
+        // whole last-lines buffer under 'log', the most recent line under
+        // 'lastLine', and any explicit error under 'error'. Any of them may
+        // contain the route line, so we search all three.
+        final log = [
+          s['log']?.toString() ?? '',
+          s['lastLine']?.toString() ?? '',
+          s['error']?.toString() ?? '',
+        ].where((x) => x.isNotEmpty).join('\n');
 
         // 1) Persian: "مسیر بیرونی X و مسیر درونی Y پیدا شد"
         final faRe = RegExp(
-            r'مسیر بیرونی\s+(\S+?)\s+و\s+مسیر درونی\s+(\S+?)\s+پیدا',
+            r'مسیر\s+بیرونی\s+(\S+?)\s+و\s+مسیر\s+درونی\s+(\S+)',
             unicode: true);
         var m = faRe.firstMatch(log);
         if (m != null) {
@@ -784,7 +785,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
           }
         }
 
-        // 3) generic "outer" / "inner" lines (any order, any language)
+        // 3) generic lines containing "outer" / "inner"
         if (outer.isEmpty) {
           final om = RegExp(r'outer[^\n]*?(\d{1,3}(?:\.\d{1,3}){3}:\d{1,5})',
                   caseSensitive: false)
@@ -798,11 +799,13 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
           if (im != null) inner = im.group(1) ?? '';
         }
 
-        // 4) Last resort: scan the last "Found ... route" block for two
-        //    host:port tokens in order — first is outer, second is inner.
+        // 4) Last resort: two host:port tokens in the tail — first outer,
+        //    second inner. This matches any log format the native side
+        //    happens to print, including the "using cloudflare edge
+        //    A:B and C:D" shape that older builds emitted.
         if (outer.isEmpty || inner.isEmpty) {
-          final tail = log.length > 2000
-              ? log.substring(log.length - 2000)
+          final tail = log.length > 4000
+              ? log.substring(log.length - 4000)
               : log;
           final found = RegExp(
                   r'(\d{1,3}(?:\.\d{1,3}){3}:\d{1,5})')
@@ -813,6 +816,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
           if (outer.isEmpty && found.isNotEmpty) outer = found.first;
           if (inner.isEmpty && found.length > 1) inner = found[1];
         }
+
+        debugPrint('aether scan: outer=$outer inner=$inner from log: '
+            '${log.length > 400 ? log.substring(log.length - 400) : log}');
       } catch (e) {
         debugPrint('aether scan parse error: $e');
       }
