@@ -5078,173 +5078,160 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildTopBar() {
+    // Compact bar: one menu button, the title, the connection status, then
+    // only the two buttons you press constantly (test-all, batch). The
+    // rest (find, top, bottom, sort, selection) live in an overflow menu
+    // so the header stops eating a third of the screen.
     return Container(
-      padding: const EdgeInsets.fromLTRB(4, 6, 4, 4),
-      child: Column(
+      padding: const EdgeInsets.fromLTRB(0, 2, 0, 2),
+      child: Row(
         children: [
-          Row(
-            children: [
-              IconButton(
-                icon: Icon(Icons.menu,
-                    color: AppColors.muted(context), size: 24),
-                onPressed: _showMainMenu,
-                tooltip: _t('منو', 'Menu'),
-              ),
-              Expanded(
-                child: Column(
-                  children: [
-                    Text(
-                      'Hasan VPN',
-                      style: TextStyle(
-                        color: AppColors.fg(context),
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _status,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: AppColors.muted(context), fontSize: 11),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: Icon(Icons.my_location,
-                    color: AppColors.accent, size: 22),
-                onPressed: _jumpToSelected,
-                tooltip: _t('یافتن انتخاب‌شده', 'Find selected'),
-              ),
-              IconButton(
-                icon: Icon(Icons.vertical_align_top,
-                    color: AppColors.accent, size: 22),
-                onPressed: _scrollToTop,
-                tooltip: _t('برو به اول', 'Top'),
-              ),
-              IconButton(
-                icon: Icon(Icons.vertical_align_bottom,
-                    color: AppColors.accent, size: 22),
-                onPressed: _scrollToBottom,
-                tooltip: _t('برو به آخر', 'Bottom'),
-              ),
-              IconButton(
-                icon: Icon(
-                  _sortAscending ? Icons.sort : Icons.sort_by_alpha,
-                  color: AppColors.accent,
-                  size: 22,
-                ),
-                onPressed: _toggleSort,
-                tooltip: _t('مرتب‌سازی', 'Sort'),
-              ),
-              IconButton(
-                icon: _testing
-                    ? const Icon(Icons.stop_circle_outlined,
-                        color: AppColors.danger, size: 22)
-                    : const Icon(Icons.speed,
-                        color: AppColors.accent, size: 22),
-                onPressed: _testing ? _cancelTesting : _testAll,
-                tooltip: _t('تست همه', 'Test All'),
-              ),
-              IconButton(
-                icon: _batchRunning
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.accent),
-                      )
-                    : const Icon(Icons.grid_view,
-                        color: AppColors.accent, size: 22),
-                onPressed: _batchRunning ? null : _runWarpBatchTest,
-                tooltip: _t('تست دسته‌ای WARP/WARP+/MASQUE',
-                    'Batch test WARP/WARP+/MASQUE'),
-              ),
-              IconButton(
-                icon: Icon(
-                  _selectionMode
-                      ? Icons.check_box
-                      : Icons.check_box_outline_blank,
-                  color: _selectionMode
-                      ? AppColors.accent
-                      : AppColors.muted(context),
-                  size: 22,
-                ),
-                onPressed: () => setState(() {
-                  _selectionMode = !_selectionMode;
-                  if (!_selectionMode) _selectedIds.clear();
-                }),
-                tooltip: _t('حالت انتخاب', 'Selection mode'),
-              ),
-              IconButton(
-                icon: Icon(Icons.timeline,
-                    color: AppColors.accent, size: 22),
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => QualityHistoryScreen(
-                      language: widget.language,
-                    ),
+          IconButton(
+            icon: Icon(Icons.menu,
+                color: AppColors.muted(context), size: 22),
+            onPressed: _showMainMenu,
+            tooltip: _t('منو', 'Menu'),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          ),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Hasan VPN',
+                  style: TextStyle(
+                    color: AppColors.fg(context),
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                tooltip: _t('تاریخچه کیفیت', 'Quality history'),
+                const SizedBox(height: 1),
+                Text(
+                  _status,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: AppColors.muted(context), fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          // Test All — kept visible, used constantly.
+          IconButton(
+            icon: _testing
+                ? const Icon(Icons.stop_circle_outlined,
+                    color: AppColors.danger, size: 20)
+                : const Icon(Icons.speed,
+                    color: AppColors.accent, size: 20),
+            onPressed: _testing ? _cancelTesting : _testAll,
+            tooltip: _t('تست همه', 'Test All'),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          ),
+          // Batch test — kept visible.
+          IconButton(
+            icon: _batchRunning
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.accent),
+                  )
+                : const Icon(Icons.grid_view,
+                    color: AppColors.accent, size: 20),
+            onPressed: _batchRunning ? null : _runWarpBatchTest,
+            tooltip: _t('تست دسته‌ای WARP/WARP+/MASQUE',
+                'Batch test WARP/WARP+/MASQUE'),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          ),
+          // Overflow menu — find / top / bottom / sort / selection.
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert,
+                color: AppColors.accent, size: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            tooltip: _t('بیشتر', 'More'),
+            onSelected: (v) {
+              switch (v) {
+                case 'find':
+                  _jumpToSelected();
+                  break;
+                case 'top':
+                  _scrollToTop();
+                  break;
+                case 'bottom':
+                  _scrollToBottom();
+                  break;
+                case 'sort':
+                  _toggleSort();
+                  break;
+                case 'select':
+                  setState(() {
+                    _selectionMode = !_selectionMode;
+                    if (!_selectionMode) _selectedIds.clear();
+                  });
+                  break;
+              }
+            },
+            itemBuilder: (c) => [
+              PopupMenuItem(
+                value: 'find',
+                child: Row(children: [
+                  const Icon(Icons.my_location,
+                      color: AppColors.accent, size: 18),
+                  const SizedBox(width: 10),
+                  Text(_t('یافتن انتخاب‌شده', 'Find selected')),
+                ]),
               ),
-              IconButton(
-                icon: Icon(Icons.settings,
-                    color: AppColors.muted(context), size: 22),
-                onPressed: widget.onOpenSettings,
-                tooltip: _t('تنظیمات', 'Settings'),
+              PopupMenuItem(
+                value: 'top',
+                child: Row(children: [
+                  const Icon(Icons.vertical_align_top,
+                      color: AppColors.accent, size: 18),
+                  const SizedBox(width: 10),
+                  Text(_t('برو به اول', 'Top')),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'bottom',
+                child: Row(children: [
+                  const Icon(Icons.vertical_align_bottom,
+                      color: AppColors.accent, size: 18),
+                  const SizedBox(width: 10),
+                  Text(_t('برو به آخر', 'Bottom')),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'sort',
+                child: Row(children: [
+                  Icon(_sortAscending ? Icons.sort : Icons.sort_by_alpha,
+                      color: AppColors.accent, size: 18),
+                  const SizedBox(width: 10),
+                  Text(_t('مرتب‌سازی', 'Sort')),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'select',
+                child: Row(children: [
+                  Icon(_selectionMode
+                          ? Icons.check_box
+                          : Icons.check_box_outline_blank,
+                      color: AppColors.accent, size: 18),
+                  const SizedBox(width: 10),
+                  Text(_t('انتخاب چندتایی', 'Multi-select')),
+                ]),
               ),
             ],
           ),
-          if (_showSearch)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      autofocus: true,
-                      style: TextStyle(
-                          color: AppColors.fg(context), fontSize: 14),
-                      decoration: InputDecoration(
-                        hintText: _t('جستجو...', 'Search...'),
-                        hintStyle:
-                            TextStyle(color: AppColors.muted2(context)),
-                        prefixIcon: Icon(Icons.search,
-                            color: AppColors.muted(context), size: 20),
-                        filled: true,
-                        fillColor: AppColors.surface(context),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      onChanged: (value) {
-                        _searchQuery = value;
-                        _rebuildServerList();
-                      },
-                    ),
-                  ),
-                  IconButton(
-                    icon:
-                        Icon(Icons.close, color: AppColors.muted(context)),
-                    onPressed: _closeSearch,
-                  ),
-                ],
-              ),
-            ),
         ],
       ),
     );
   }
+
+
 
   Widget _buildConnectButton() {
     final selectedColor =
