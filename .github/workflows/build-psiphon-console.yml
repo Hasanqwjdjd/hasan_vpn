@@ -70,8 +70,12 @@ jobs:
           # Some deps use vendored native code with no 16KB alignment, so
           # use the standard Android linker flags plus PIE.
           export CGO_LDFLAGS="-Wl,-z,max-page-size=16384"
+          # -checklinkname=0: Go 1.23 tightened the linker's linkname
+          # verifier, and anet still reaches into net.zoneCache (removed
+          # in Go 1.24). The runtime symbol exists as a stub, and the
+          # binary is offline-only, so we tell the linker to trust it.
           go build -tags "netcgo" \
-            -trimpath -ldflags "-s -w" \
+            -trimpath -ldflags "-s -w -checklinkname=0" \
             -o /tmp/psiphon-tunnel-core .
           ls -lh /tmp/psiphon-tunnel-core
           file /tmp/psiphon-tunnel-core
