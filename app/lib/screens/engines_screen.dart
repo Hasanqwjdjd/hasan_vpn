@@ -38,7 +38,7 @@ class _EnginesScreenState extends State<EnginesScreen> {
   /// network call. Called once in initState.
   Future<void> _loadCachedOnly() async {
     try {
-      await EngineVersionChecker.instance.loadCached();
+      await EngineVersionChecker.instance.loadFromCache();
       if (mounted) setState(() {});
     } catch (_) {}
   }

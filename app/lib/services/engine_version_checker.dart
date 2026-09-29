@@ -49,6 +49,15 @@ class EngineVersionChecker {
   /// callback وقتی چک تمام شد.
   void Function()? onUpdated;
 
+  /// Read whatever the last check left on disk, no network. Used to
+  /// populate version badges when the screen opens; Refresh is the only
+  /// path that actually hits GitHub.
+  Future<void> loadFromCache() async {
+    try {
+      await _loadFromPrefs();
+    } catch (_) {}
+  }
+
   /// چک همه هسته‌ها با cache.
   ///
   /// [force] = true → cache نادیده بگیر و دوباره fetch کن.
