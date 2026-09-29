@@ -1630,9 +1630,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _jumpToSelected() async {
-    // No animation. With thousands of servers, an animated scroll rebuilds
-    // every intermediate frame and makes the app stutter and heat up.
-    // jumpTo / ensureVisible with Duration.zero land in one frame.
+    // Index-only. The old code used Scrollable.ensureVisible with a
+    // GlobalKey; with thousands of servers that forces Flutter to lay out
+    // and search the whole list before it can even start, which is why
+    // the app froze. The list rows are a fixed 78 px (SizedBox 74 +
+    // bottom 4), so a plain jumpTo is exact and instant.
     final selected = _selected;
     if (selected == null) {
       _showMsg(_t('هیچ سروری انتخاب نشده', 'No server selected'));
@@ -1640,39 +1642,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     final idx = _servers.indexWhere((s) => s.id == selected.id);
     if (idx == -1) {
-      _showMsg(_t('سرور انتخاب‌شده در لیست نیست', 'Selected server is not in list'));
+      _showMsg(
+          _t('سرور انتخاب‌شده در لیست نیست', 'Selected server is not in list'));
       return;
     }
-
-    final key = _tileKeys.putIfAbsent(selected.id, () => GlobalKey());
-    final ctx = key.currentContext;
-    if (ctx != null) {
-      await Scrollable.ensureVisible(
-        ctx,
-        duration: Duration.zero,
-        alignment: 0.15,
-      );
-      if (mounted) setState(() => _selected = selected);
-      return;
-    }
-
     if (!_listScrollController.hasClients) return;
-    final approx = ((idx + 1) * 78.0)
+
+    // Row height: see _buildServerList — SizedBox(height: 74) + 4 padding,
+    // or mainAxisExtent 62 + 6 spacing in grid mode.
+    final rowHeight = _twoColumnGrid ? 62.0 : 78.0;
+    final gridRow = _twoColumnGrid ? (idx ~/ 2) : idx;
+    final target = (gridRow * rowHeight)
         .clamp(0.0, _listScrollController.position.maxScrollExtent);
-    _listScrollController.jumpTo(approx);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final ctx2 = key.currentContext;
-      if (ctx2 != null && mounted) {
-        Scrollable.ensureVisible(
-          ctx2,
-          duration: Duration.zero,
-          alignment: 0.15,
-        );
-        Future.delayed(const Duration(milliseconds: 200), () {
-          if (mounted) setState(() => _selected = selected);
-        });
-      }
-    });
+    _listScrollController.jumpTo(target);
   }
 
   // ------------------------------------------------------------- loading
@@ -5429,6 +5411,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     controller: _listScrollController,
                     padding: const EdgeInsets.only(
                         left: 8, right: 8, bottom: 110),
+                    cacheExtent: 120.0,
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
@@ -5457,6 +5440,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               itemCount: _servers.length,
               onReorder: _onReorder,
               buildDefaultDragHandles: false,
+              // Only build a small window of rows around the viewport
+              // instead of the default 250-pixel margin; with thousands of
+              // servers that margin was building dozens of tiles per frame.
+              cacheExtent: 120.0,
+              addRepaintBoundaries: true,
               proxyDecorator: (child, index, animation) {
                 return Material(
                   color: Colors.transparent,
