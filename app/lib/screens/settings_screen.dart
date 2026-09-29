@@ -58,7 +58,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late String _theme;
   late String _lang;
   String _vpnMode = 'vpn';
-  bool _autoConnectBoot = false;
   bool _checkingUpdate = false;
   int _autoTestMin = 0;
 
@@ -73,10 +72,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // ignore: unawaited_futures
     SettingsService.getAutoTestIntervalMin().then((v) {
       if (mounted) setState(() => _autoTestMin = v);
-    });
-    // ignore: unawaited_futures
-    SettingsService.getAutoConnectBoot().then((v) {
-      if (mounted) setState(() => _autoConnectBoot = v);
     });
     _lang = widget.language;
     // ignore: unawaited_futures

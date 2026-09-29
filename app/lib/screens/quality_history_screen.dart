@@ -18,9 +18,18 @@ class QualityHistoryScreen extends StatefulWidget {
   State<QualityHistoryScreen> createState() => _QualityHistoryScreenState();
 }
 
-class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
+class _QualityHistoryScreenState extends State<QualityHistoryScreen>
+    with TickerProviderStateMixin {
   String _t(String fa, String en) =>
       widget.language == 'fa' ? fa : en;
+
+  /// Drives the live line charts. Each chart grows in from left to right
+  /// on open, and redraws smoothly when the underlying values change —
+  /// "line moves like a wave" instead of a static picture.
+  late final AnimationController _chartAnim;
+  List<double> _lastQualityValues = const [];
+  List<double> _lastPingValues = const [];
+  List<double> _lastJitterValues = const [];
 
   List<QualitySample> _all = const [];
   List<QualitySample> _filtered = const [];
@@ -34,6 +43,10 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
   @override
   void initState() {
     super.initState();
+    _chartAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..forward();
     _load();
   }
 
@@ -94,6 +107,10 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
   }
 
   void _applyFilter() {
+    // Sweep the line charts in again on every refresh so the
+    // graphs read as live data instead of a frozen image.
+    try { _chartAnim.forward(from: 0); } catch (_) {}
+
     var list = _all;
     if (_selectedServerId.isNotEmpty) {
       list = list.where((s) => s.serverId == _selectedServerId).toList();
@@ -623,20 +640,39 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen> {
                           color: AppColors.muted2(context), fontSize: 11),
                     ),
                   )
-                : CustomPaint(
-                    painter: _LineChartPainter(
-                      values: values,
-                      maxY: maxY <= 0 ? 1 : maxY,
-                      color: color,
-                      gridColor:
-                          AppColors.muted2(context).withOpacity(0.2),
-                    ),
-                    size: Size.infinite,
+                : AnimatedBuilder(
+                    animation: _chartAnim,
+                    builder: (_, __) {
+                      // Grow the wave from the left when it first appears.
+                      final t = Curves.easeOut.transform(_chartAnim.value);
+                      return ClipRect(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: t.clamp(0.02, 1.0),
+                          child: CustomPaint(
+                            painter: _LineChartPainter(
+                              values: values,
+                              maxY: maxY <= 0 ? 1 : maxY,
+                              color: color,
+                              gridColor:
+                                  AppColors.muted2(context).withOpacity(0.2),
+                              reveal: t,
+                            ),
+                            size: Size.infinite,
+                          ),
+                        ),
+                      );
+                    },
                   ),
           ),
         ],
       ),
     );
+  }
+  @override
+  void dispose() {
+    try { _chartAnim.dispose(); } catch (_) {}
+    super.dispose();
   }
 }
 
@@ -646,11 +682,16 @@ class _LineChartPainter extends CustomPainter {
   final Color color;
   final Color gridColor;
 
+  /// 0..1 — how much of the wave to draw. The caller animates this from 0 to 1
+  /// so a fresh chart sweeps in from the left instead of appearing whole.
+  final double reveal;
+
   _LineChartPainter({
     required this.values,
     required this.maxY,
     required this.color,
     required this.gridColor,
+    this.reveal = 1.0,
   });
 
   @override
@@ -706,11 +747,26 @@ class _LineChartPainter extends CustomPainter {
 
     canvas.drawPath(fillPath, fillPaint);
     canvas.drawPath(linePath, linePaint);
+
+    // Glowing dot on the newest value so the eye lands on "now".
+    if (values.isNotEmpty) {
+      final vLast = values.last;
+      final xLast = (values.length - 1) * dx;
+      final normLast = (vLast / maxY).clamp(0.0, 1.0);
+      final yLast = size.height * (1 - normLast);
+      final glow = Paint()
+        ..color = color.withOpacity(0.25 * reveal)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(xLast, yLast), 6, glow);
+      final dot = Paint()..color = color;
+      canvas.drawCircle(Offset(xLast, yLast), 2.5, dot);
+    }
   }
 
   @override
   bool shouldRepaint(_LineChartPainter old) =>
       old.values != values ||
       old.maxY != maxY ||
-      old.color != color;
+      old.color != color ||
+      old.reveal != reveal;
 }
