@@ -414,7 +414,9 @@ class AetherService : Service() {
         }
 
         val env = try {
-            parseEnv(envJson)
+            // parseEnv returns an immutable map; we may add
+            // AETHER_PSIPHON_BIN below, so keep a mutable copy.
+            parseEnv(envJson).toMutableMap()
         } catch (error: Exception) {
             fail("Invalid Aether environment: ${error.message}")
             return
