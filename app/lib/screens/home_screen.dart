@@ -5118,6 +5118,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ],
             ),
           ),
+          // Find selected — always visible, one of the most-used buttons.
+          IconButton(
+            icon: Icon(Icons.my_location,
+                color: AppColors.accent, size: 20),
+            onPressed: _jumpToSelected,
+            tooltip: _t('یافتن انتخاب‌شده', 'Find selected'),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          ),
           // Test All — kept visible, used constantly.
           IconButton(
             icon: _testing
@@ -5156,9 +5165,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             tooltip: _t('بیشتر', 'More'),
             onSelected: (v) {
               switch (v) {
-                case 'find':
-                  _jumpToSelected();
-                  break;
                 case 'top':
                   _scrollToTop();
                   break;
@@ -5177,15 +5183,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               }
             },
             itemBuilder: (c) => [
-              PopupMenuItem(
-                value: 'find',
-                child: Row(children: [
-                  const Icon(Icons.my_location,
-                      color: AppColors.accent, size: 18),
-                  const SizedBox(width: 10),
-                  Text(_t('یافتن انتخاب‌شده', 'Find selected')),
-                ]),
-              ),
               PopupMenuItem(
                 value: 'top',
                 child: Row(children: [
