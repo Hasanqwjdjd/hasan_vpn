@@ -25,55 +25,79 @@ jobs:
           java-version: '17'
 
       - name: Install tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
+        run: sudo apt-get update && sudo apt-get install -y jq unzip
 
-      - name: Discover Psiphon AAR
+      - name: Discover Psiphon Android library zip
         run: |
           set -euo pipefail
           mkdir -p work
           cd work
-          # The psiphon-tunnel-core repo publishes releases named like
-          # "2.0.40" with different asset names across versions. Discover
-          # instead of hardcoding.
-          echo "=== latest 15 releases ==="
-          gh api "repos/Psiphon-Labs/psiphon-tunnel-core/releases?per_page=15" \
-            --jq '.[] | "\(.tag_name)\t\(.assets|map(.name)|join(","))"'
-          echo ""
-          # Prefer a release tag that contains 2.0.41, else 2.0.40, else
-          # the newest with an .aar asset.
+          # The releases publish `Psiphon-Android-Library.zip` (not .aar).
+          # Pick the newest release that has it. Use `jq first` instead of
+          # shell `head -1` so we do not SIGPIPE the gh process (exit 141).
           URL=$(gh api "repos/Psiphon-Labs/psiphon-tunnel-core/releases?per_page=30" \
-            --jq '[.[] | select(.assets | map(select(.name|test("\\.(aar|zip)$"))) | length > 0)] | .[] | .assets[] | select(.name|test("\\.(aar|zip)$")) | .browser_download_url' \
-            | head -1)
-          if [ -z "$URL" ]; then
-            echo "No AAR asset found across releases"
-            gh api "repos/Psiphon-Labs/psiphon-tunnel-core/releases?per_page=3" --jq '.[] | {tag: .tag_name, assets: [.assets[].name]}'
+            --jq '[.[] | {tag: .tag_name, a: (.assets[] | select(.name | test("Android.*\\.zip$"; "i")) | .browser_download_url)} | select(.a != null)] | .[0].a')
+          if [ -z "$URL" ] || [ "$URL" = "null" ]; then
+            echo "No Android library zip found"
+            gh api "repos/Psiphon-Labs/psiphon-tunnel-core/releases?per_page=3" \
+              --jq '.[] | {tag: .tag_name, assets: [.assets[].name]}'
             exit 1
           fi
           echo "URL=$URL"
           echo "$URL" > asset_url.txt
 
-      - name: Download AAR
+      - name: Download
         run: |
           set -euo pipefail
           cd work
           URL=$(cat asset_url.txt)
-          curl -fsSL -o psiphontunnel.aar "$URL"
-          ls -lh psiphontunnel.aar
-          file psiphontunnel.aar
+          curl -fsSL -o psiphon.zip "$URL"
+          ls -lh psiphon.zip
+          file psiphon.zip
+
+      - name: Extract AAR from zip
+        run: |
+          set -euo pipefail
+          cd work
+          mkdir -p zipcontents
+          unzip -q psiphon.zip -d zipcontents
+          echo "=== zip contents ==="
+          find zipcontents -maxdepth 3 -type f | head -40
+          # Find the .aar inside, or a classes.jar directly
+          AAR=$(find zipcontents -name "*.aar" | head -n 1 || true)
+          JAR=$(find zipcontents -name "classes.jar" | head -n 1 || true)
+          if [ -n "$AAR" ]; then
+            echo "AAR=$AAR"
+            echo "$AAR" > aar_path.txt
+          elif [ -n "$JAR" ]; then
+            echo "JAR=$JAR"
+            echo "$JAR" > jar_path.txt
+          else
+            echo "Neither AAR nor classes.jar inside"
+            find zipcontents -type f | head -60
+            exit 1
+          fi
 
       - name: Extract classes.jar
         run: |
           set -euo pipefail
           cd work
-          mkdir -p extracted
-          cd extracted
-          unzip -q ../psiphontunnel.aar
-          ls -la
-          if [ ! -f classes.jar ]; then
-            echo "No classes.jar"
-            exit 1
+          if [ -f aar_path.txt ]; then
+            AAR=$(cat aar_path.txt)
+            mkdir -p extracted
+            cd extracted
+            unzip -q "../$AAR"
+            ls -la
+            if [ ! -f classes.jar ]; then
+              echo "No classes.jar in AAR"
+              exit 1
+            fi
+          else
+            JAR=$(cat jar_path.txt)
+            mkdir -p extracted
+            cp "../$JAR" extracted/classes.jar
+            cd extracted
+            ls -la
           fi
           ls -lh classes.jar
 
@@ -82,11 +106,11 @@ jobs:
         run: |
           set -euo pipefail
           ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-          D8=$(find "$ANDROID_SDK/build-tools" -name d8 -type f 2>/dev/null | sort -V | tail -1)
+          D8=$(find "$ANDROID_SDK/build-tools" -name d8 -type f 2>/dev/null | sort -V | tail -n 1)
           if [ -z "$D8" ]; then
-            SDKMANAGER=$(find "$ANDROID_SDK/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -1)
+            SDKMANAGER=$(find "$ANDROID_SDK/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -n 1)
             yes | "$SDKMANAGER" "build-tools;34.0.0" >/dev/null 2>&1 || true
-            D8=$(find "$ANDROID_SDK/build-tools" -name d8 -type f 2>/dev/null | sort -V | tail -1)
+            D8=$(find "$ANDROID_SDK/build-tools" -name d8 -type f 2>/dev/null | sort -V | tail -n 1)
           fi
           if [ -z "$D8" ]; then
             echo "d8 not found"; exit 1
