@@ -499,16 +499,6 @@ class ServerTile extends StatelessWidget {
 
                 SizedBox(width: c ? 0 : 2),
 
-                // Test icon فقط در حالت لیست
-                if (!c && onTest != null)
-                  _smallIcon(
-                    icon: Icons.bolt,
-                    color: AppColors.warn,
-                    onPressed: server.status == ServerStatus.testing
-                        ? null
-                        : onTest,
-                  ),
-
                 // FIX3: منوی سه‌نقطه — همه گزینه‌ها در یک PopupMenu.
                 // کپی/اشتراک فقط برای سرورهای خود کاربر (onCopy/onShare
                 // از home_screen فقط وقتی isDeletable=true پاس داده می‌شن).

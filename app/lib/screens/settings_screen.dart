@@ -407,81 +407,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          // ------- Quality Alert ---------
-          _sectionTitle(_t('هشدار کیفیت اتصال',
-              'Connection quality alert')),
-
-          _card(
-            context,
-            Column(
-              children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  activeColor: AppColors.accent,
-                  title: Text(
-                    _t('هشدار افت کیفیت', 'Alert on quality drop'),
-                    style:
-                        TextStyle(color: AppColors.fg(context), fontSize: 13),
-                  ),
-                  subtitle: Text(
-                    _t(
-                      'وقتی امتیاز اتصال پایین‌تر از آستانه بیاد، هشدار می‌ده.',
-                      'Alerts when connection score drops below threshold.',
-                    ),
-                    style: TextStyle(
-                        color: AppColors.muted2(context),
-                        fontSize: 10.5,
-                        height: 1.4),
-                  ),
-                  value: _qualityAlertEnabled,
-                  onChanged: (v) async {
-                    await QualityAlert.instance.setEnabled(v);
-                    if (!mounted) return;
-                    setState(() => _qualityAlertEnabled = v);
-                  },
-                ),
-                if (_qualityAlertEnabled)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    title: Text(
-                      _t('آستانه هشدار', 'Alert threshold'),
-                      style:
-                          TextStyle(color: AppColors.fg(context), fontSize: 12),
-                    ),
-                    subtitle: Text(
-                      _t(
-                        '$_qualityThreshold — پایین‌تر از این = ضعیف',
-                        '$_qualityThreshold — below this = poor',
-                      ),
-                      style: TextStyle(
-                          color: AppColors.muted2(context), fontSize: 10.5),
-                    ),
-                    trailing: SizedBox(
-                      width: 140,
-                      child: Slider(
-                        value: _qualityThreshold.toDouble(),
-                        min: 10,
-                        max: 90,
-                        divisions: 8,
-                        label: '$_qualityThreshold',
-                        activeColor: AppColors.accent,
-                        onChanged: (v) {
-                          setState(() =>
-                              _qualityThreshold = v.round());
-                        },
-                        onChangeEnd: (v) async {
-                          await QualityAlert.instance
-                              .setThreshold(v.round());
-                        },
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
 
           _sectionTitle(_t('DNS بازی', 'Game DNS')),
           _card(
@@ -924,38 +849,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // ------- تست خودکار -------
-          _sectionTitle(_t('تست خودکار دوره‌ای', 'Periodic auto-test')),
-          _card(
-            context,
-            Column(
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.timer,
-                        color: AppColors.muted(context), size: 20),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _t('هر بار بهترین سرور را پیدا کن',
-                            'Find fastest server periodically'),
-                        style: TextStyle(
-                            color: AppColors.fg(context), fontSize: 14),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // Manual-only by design: this used to run a full test of
-                // every server on a timer, which is the single biggest
-                // contributor to heat and battery drain. The setting stays
-                // in storage for backward compatibility but the UI no
-                // longer offers it.
               ],
             ),
           ),

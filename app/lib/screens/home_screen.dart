@@ -1096,34 +1096,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    field('finalMask',
-                        finalMaskCtrl, maxLines: 4,
-                        hint: '{"tcp":[...]}'),
-                    // دکمه اسکن FinalMask — preset ها رو تست می‌کنه
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            await _findBestFinalMask(
-                              server, finalMaskCtrl, ctx,
-                            );
-                          },
-                          icon: const Icon(Icons.search, size: 16),
-                          label: Text(
-                            _t('Find FinalMask — اسکن preset ها',
-                                'Find FinalMask — scan presets'),
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.accent,
-                            side: const BorderSide(color: AppColors.accent),
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                          ),
-                        ),
-                      ),
-                    ),
                     field('dialMode', dialModeCtrl),
                     field('targetStrategy', targetStratCtrl, hint: 'AsIs'),
 
@@ -1170,35 +1142,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ],
                       onChanged: (v) =>
                           setLocal(() => pingNgProfile = v ?? 'Off'),
-                    ),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          final picked = await _findBestDesync(
-                            server, ctx,
-                          );
-                          if (picked == null) return;
-                          setLocal(() {
-                            pingNgProfile = 'Custom';
-                            pingNgArgsCtrl.text = picked;
-                          });
-                        },
-                        icon: const Icon(Icons.auto_fix_high, size: 16),
-                        label: Text(
-                          _t(
-                            'Auto-Tune Desync — پیدا کردن بهترین preset',
-                            'Auto-Tune Desync — find the best preset',
-                          ),
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.accent,
-                          side: const BorderSide(color: AppColors.accent),
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                        ),
-                      ),
                     ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,

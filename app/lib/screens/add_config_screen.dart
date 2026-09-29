@@ -4878,52 +4878,12 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: const Color(0xFF00ACC1),
             ),
             _buildTypeCard(
-              title: 'SOCKS5',
-              subtitle: _t(
-                'پروکسی SOCKS5 از راه دور',
-                'Remote SOCKS5 proxy',
-              ),
-              icon: Icons.dns,
-              type: 'socks5',
-              color: const Color(0xFFAB47BC),
-            ),
-            _buildTypeCard(
               title: 'Hysteria2',
               subtitle: _t('HY2 با پارامترهای پیشرفته',
                   'HY2 with advanced params'),
               icon: Icons.waves,
               type: 'hysteria2',
               color: const Color(0xFFEF6C00),
-            ),
-            _buildTypeCard(
-              title: 'MasterDNS',
-              subtitle: _t(
-                'تونل DNS با MasterDnsVPN — سرور اختصاصی لازم داره',
-                'DNS tunnel with MasterDnsVPN — needs your own server',
-              ),
-              icon: Icons.travel_explore,
-              type: 'masterdns',
-              color: const Color(0xFF00897B),
-            ),
-            _buildTypeCard(
-              title: 'SSH',
-              subtitle: _t(
-                'اتصال SSH + SOCKS5 روی سرور (ssh -D)',
-                'SSH + remote SOCKS5 (ssh -D style)',
-              ),
-              icon: Icons.terminal,
-              type: 'ssh',
-              color: const Color(0xFF8D6E63),
-            ),
-            _buildTypeCard(
-              title: _t('تونل DNS', 'DNS Tunnel'),
-              subtitle: _t(
-                'DNSTT / Slipstream — عبور ترافیک از روی DNS',
-                'DNSTT / Slipstream — tunnel traffic over DNS',
-              ),
-              icon: Icons.dns_outlined,
-              type: 'tunnel',
-              color: const Color(0xFF42A5F5),
             ),
 
             const SizedBox(height: 20),
@@ -5152,9 +5112,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               _buildSiphonForm(),
             ] else if (_selectedType == 'tor') ...[
               _buildTorForm(),
-            ] else if (_selectedType == 'tunnel') ...[
-              _buildTunnelForm(),
-            ] else if (_selectedType == 'warp') ...[
+ else if (_selectedType == 'warp') ...[
               _buildWarpForm(),
               const SizedBox(height: 16),
             ] else if (_selectedType == 'masterdns') ...[
@@ -5165,9 +5123,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               const SizedBox(height: 16),
             ] else if (_selectedType == 'ssh') ...[
               _buildSshForm(),
-            ] else if (_selectedType == 'socks5') ...[
-              _buildSocks5Form(),
-            ] else if (_selectedType == 'chain') ...[
+ else if (_selectedType == 'chain') ...[
               _buildChainForm(),
             ],
           ],
