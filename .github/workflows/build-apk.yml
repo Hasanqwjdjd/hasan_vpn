@@ -527,7 +527,7 @@ jobs:
           --obfuscate
           --split-debug-info=build/symbols
           --split-per-abi
-          --target-platform android-arm,android-arm64,android-x64
+          --target-platform android-arm64
           --build-name=${{ steps.appver.outputs.version }}
           --build-number=${{ github.run_number }}
 

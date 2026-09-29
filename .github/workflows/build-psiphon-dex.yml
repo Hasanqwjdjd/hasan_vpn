@@ -122,7 +122,11 @@ jobs:
           set -euo pipefail
           cd work/extracted
           D8="${{ steps.d8.outputs.path }}"
-          "$D8" --min-api 21 --no-desugaring --output . classes.jar
+          # --min-api 24: d8 refuses "Default interface methods" below API 24,
+          # and psiphon-tunnel-core's HostFeedbackHandler uses one. Android
+          # 5/6 cover a fraction of a percent of devices; bumping the min
+          # here does not affect the app's own minSdk, only this DEX.
+          "$D8" --min-api 24 --no-desugaring --output . classes.jar
           ls -lh classes.dex
 
       - name: Install into assets
