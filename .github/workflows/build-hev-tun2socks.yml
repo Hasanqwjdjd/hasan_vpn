@@ -25,44 +25,37 @@ jobs:
       - name: Install build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake python3 git
+          sudo apt-get install -y build-essential git
 
-      - name: Clone hev-socks5-tunnel 2.18.0
+      - name: Clone with submodules
         run: |
-          git clone --depth 1 --branch 2.18.0 \
+          git clone --recurse-submodules --shallow-submodules --depth 1 --branch 2.18.0 \
             https://github.com/heiher/hev-socks5-tunnel.git src
-
-      - name: Inspect repo layout
-        run: |
-          set -euo pipefail
           cd src
-          echo "=== root ==="
+          echo "=== top level ==="
           ls -la
-          echo "=== find CMakeLists.txt ==="
-          find . -name CMakeLists.txt -not -path "./third-part/*" 2>/dev/null
-          echo "=== find Makefile ==="
-          find . -name Makefile -not -path "./third-part/*" 2>/dev/null | head -10
-          echo "=== find main.c / hev-main.c ==="
-          find . -name "*.c" -not -path "./third-part/*" 2>/dev/null | head -20
+          echo "=== third-part ==="
+          ls -la third-part/ 2>/dev/null
+          echo "=== Android.mk ==="
+          cat Android.mk
+          echo "=== Application.mk ==="
+          cat Application.mk
 
-      - name: Build (make, arm64-v8a)
+      - name: Build with ndk-build
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
           set -euo pipefail
           cd src
-          NDK_BIN="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          export CC="${NDK_BIN}/aarch64-linux-android21-clang"
-          export AR="${NDK_BIN}/llvm-ar"
-          export LD="${NDK_BIN}/ld.lld"
-          export CROSS_COMPILE="aarch64-linux-android-"
-          # The project uses a Makefile at root; run it.
-          make -j"$(nproc)" \
-            CC="$CC" AR="$AR" LD="$LD" \
-            CFLAGS="-O2 -fPIE" LDFLAGS="-pie" 2>&1 | tail -60 || true
-          echo "=== build dir ==="
-          find . -type f -executable -not -path "./third-part/*" 2>/dev/null | head
-          ls -la bin/ build/ 2>/dev/null || true
+          NDK_BUILD="${ANDROID_NDK_HOME}/ndk-build"
+          echo "using $NDK_BUILD"
+          "$NDK_BUILD" NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=./Android.mk \
+            NDK_APPLICATION_MK=./Application.mk \
+            APP_ABI=arm64-v8a APP_PLATFORM=android-21 \
+            -j"$(nproc)" 2>&1 | tail -80
+          echo "=== output tree ==="
+          find libs -type f 2>/dev/null
+          ls -la libs/arm64-v8a/ 2>/dev/null || true
 
       - name: Locate binary
         id: locate
@@ -70,18 +63,19 @@ jobs:
           set -euo pipefail
           cd src
           BIN=""
-          for cand in bin/hev-socks5-tunnel build/hev-socks5-tunnel hev-socks5-tunnel; do
-            if [ -x "$cand" ]; then BIN="$cand"; break; fi
+          for cand in \
+            libs/arm64-v8a/hev-socks5-tunnel \
+            libs/arm64-v8a/libtun2socks.so \
+            obj/local/arm64-v8a/hev-socks5-tunnel; do
+            if [ -f "$cand" ]; then BIN="$cand"; break; fi
           done
           if [ -z "$BIN" ]; then
-            BIN=$(find . -type f -executable -not -path "./third-part/*" \
-              | xargs -r file 2>/dev/null \
-              | grep -i "ELF.*executable.*ARM aarch64" \
-              | head -1 | cut -d: -f1 || true)
+            BIN=$(find libs obj -type f 2>/dev/null | xargs -r file 2>/dev/null \
+              | grep -iE "ELF.*(aarch64|ARM aarch64)" | head -1 | cut -d: -f1 || true)
           fi
           if [ -z "$BIN" ]; then
-            echo "No binary found. Tree:"
-            find . -type f -not -path "./third-part/*" | head -40
+            echo "no binary found"
+            find . -type f -name "*.so" 2>/dev/null | head -20
             exit 1
           fi
           echo "BIN=$BIN" >> "$GITHUB_ENV"

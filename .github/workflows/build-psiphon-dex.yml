@@ -1,4 +1,4 @@
-name: Build Psiphon Runtime DEX (2.0.41)
+name: Build Psiphon Runtime DEX
 
 on:
   workflow_dispatch:
@@ -10,6 +10,8 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,58 +24,41 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Discover Psiphon release asset
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Discover Psiphon AAR
         run: |
           set -euo pipefail
           mkdir -p work
           cd work
-          # Query GitHub releases API for the real asset URL — the file
-          # name has changed between releases and pinning it directly
-          # returned 404.
-          echo "=== Querying releases ==="
-          curl -fsSL "https://api.github.com/repos/Psiphon-Labs/psiphon-tunnel-core/releases?per_page=20" > releases.json || true
-          python3 - <<'PY'
-import json, sys
-try:
-    with open('releases.json') as f:
-        rels = json.load(f)
-except Exception as e:
-    print('json load failed', e); sys.exit(1)
-if not isinstance(rels, list) or not rels:
-    print('no releases'); sys.exit(1)
-for r in rels[:10]:
-    tag = r.get('tag_name', '')
-    assets = r.get('assets', [])
-    print(f"  tag={tag} assets={[a.get('name') for a in assets]}")
-    if '2.0.41' in tag or '2.0.40' in tag or '2.0.42' in tag:
-        for a in assets:
-            name = a.get('name', '').lower()
-            if name.endswith('.aar') or 'tunnel' in name:
-                print(f"MATCH {tag} -> {a.get('browser_download_url')}")
-                open('asset_url.txt','w').write(a.get('browser_download_url',''))
-                sys.exit(0)
-# If no exact match, take the newest .aar we can find
-for r in rels:
-    for a in r.get('assets', []):
-        if a.get('name','').lower().endswith('.aar'):
-            print(f"FALLBACK {r.get('tag_name')} -> {a.get('browser_download_url')}")
-            open('asset_url.txt','w').write(a.get('browser_download_url',''))
-            sys.exit(0)
-print('no .aar in any release')
-PY
-          echo "=== asset_url.txt ==="
-          cat asset_url.txt 2>/dev/null || true
+          # The psiphon-tunnel-core repo publishes releases named like
+          # "2.0.40" with different asset names across versions. Discover
+          # instead of hardcoding.
+          echo "=== latest 15 releases ==="
+          gh api "repos/Psiphon-Labs/psiphon-tunnel-core/releases?per_page=15" \
+            --jq '.[] | "\(.tag_name)\t\(.assets|map(.name)|join(","))"'
+          echo ""
+          # Prefer a release tag that contains 2.0.41, else 2.0.40, else
+          # the newest with an .aar asset.
+          URL=$(gh api "repos/Psiphon-Labs/psiphon-tunnel-core/releases?per_page=30" \
+            --jq '[.[] | select(.assets | map(select(.name|test("\\.(aar|zip)$"))) | length > 0)] | .[] | .assets[] | select(.name|test("\\.(aar|zip)$")) | .browser_download_url' \
+            | head -1)
+          if [ -z "$URL" ]; then
+            echo "No AAR asset found across releases"
+            gh api "repos/Psiphon-Labs/psiphon-tunnel-core/releases?per_page=3" --jq '.[] | {tag: .tag_name, assets: [.assets[].name]}'
+            exit 1
+          fi
+          echo "URL=$URL"
+          echo "$URL" > asset_url.txt
 
       - name: Download AAR
         run: |
           set -euo pipefail
           cd work
-          if [ ! -f asset_url.txt ]; then
-            echo "No asset URL discovered. Aborting."
-            exit 1
-          fi
           URL=$(cat asset_url.txt)
-          echo "URL=$URL"
           curl -fsSL -o psiphontunnel.aar "$URL"
           ls -lh psiphontunnel.aar
           file psiphontunnel.aar
@@ -87,15 +72,16 @@ PY
           unzip -q ../psiphontunnel.aar
           ls -la
           if [ ! -f classes.jar ]; then
-            echo "No classes.jar"; exit 1
+            echo "No classes.jar"
+            exit 1
           fi
+          ls -lh classes.jar
 
       - name: Locate Android SDK d8
         id: d8
         run: |
           set -euo pipefail
           ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-          echo "ANDROID_SDK=$ANDROID_SDK"
           D8=$(find "$ANDROID_SDK/build-tools" -name d8 -type f 2>/dev/null | sort -V | tail -1)
           if [ -z "$D8" ]; then
             SDKMANAGER=$(find "$ANDROID_SDK/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -1)
@@ -103,7 +89,7 @@ PY
             D8=$(find "$ANDROID_SDK/build-tools" -name d8 -type f 2>/dev/null | sort -V | tail -1)
           fi
           if [ -z "$D8" ]; then
-            echo "d8 still not found"; exit 1
+            echo "d8 not found"; exit 1
           fi
           echo "path=$D8" >> "$GITHUB_OUTPUT"
 
