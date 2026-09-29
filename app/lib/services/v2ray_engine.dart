@@ -452,8 +452,16 @@ class V2RayEngine {
       } else if (server.protocol == VpnProtocol.amneziaWg) {
         config = _buildAmneziaWgConfig(server);
       } else {
-        final parser = FlutterVless.parse(server.shareLink);
-        config = parser.getFullConfiguration();
+        // FlutterVless.parse throws ArgumentError on schemes it does not
+        // understand (warpmasque://, hasan-warp://, ...). Catch it here so
+        // a single unparseable link shows a message instead of a UI crash.
+        try {
+          final parser = FlutterVless.parse(server.shareLink);
+          config = parser.getFullConfiguration();
+        } catch (e) {
+          debugPrint('buildConfigOnly parse: $e');
+          return '';
+        }
       }
       if (config.trim().isEmpty) return '';
 
@@ -556,9 +564,15 @@ class V2RayEngine {
           return false;
         }
       } else {
-        final FlutterVlessURL parser = FlutterVless.parse(server.shareLink);
-        config = parser.getFullConfiguration();
-        if (parser.remark.isNotEmpty) remark = parser.remark;
+        try {
+          final FlutterVlessURL parser = FlutterVless.parse(server.shareLink);
+          config = parser.getFullConfiguration();
+          if (parser.remark.isNotEmpty) remark = parser.remark;
+        } catch (e) {
+          lastError = 'این کانفیگ از پروتکل '
+              '${server.protocol.name} پشتیبانی نمی‌شود (${e.toString().split(':').first})';
+          return false;
+        }
       }
 
       if (config.trim().isEmpty) {
@@ -922,7 +936,12 @@ class V2RayEngine {
       if (link.startsWith('vpn://')) {
         return _vpnLinkToOutboundMap(link);
       }
-      final p = FlutterVless.parse(link);
+      FlutterVlessURL p;
+      try {
+        p = FlutterVless.parse(link);
+      } catch (_) {
+        return null;
+      }
       final raw = jsonDecode(p.getFullConfiguration());
       if (raw is! Map) return null;
       final obs = raw['outbounds'] as List?;

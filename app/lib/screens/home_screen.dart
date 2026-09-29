@@ -3732,9 +3732,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// برمی‌گردونه: سرور آپدیت‌شده (یا همون سرور اگه چیزی نیاز نبود).
   Future<VpnServer> _verifyWarpEndpointBeforeConnect(
       VpnServer server) async {
+    // MASQUE has its own scan/verify pipeline and does not speak the
+    // WARP endpoint protocol this helper was written for. Calling it here
+    // made the app parse the warpmasque:// link as a VLESS URL, which
+    // threw "subscription is invalid or unsupported" on every connect.
+    if (server.protocol == VpnProtocol.warpMasque) return server;
     final isWarp = server.protocol == VpnProtocol.amneziaWg ||
-        server.protocol == VpnProtocol.chain ||
-        server.protocol == VpnProtocol.warpMasque;
+        server.protocol == VpnProtocol.chain;
     if (!isWarp) return server;
     if (!server.isDeletable) return server; // built-in
 

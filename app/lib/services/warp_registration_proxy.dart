@@ -78,12 +78,20 @@ class WarpRegistrationProxy {
 
     try {
       onProgress?.call('Starting internal registration proxy...');
-      final parser = FlutterVless.parse(bundledVlessLink);
-      var config = parser.getFullConfiguration();
-      if (config.isEmpty) {
-        debugPrint('WarpRegistrationProxy: empty config from link');
+      try {
+        final parser = FlutterVless.parse(bundledVlessLink);
+        var cfg = parser.getFullConfiguration();
+        if (cfg.isEmpty) {
+          debugPrint('WarpRegistrationProxy: empty config from link');
+          return null;
+        }
+        // Rebinding the local port happens below in _forceLocalSocksPort.
+        _pendingConfig = cfg;
+      } catch (e) {
+        debugPrint('WarpRegistrationProxy: bundled link no longer parses: $e');
         return null;
       }
+      var config = _pendingConfig ?? '';
 
       // Pick a fresh local SOCKS port so this short-lived proxy does not
       // collide with the app's main inbound (10808) or a leftover one
