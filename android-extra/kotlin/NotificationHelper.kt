@@ -189,7 +189,12 @@ object NotificationHelper {
         try {
             val manager =
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            // 1 — legacy ID used by an older XrayVPNService build; still
+            // swept here so an upgrade does not leave a stale row behind.
+            // 4240 — the ID the Xray service and the speed readout now
+            // share; cancel it so nothing is left after the activity goes.
             for (id in intArrayOf(
+                1,
                 ID_TELEMETRY, ID_TOR, ID_AETHER, ID_TUNNEL, ID_XRAY, ID_WIDGET,
             )) {
                 manager.cancel(id)

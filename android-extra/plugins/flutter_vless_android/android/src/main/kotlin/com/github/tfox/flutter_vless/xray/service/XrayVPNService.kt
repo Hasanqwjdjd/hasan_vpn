@@ -10,6 +10,7 @@ import android.util.Log
 import com.github.tfox.flutter_vless.xray.core.XrayCoreManager
 import com.github.tfox.flutter_vless.xray.dto.XrayConfig
 import com.github.tfox.flutter_vless.xray.utils.AppConfigs
+import com.hasan.hasan_vpn.NotificationHelper
 import org.json.JSONObject
 import java.io.File
 import java.io.FileDescriptor
@@ -61,10 +62,14 @@ class XrayVPNService : VpnService() {
         createNotificationChannel()
         val notification = createNotification("VPN Service Running")
         try {
+            // Same ID TelemetryNotifier posts to (4240) so the two do not
+            // stack: Flutter's later post simply updates this row, and
+            // when the service stops the row goes with it.
+            val id = NotificationHelper.ID_TELEMETRY
             if (Build.VERSION.SDK_INT >= 34) {
-                startForeground(1, notification, FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+                startForeground(id, notification, FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             } else {
-                startForeground(1, notification)
+                startForeground(id, notification)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start foreground", e)
