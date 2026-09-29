@@ -59,7 +59,7 @@ class CoreEngines {
           'هسته Psiphon برای عبور از فیلترینگ با protocol های meek/OSSH/fronted',
       descriptionEn:
           'Psiphon engine with meek/OSSH/fronted protocols',
-      currentVersion: '2.0.40',
+      currentVersion: '2.0.41',
       githubRepo: 'Psiphon-Labs/psiphon-tunnel-core',
       githubUrl:
           'https://github.com/Psiphon-Labs/psiphon-tunnel-core',
@@ -96,7 +96,7 @@ class CoreEngines {
           'پل بین Android TUN و پروکسی SOCKS5 (hev-socks5-tunnel)',
       descriptionEn:
           'Bridge between Android TUN and SOCKS5 (hev-socks5-tunnel)',
-      currentVersion: '2.5.4',
+      currentVersion: '2.18.0',
       githubRepo: 'heiher/hev-socks5-tunnel',
       githubUrl: 'https://github.com/heiher/hev-socks5-tunnel',
       icon: Icons.settings_ethernet,
