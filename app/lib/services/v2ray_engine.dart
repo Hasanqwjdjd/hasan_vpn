@@ -566,32 +566,57 @@ class V2RayEngine {
         return false;
       }
 
-      // BLOCKER 1: every setting must land in the runtime config for ALL
-      // protocols, including full Xray JSON profiles.
-      config = await XraySettings.applyToConfig(config);
+      // A full Xray JSON profile (xrayjson://, or a raw JSON config pasted
+      // into the manual field) is self-contained: it brings its own
+      // inbounds, outbounds, DNS block and routing rules, and the whole
+      // point of a config like Serverless-v51 is that those rules carry
+      // the DPI evasion (finalmask on direct outbounds). Overwriting the
+      // DNS block or the routing rules here would strip exactly the parts
+      // that make the config work, which is why the server connected but
+      // carried no traffic.
+      //
+      // For that protocol we only:
+      //   - set the log level (harmless)
+      //   - make sure a local SOCKS/HTTP inbound exists for the TUN to
+      //     dial (XrayJson configs may bind 10808 themselves)
+      //   - point the core at the extracted geo assets
+      // Nothing else is touched.
+      final isSelfContainedJson =
+          server.protocol == VpnProtocol.xrayJson ||
+          XrayJson.looksLike(server.shareLink);
 
-      // FIX: اعمال تنظیمات TLS مخصوص همون سرور (fingerprint, ALPN,
-      // cipherSuites, finalMask, ...) روی کانفیگ نهایی.
-      if (!server.tls.isEmpty) {
-        config = XraySettings.applyServerTls(
-          config,
-          server.tls.toJson(),
-          sniOverride: server.sniOrHost,
-        );
+      if (isSelfContainedJson) {
+        config = _applyJsonLogLevelOnly(config);
+        config = _ensureLocalInbound(config);
+        config = await _applyGeoAssetPaths(config);
+      } else {
+        // BLOCKER 1: every setting must land in the runtime config for ALL
+        // protocols, including full Xray JSON profiles.
+        config = await XraySettings.applyToConfig(config);
+
+        // FIX: اعمال تنظیمات TLS مخصوص همون سرور (fingerprint, ALPN,
+        // cipherSuites, finalMask, ...) روی کانفیگ نهایی.
+        if (!server.tls.isEmpty) {
+          config = XraySettings.applyServerTls(
+            config,
+            server.tls.toJson(),
+            sniOverride: server.sniOrHost,
+          );
+        }
+        // FIX: اعمال DNS مخصوص سرور (اگه تنظیم شده باشه).
+        if (server.dns != null && server.dns!.isNotEmpty) {
+          config = XraySettings.applyServerDns(config, server.dns);
+        }
+        config = await _applyRoutingRules(config);
+        config = await _applyGeoAssetPaths(config);
+
+        config = await _applyGameDns(config);
+        config = await _applyGameBooster(config);
+
+        // BLOCKER 2: push MTU / IPv6 / DNS to native VpnTuner before start.
+        // PingNG native Desync — start listener + inject dialerProxy.
+        config = await _applyPingNgDesync(config, server);
       }
-      // FIX: اعمال DNS مخصوص سرور (اگه تنظیم شده باشه).
-      if (server.dns != null && server.dns!.isNotEmpty) {
-        config = XraySettings.applyServerDns(config, server.dns);
-      }
-      config = await _applyRoutingRules(config);
-      config = await _applyGeoAssetPaths(config);
-
-      config = await _applyGameDns(config);
-      config = await _applyGameBooster(config);
-
-      // BLOCKER 2: push MTU / IPv6 / DNS to native VpnTuner before start.
-      // PingNG native Desync — start listener + inject dialerProxy.
-      config = await _applyPingNgDesync(config, server);
 
       await _pushVpnTunParams();
 
@@ -1189,6 +1214,23 @@ class V2RayEngine {
     } catch (e) {
       debugPrint('buildSocks5Config error: $e');
       return '';
+    }
+  }
+
+  /// For a self-contained Xray JSON config, only touch the log level.
+  /// Everything else — DNS, routing, outbound masks — belongs to the
+  /// author of the config and must be left exactly as written.
+  static String _applyJsonLogLevelOnly(String config) {
+    try {
+      final obj = jsonDecode(config);
+      if (obj is! Map) return config;
+      final map = Map<String, dynamic>.from(obj);
+      final log = Map<String, dynamic>.from(map['log'] as Map? ?? {});
+      log['loglevel'] ??= 'warning';
+      map['log'] = log;
+      return jsonEncode(map);
+    } catch (_) {
+      return config;
     }
   }
 
