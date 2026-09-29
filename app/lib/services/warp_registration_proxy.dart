@@ -31,6 +31,7 @@ class WarpRegistrationProxy {
   static bool _running = false;
   static bool get isRunning => _running;
   static int _boundPort = 0;
+  static String? _pendingConfig;
 
   static Future<int> _freePort() async {
     final s = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
