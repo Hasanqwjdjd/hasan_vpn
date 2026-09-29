@@ -1994,83 +1994,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _syncRealConnectionState() async {
     if (!mounted || _connecting) return;
     try {
-      // Ask every engine that could be live right now, not just V2Ray.
-      // Utility sessions (Tor/Aether/Psiphon/SSH/Tunnel) route through
-      // their own services, so V2Ray's flag alone tells us nothing.
-      bool alive = false;
-      String? source;
-
-      // Utility session services expose a notifier per server and an
-      // anyRouting flag; the one that is up also has a notifier with
-      // running = true.
-      if (TorSessionService.instance.anyRouting) {
-        alive = true;
-        source = 'tor';
-      } else if (TunnelSessionService.instance.anyRouting) {
-        alive = true;
-        source = 'tunnel';
-      } else if (SshSessionService.instance.anyRouting) {
-        alive = true;
-        source = 'ssh';
-      } else if (WarpMasqueSessionService.instance.anyRouting) {
-        alive = true;
-        source = 'warpmasque';
-      } else if (V2RayEngine.isUtilitySession) {
-        // Aether / Psiphon proxy through Xray under the hood.
-        try {
-          alive = await AetherService.syncStatus();
-        } catch (_) {}
-        if (!alive) {
-          try {
-            final st = await PsiphonService.status();
-            alive = st['running'] == true;
-          } catch (_) {}
-        }
-        if (alive) source = 'utility';
-      } else if (V2RayEngine.isConnected) {
-        alive = true;
-        source = 'v2ray';
+      // Utility sessions (Tor / Aether / Psiphon / SSH / Tunnel) have
+      // their own liveness signals, and V2Ray's flag alone says nothing
+      // about them. Leave the state alone when one of them is routing.
+      if (TorSessionService.instance.anyRouting ||
+          TunnelSessionService.instance.anyRouting ||
+          SshSessionService.instance.anyRouting ||
+          V2RayEngine.isUtilitySession) {
+        return;
       }
-
+      final alive = V2RayEngine.isConnected;
       if (!mounted) return;
-
-      // 1) The tunnel is really up but the app thinks it is down.
-      //    This is the "VPN is on in the status bar but the app says
-      //    disconnected" case: the Flutter activity was recreated while
-      //    the VpnService kept running, and the fresh Dart state started
-      //    from false.
-      if (alive && (!_connected || _active == null)) {
-        final prefs = await SharedPreferences.getInstance();
-        final lastId = prefs.getString('last_active_server_id_v1') ?? '';
-        VpnServer? srv;
-        if (lastId.isNotEmpty) {
-          final i = _servers.indexWhere((s) => s.id == lastId);
-          if (i >= 0) srv = _servers[i];
-        }
-        srv ??= _selected;
-        if (srv == null && _servers.isNotEmpty) srv = _servers.first;
-        if (srv != null && mounted) {
-          setState(() {
-            _connected = true;
-            _connecting = false;
-            _active = srv;
-            _status = _t('متصل است', 'Connected');
-          });
-          // ignore: unawaited_futures
-          ConnectionLogService.logConnect(srv.displayName);
-          // ignore: unawaited_futures
-          _startWidgetTimerRefresh();
-          HomeWidgetService.setConnectedStart(DateTime.now());
-        }
-      }
-
-      // 2) The tunnel is really down but the app thinks it is up.
       if (!alive && _connected) {
         _markDisconnected(_t('اتصال قطع شد', 'Connection lost'));
       }
-    } catch (e) {
-      debugPrint('_syncRealConnectionState: $e');
-    }
+    } catch (_) {}
   }
 
   // ------------------------------------------------------------- list
@@ -3422,14 +3360,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await DesyncService.stop();
       }
     });
-    // 2) Process-backed sessions.
+    // 2) Process-backed sessions. V2Ray is the one that MUST complete
+    // before the new tunnel starts — VpnService is a singleton and two
+    // generations racing leaves the key icon up with nothing behind it.
+    // The 4 s timeout is applied to Aether and Psiphon only, whose
+    // teardown is a native process and can block the UI for a long time.
     await _bounded(() => AetherService.disconnect());
     await _bounded(() => PsiphonService.stop());
-    await _bounded(() async {
+    try {
       if (V2RayEngine.isConnected) {
         await V2RayEngine.disconnect();
       }
-    });
+    } catch (_) {}
     // 3) Reset local state regardless — the user's new connect must not
     //    be blocked by a stuck teardown.
     if (mounted) {
@@ -3444,7 +3386,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _disconnectAll() async {
     await _bounded(() => AetherService.disconnect());
     await _bounded(() => PsiphonService.stop());
-    await _bounded(() => V2RayEngine.disconnect());
+    try {
+      await V2RayEngine.disconnect();
+    } catch (_) {}
   }
 
   void _markDisconnected(String status) {
