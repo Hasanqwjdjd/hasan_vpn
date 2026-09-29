@@ -404,14 +404,20 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                   child: SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed: () {
-                        _set('dnsProtocol', 'udp');
-                        _set('directDns',
+                      onPressed: () async {
+                        // Every _set is a load-modify-save round trip on
+                        // SharedPreferences. Firing them concurrently
+                        // (the old code) let the last writer clobber the
+                        // others, which is why the values looked like they
+                        // never saved. Await them in order.
+                        await _set('dnsProtocol', 'udp');
+                        await _set('directDns',
                             '178.22.122.100,185.51.200.2,10.202.10.202,10.202.10.102');
-                        _set('dohUrl', 'https://dns.403.online/dns-query');
-                        _set(
+                        await _set('dohUrl', 'https://dns.403.online/dns-query');
+                        await _set(
                             'dnsHosts',
                             'gemini.google.com:216.239.32.21,bard.google.com:216.239.32.21');
+                        if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(_t(
