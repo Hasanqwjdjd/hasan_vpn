@@ -32,39 +32,61 @@ jobs:
           git clone --depth 1 --branch 2.18.0 \
             https://github.com/heiher/hev-socks5-tunnel.git src
 
-      - name: Build for arm64-v8a
+      - name: Inspect repo layout
+        run: |
+          set -euo pipefail
+          cd src
+          echo "=== root ==="
+          ls -la
+          echo "=== find CMakeLists.txt ==="
+          find . -name CMakeLists.txt -not -path "./third-part/*" 2>/dev/null
+          echo "=== find Makefile ==="
+          find . -name Makefile -not -path "./third-part/*" 2>/dev/null | head -10
+          echo "=== find main.c / hev-main.c ==="
+          find . -name "*.c" -not -path "./third-part/*" 2>/dev/null | head -20
+
+      - name: Build (make, arm64-v8a)
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
           set -euo pipefail
           cd src
-          cmake -B build \
-            -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-21 \
-            -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --config Release -j"$(nproc)"
-          echo "=== built files ==="
-          find build -type f -executable -exec file {} \;
+          NDK_BIN="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC="${NDK_BIN}/aarch64-linux-android21-clang"
+          export AR="${NDK_BIN}/llvm-ar"
+          export LD="${NDK_BIN}/ld.lld"
+          export CROSS_COMPILE="aarch64-linux-android-"
+          # The project uses a Makefile at root; run it.
+          make -j"$(nproc)" \
+            CC="$CC" AR="$AR" LD="$LD" \
+            CFLAGS="-O2 -fPIE" LDFLAGS="-pie" 2>&1 | tail -60 || true
+          echo "=== build dir ==="
+          find . -type f -executable -not -path "./third-part/*" 2>/dev/null | head
+          ls -la bin/ build/ 2>/dev/null || true
 
       - name: Locate binary
         id: locate
         run: |
           set -euo pipefail
           cd src
-          BIN=$(find build -type f -executable -name "hev-socks5-tunnel" | head -1 || true)
+          BIN=""
+          for cand in bin/hev-socks5-tunnel build/hev-socks5-tunnel hev-socks5-tunnel; do
+            if [ -x "$cand" ]; then BIN="$cand"; break; fi
+          done
           if [ -z "$BIN" ]; then
-            BIN=$(find build -type f -executable | grep -vE "\.(so|a|cmake)$" | head -1 || true)
+            BIN=$(find . -type f -executable -not -path "./third-part/*" \
+              | xargs -r file 2>/dev/null \
+              | grep -i "ELF.*executable.*ARM aarch64" \
+              | head -1 | cut -d: -f1 || true)
           fi
           if [ -z "$BIN" ]; then
-            echo "No binary found" >&2
-            find build -type f | head -40
+            echo "No binary found. Tree:"
+            find . -type f -not -path "./third-part/*" | head -40
             exit 1
           fi
-          echo "Binary: $BIN"
+          echo "BIN=$BIN" >> "$GITHUB_ENV"
           file "$BIN"
           ls -lh "$BIN"
-          echo "BIN=$BIN" >> "$GITHUB_ENV"
 
       - name: Install into jniLibs
         run: |
@@ -72,8 +94,8 @@ jobs:
           mkdir -p android-extra/jniLibs/arm64-v8a
           cp "src/$BIN" android-extra/jniLibs/arm64-v8a/libtun2socks.so
           chmod +x android-extra/jniLibs/arm64-v8a/libtun2socks.so
-          ls -lh android-extra/jniLibs/arm64-v8a/libtun2socks.so
           file android-extra/jniLibs/arm64-v8a/libtun2socks.so
+          ls -lh android-extra/jniLibs/arm64-v8a/libtun2socks.so
 
       - name: Commit .so back to repo
         run: |

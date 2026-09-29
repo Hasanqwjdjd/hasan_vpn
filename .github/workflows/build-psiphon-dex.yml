@@ -22,16 +22,58 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Download Psiphon AAR
+      - name: Discover Psiphon release asset
         run: |
           set -euo pipefail
           mkdir -p work
           cd work
-          # Psiphon publishes releases on GitHub. 2.0.41 was the current
-          # stable at the time this was written; the URL pattern is stable
-          # across versions.
-          URL="https://github.com/Psiphon-Labs/psiphon-tunnel-core/releases/download/v2.0.41/psiphontunnel.aar"
-          echo "Downloading $URL"
+          # Query GitHub releases API for the real asset URL — the file
+          # name has changed between releases and pinning it directly
+          # returned 404.
+          echo "=== Querying releases ==="
+          curl -fsSL "https://api.github.com/repos/Psiphon-Labs/psiphon-tunnel-core/releases?per_page=20" > releases.json || true
+          python3 - <<'PY'
+import json, sys
+try:
+    with open('releases.json') as f:
+        rels = json.load(f)
+except Exception as e:
+    print('json load failed', e); sys.exit(1)
+if not isinstance(rels, list) or not rels:
+    print('no releases'); sys.exit(1)
+for r in rels[:10]:
+    tag = r.get('tag_name', '')
+    assets = r.get('assets', [])
+    print(f"  tag={tag} assets={[a.get('name') for a in assets]}")
+    if '2.0.41' in tag or '2.0.40' in tag or '2.0.42' in tag:
+        for a in assets:
+            name = a.get('name', '').lower()
+            if name.endswith('.aar') or 'tunnel' in name:
+                print(f"MATCH {tag} -> {a.get('browser_download_url')}")
+                open('asset_url.txt','w').write(a.get('browser_download_url',''))
+                sys.exit(0)
+# If no exact match, take the newest .aar we can find
+for r in rels:
+    for a in r.get('assets', []):
+        if a.get('name','').lower().endswith('.aar'):
+            print(f"FALLBACK {r.get('tag_name')} -> {a.get('browser_download_url')}")
+            open('asset_url.txt','w').write(a.get('browser_download_url',''))
+            sys.exit(0)
+print('no .aar in any release')
+PY
+          echo "=== asset_url.txt ==="
+          cat asset_url.txt 2>/dev/null || true
+
+      - name: Download AAR
+        run: |
+          set -euo pipefail
+          cd work
+          if [ ! -f asset_url.txt ]; then
+            echo "No asset URL discovered. Aborting."
+            exit 1
+          fi
+          URL=$(cat asset_url.txt)
+          echo "URL=$URL"
           curl -fsSL -o psiphontunnel.aar "$URL"
           ls -lh psiphontunnel.aar
           file psiphontunnel.aar
@@ -45,28 +87,24 @@ jobs:
           unzip -q ../psiphontunnel.aar
           ls -la
           if [ ! -f classes.jar ]; then
-            echo "No classes.jar in AAR"; exit 1
+            echo "No classes.jar"; exit 1
           fi
-          ls -lh classes.jar
 
       - name: Locate Android SDK d8
         id: d8
         run: |
           set -euo pipefail
-          # The GitHub runner image already has Android SDK tools installed
           ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
           echo "ANDROID_SDK=$ANDROID_SDK"
           D8=$(find "$ANDROID_SDK/build-tools" -name d8 -type f 2>/dev/null | sort -V | tail -1)
           if [ -z "$D8" ]; then
-            echo "d8 not found; attempting to install build-tools"
             SDKMANAGER=$(find "$ANDROID_SDK/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -1)
             yes | "$SDKMANAGER" "build-tools;34.0.0" >/dev/null 2>&1 || true
             D8=$(find "$ANDROID_SDK/build-tools" -name d8 -type f 2>/dev/null | sort -V | tail -1)
           fi
           if [ -z "$D8" ]; then
-            echo "Still no d8"; exit 1
+            echo "d8 still not found"; exit 1
           fi
-          echo "D8=$D8"
           echo "path=$D8" >> "$GITHUB_OUTPUT"
 
       - name: Compile classes.jar -> DEX
@@ -74,15 +112,8 @@ jobs:
           set -euo pipefail
           cd work/extracted
           D8="${{ steps.d8.outputs.path }}"
-          # --min-api 21 matches the app's minSdk
-          # --no-desugaring keeps the output compatible with the runtime
-          # class loader used by PsiphonRuntimeService's dedicated
-          # PsiphonDexClassLoader.
-          "$D8" --min-api 21 --no-desugaring \
-            --output . \
-            classes.jar
+          "$D8" --min-api 21 --no-desugaring --output . classes.jar
           ls -lh classes.dex
-          file classes.dex
 
       - name: Install into assets
         run: |
@@ -98,5 +129,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add android-extra/assets/pingng_psiphon_runtime.dex
           git diff --cached --quiet && { echo "no change"; exit 0; }
-          git commit -m "[skip ci] chore(psiphon): rebuild runtime DEX from psiphon-tunnel-core 2.0.41"
+          git commit -m "[skip ci] chore(psiphon): rebuild runtime DEX from psiphon-tunnel-core release"
           git push
