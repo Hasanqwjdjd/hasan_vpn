@@ -1630,8 +1630,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _jumpToSelected() async {
-    // Uses jumpTo below for the same reason as scrollToTop: animation with
-    // thousands of items rebuilds every frame and stutters.
+    // No animation. With thousands of servers, an animated scroll rebuilds
+    // every intermediate frame and makes the app stutter and heat up.
+    // jumpTo / ensureVisible with Duration.zero land in one frame.
     final selected = _selected;
     if (selected == null) {
       _showMsg(_t('هیچ سروری انتخاب نشده', 'No server selected'));
@@ -1643,15 +1644,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    setState(() => _selected = selected);
-
     final key = _tileKeys.putIfAbsent(selected.id, () => GlobalKey());
     final ctx = key.currentContext;
     if (ctx != null) {
       await Scrollable.ensureVisible(
         ctx,
-        duration: const Duration(milliseconds: 420),
-        curve: Curves.easeOutCubic,
+        duration: Duration.zero,
         alignment: 0.15,
       );
       if (mounted) setState(() => _selected = selected);
@@ -1661,21 +1659,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!_listScrollController.hasClients) return;
     final approx = ((idx + 1) * 78.0)
         .clamp(0.0, _listScrollController.position.maxScrollExtent);
-    await _listScrollController.animateTo(
-      approx,
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOut,
-    );
+    _listScrollController.jumpTo(approx);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx2 = key.currentContext;
       if (ctx2 != null && mounted) {
         Scrollable.ensureVisible(
           ctx2,
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutCubic,
+          duration: Duration.zero,
           alignment: 0.15,
         );
-        Future.delayed(const Duration(milliseconds: 400), () {
+        Future.delayed(const Duration(milliseconds: 200), () {
           if (mounted) setState(() => _selected = selected);
         });
       }
