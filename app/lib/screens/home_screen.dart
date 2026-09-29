@@ -3842,15 +3842,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     _cancelConnect = false;
 
+    // Show immediate feedback BEFORE tearing down the previous session —
+    // the teardown can take seconds (Tor/Aether/Psiphon), and until now
+    // that delay landed before this setState, so a press looked like
+    // nothing had happened and users tapped again.
+    if (mounted) {
+      setState(() {
+        _connecting = true;
+        _livePing = null;
+        _status = _t('آماده‌سازی...', 'Preparing...');
+      });
+    }
+
     // FIX: قبل از اتصال جدید، *همه‌ی* session های در حال اجرا رو
     // disconnect کن (Tor، Tunnel، SSH، Aether، Psiphon، Xray).
     // هرگز نباید دو تونل همزمان فعال باشن.
+    if (mounted) {
+      setState(() => _status =
+          _t('قطع اتصال قبلی...', 'Disconnecting previous...'));
+    }
     await _disconnectAllSessionsForNewConnect();
     if (!mounted) return;
 
     setState(() {
-      _connecting = true;
-      _livePing = null;
       _status = _t('در حال اتصال...', 'Connecting...');
     });
 
@@ -3873,6 +3887,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
         error = AetherService.lastError;
       } else if (selected.isPsiphon) {
+        if (mounted) {
+          setState(() => _status =
+              _t('Psiphon · آماده‌سازی...', 'Psiphon · preparing...'));
+        }
         connected = await PsiphonService.connect(
           selected,
           isCancelled: () => _cancelConnect,
