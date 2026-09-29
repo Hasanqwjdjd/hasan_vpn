@@ -10,6 +10,7 @@ import '../models/aether_profile.dart';
 import '../models/server.dart';
 import 'socks_probe.dart';
 import 'v2ray_engine.dart';
+import 'warp_registration_proxy.dart';
 import 'connection_log_service.dart';
 
 typedef AetherProgress = void Function(String message);
@@ -252,6 +253,28 @@ class AetherService {
     required bool Function() cancelled,
   }) async {
     final env = profile.buildEnv(attempt, port);
+
+    // If a VPN is already running, its TUN captures aether's own traffic.
+    // If not, aether cannot reach api.cloudflareclient.com from Iran — the
+    // address is filtered. Give the process a SOCKS proxy pointing at the
+    // app's registration proxy so reqwest can reach Cloudflare. This is
+    // the same proxy WarpService uses for WARP registration.
+    try {
+      final up = V2RayEngine.isConnected ? V2RayEngine.localSocksPort : 0;
+      final proxyPort = up > 0
+          ? up
+          : await WarpRegistrationProxy.ensureStarted();
+      if (proxyPort != null && proxyPort > 0) {
+        final url = 'socks5h://127.0.0.1:$proxyPort';
+        env['ALL_PROXY'] = url;
+        env['HTTPS_PROXY'] = url;
+        env['HTTP_PROXY'] = url;
+        env['all_proxy'] = url;
+        env['https_proxy'] = url;
+        env['http_proxy'] = url;
+      }
+    } catch (_) {}
+
     // Find-server: ensure gool/mim scan uses auto peers when endpoints missing
     if ((env['AETHER_PROTOCOL'] == 'gool') &&
         (env['AETHER_WIW_OUTER_PEER'] == null || env['AETHER_WIW_OUTER_PEER']!.isEmpty)) {

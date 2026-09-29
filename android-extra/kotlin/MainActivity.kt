@@ -210,6 +210,54 @@ class MainActivity : FlutterActivity() {
                             }.start()
                         }
                     }
+                    // POST یه URL از طریق SOCKS محلی — برای WARP register
+                    // که باید از api.cloudflareclient.com رد شه و در
+                    // ایران فیلتره.
+                    "postViaSocks" -> {
+                        val urlStr = call.argument<String>("url")
+                        val port = call.argument<Int>("port") ?: 10808
+                        val bodyStr = call.argument<String>("body") ?: ""
+                        @Suppress("UNCHECKED_CAST")
+                        val headers = call.argument<Map<String, String>>("headers")
+                            ?: emptyMap()
+                        if (urlStr.isNullOrBlank()) {
+                            result.error("postViaSocks", "missing url", null)
+                        } else {
+                            Thread {
+                                try {
+                                    val proxy = java.net.Proxy(
+                                        java.net.Proxy.Type.SOCKS,
+                                        java.net.InetSocketAddress("127.0.0.1", port),
+                                    )
+                                    val conn = java.net.URL(urlStr)
+                                        .openConnection(proxy) as java.net.HttpURLConnection
+                                    conn.connectTimeout = 30000
+                                    conn.readTimeout = 30000
+                                    conn.instanceFollowRedirects = true
+                                    conn.doOutput = true
+                                    conn.requestMethod = "POST"
+                                    for ((k, v) in headers) conn.setRequestProperty(k, v)
+                                    conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                                    conn.outputStream.use { it.write(bodyStr.toByteArray(Charsets.UTF_8)) }
+                                    val code = conn.responseCode
+                                    val stream = if (code in 200..299) conn.inputStream
+                                                 else conn.errorStream
+                                    val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
+                                    runOnUiThread {
+                                        result.success(mapOf("code" to code, "body" to body))
+                                    }
+                                } catch (e: Exception) {
+                                    runOnUiThread {
+                                        result.error(
+                                            "postViaSocks",
+                                            e.message ?: "err",
+                                            null,
+                                        )
+                                    }
+                                }
+                            }.start()
+                        }
+                    }
                     // BLOCKER 2 — MTU / IPv6 / DNS for VpnService.Builder
                     "setVpnTunParams" -> {
                         val mtu = call.argument<Int>("mtu")

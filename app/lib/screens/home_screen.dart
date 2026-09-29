@@ -3547,12 +3547,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _polling = true;
     try {
       final active = _active;
-      // FIX: اگه session ابزاری فعاله (Tor/Aether/Psiphon/SSH/Tunnel)،
-      // poll رو غیرفعال کن — وگرنه auto-connect و disconnect اشتباه.
+      // Utility sessions (Aether / Psiphon / Tor / SSH / Tunnel) do not
+      // have the same V2Ray "is alive" semantics, so skip the dead-strike
+      // logic — but still take a quality sample so the history screen and
+      // the notification badge are not empty while they run.
       if (TorSessionService.instance.anyRouting ||
           TunnelSessionService.instance.anyRouting ||
           SshSessionService.instance.anyRouting ||
           V2RayEngine.isUtilitySession) {
+        _pollTick++;
+        if (_pollTick % 3 == 1) {
+          try {
+            await _measureLive();
+          } catch (_) {}
+        }
         return;
       }
       var alive = V2RayEngine.isConnected;

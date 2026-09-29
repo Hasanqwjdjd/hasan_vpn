@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
@@ -640,26 +641,51 @@ class WarpService {
     };
 
     if (proxySocksPort != null && proxySocksPort.isNotEmpty) {
-      final client = HttpClient();
-      client.findProxy = (u) => 'SOCKS 127.0.0.1:$proxySocksPort';
-      client.badCertificateCallback = (_, __, ___) => true;
-      try {
-        final req = await client.postUrl(url);
-        headers.forEach((k, v) => req.headers.set(k, v));
-        req.write(jsonEncode(body));
-        final res = await req.close();
-        final text = await res.transform(utf8.decoder).join();
-        client.close(force: true);
-        return http.Response(text, res.statusCode);
-      } catch (e) {
-        client.close(force: true);
-        rethrow;
+      // Dart's HttpClient does not actually speak SOCKS — setting
+      // findProxy to "SOCKS ..." made it send the SOCKS CONNECT verb as
+      // if it were HTTP and the request died with "Invalid proxy
+      // configuration SOCKS". The native bridge below does a real SOCKS5
+      // POST through the local Tor/Xray port.
+      final r = await _nativePostSocks(
+        url.toString(),
+        jsonEncode(body),
+        headers,
+        int.tryParse(proxySocksPort) ?? 10808,
+      );
+      if (r != null) {
+        return http.Response(r.$2, r.$1);
       }
     }
 
     return await http
         .post(url, headers: headers, body: jsonEncode(body))
         .timeout(const Duration(seconds: 20));
+  }
+
+  /// POST via the app's native SOCKS bridge. Returns (statusCode, body) or
+  /// null if the call failed for any reason.
+  static Future<(int, String)?> _nativePostSocks(
+    String url,
+    String body,
+    Map<String, String> headers,
+    int port,
+  ) async {
+    try {
+      const ch = MethodChannel('com.hasan.hasan_vpn/device');
+      final r = await ch.invokeMethod<Map>('postViaSocks', {
+        'url': url,
+        'body': body,
+        'port': port,
+        'headers': headers,
+      });
+      if (r == null) return null;
+      final code = (r['code'] as num?)?.toInt() ?? 0;
+      final text = r['body']?.toString() ?? '';
+      return (code, text);
+    } catch (e) {
+      debugPrint('warp _nativePostSocks: $e');
+      return null;
+    }
   }
 
   static Future<http.Response> _apiPut(
@@ -676,20 +702,17 @@ class WarpService {
     };
 
     if (proxySocksPort != null && proxySocksPort.isNotEmpty) {
-      final client = HttpClient();
-      client.findProxy = (u) => 'SOCKS 127.0.0.1:$proxySocksPort';
-      client.badCertificateCallback = (_, __, ___) => true;
-      try {
-        final req = await client.putUrl(url);
-        headers.forEach((k, v) => req.headers.set(k, v));
-        req.write(jsonEncode(body));
-        final res = await req.close();
-        final text = await res.transform(utf8.decoder).join();
-        client.close(force: true);
-        return http.Response(text, res.statusCode);
-      } catch (e) {
-        client.close(force: true);
-        rethrow;
+      // PUT is not in the native bridge yet; use POST with X-HTTP-Method-
+      // Override so the CF API still sees PUT but the transport is one
+      // path we know works.
+      final r = await _nativePostSocks(
+        url.toString(),
+        jsonEncode(body),
+        {...headers, 'X-HTTP-Method-Override': 'PUT'},
+        int.tryParse(proxySocksPort) ?? 10808,
+      );
+      if (r != null) {
+        return http.Response(r.$2, r.$1);
       }
     }
 
