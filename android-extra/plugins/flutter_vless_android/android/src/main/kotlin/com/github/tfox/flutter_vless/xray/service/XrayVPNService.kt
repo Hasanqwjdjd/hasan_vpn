@@ -33,6 +33,10 @@ class XrayVPNService : VpnService() {
 
     private var mInterface: ParcelFileDescriptor? = null
     private var tun2socksProcess: Process? = null
+    // Consecutive restarts of tun2socks. If it keeps dying, stop the VPN
+    // instead of looping forever — a broken bridge should not look
+    // "Connected" with a key icon and no traffic.
+    private var t2sRestarts: Int = 0
     private var isRunning = false
 
     override fun onCreate() {
@@ -116,6 +120,8 @@ class XrayVPNService : VpnService() {
      * Establishes the VPN interface (TUN) and starts tun2socks.
      */
     private fun setupVpn(config: XrayConfig) {
+        t2sRestarts = 0
+
         try {
             if (mInterface != null) {
                 mInterface?.close()
@@ -237,7 +243,13 @@ for (pkg in config.BLOCKED_APPS) {
                     tun2socksProcess?.waitFor()
                     if (isRunning) {
                         // Restart if crashed and still supposed to be running
-                        Log.e(TAG, "tun2socks exited unexpectedly, restarting...")
+                        t2sRestarts++
+                        if (t2sRestarts > 3) {
+                            Log.e(TAG, "tun2socks exited ${t2sRestarts}× in a row, giving up")
+                            try { stopAll() } catch (_: Throwable) {}
+                            return@Thread
+                        }
+                        Log.e(TAG, "tun2socks exited unexpectedly (${t2sRestarts}/3), restarting...")
                         runTun2socks(config)
                     }
                 } catch (e: java.io.InterruptedIOException) {

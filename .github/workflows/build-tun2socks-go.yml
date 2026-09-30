@@ -1,0 +1,107 @@
+name: Build tun2socks (Go, arm64-v8a)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    env:
+      ANDROID_API: 24
+      NDK_VERSION: "r26d"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+
+      - name: Set up NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+
+      - name: Clone xjasonlyu/tun2socks
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/xjasonlyu/tun2socks.git src
+          cd src
+          echo "=== top level ==="
+          ls -la
+          echo "=== cmd/ ==="
+          ls -la cmd/ 2>/dev/null || true
+          echo "=== git log ==="
+          git log -1
+
+      - name: Build for arm64
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          cd src
+          NDK_BIN="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC="${NDK_BIN}/aarch64-linux-android${ANDROID_API}-clang"
+          export CXX="${NDK_BIN}/aarch64-linux-android${ANDROID_API}-clang++"
+          export CGO_ENABLED=1
+          export GOOS=android
+          export GOARCH=arm64
+          # Find the main package
+          MAIN_PKG=""
+          for cand in ./cmd/tun2socks . ./cmd; do
+            if [ -d "$cand" ] && ls "$cand"/*.go 2>/dev/null | grep -q .; then
+              if grep -q "package main" "$cand"/*.go 2>/dev/null; then
+                MAIN_PKG="$cand"; break
+              fi
+            fi
+          done
+          echo "MAIN_PKG=$MAIN_PKG"
+          if [ -z "$MAIN_PKG" ]; then
+            echo "no main package found"
+            find . -name "*.go" -maxdepth 3 | head -30
+            exit 1
+          fi
+          go build -v -trimpath \
+            -ldflags "-s -w -extldflags '-Wl,-z,max-page-size=16384'" \
+            -o /tmp/libtun2socks.so "$MAIN_PKG"
+          ls -lh /tmp/libtun2socks.so
+          file /tmp/libtun2socks.so
+
+      - name: Verify the binary expects -sock-path
+        run: |
+          set -euo pipefail
+          # The xjasonlyu/tun2socks fork accepts -sock-path for fd passing.
+          # If our build is correct, this string is present.
+          if strings /tmp/libtun2socks.so | grep -q "sock-path"; then
+            echo "OK: sock-path present"
+          else
+            echo "WARN: sock-path not found — check the flags of the built binary"
+            strings /tmp/libtun2socks.so | grep -iE "sock|proxy|tun" | head -20
+          fi
+
+      - name: Install into jniLibs
+        run: |
+          set -euo pipefail
+          mkdir -p android-extra/jniLibs/arm64-v8a
+          cp /tmp/libtun2socks.so android-extra/jniLibs/arm64-v8a/libtun2socks.so
+          chmod +x android-extra/jniLibs/arm64-v8a/libtun2socks.so
+          file android-extra/jniLibs/arm64-v8a/libtun2socks.so
+          ls -lh android-extra/jniLibs/arm64-v8a/libtun2socks.so
+
+      - name: Commit back to repo
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android-extra/jniLibs/arm64-v8a/libtun2socks.so
+          git diff --cached --quiet && { echo "no change"; exit 0; }
+          git commit -m "[skip ci] chore(tun2socks): build xjasonlyu/tun2socks (Go) for arm64-v8a"
+          git push
