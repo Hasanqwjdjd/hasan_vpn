@@ -3317,63 +3317,61 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// FIX: قبل از هر اتصال جدید، همه‌ی session های فعلی رو ببند.
   /// این تضمین می‌کنه که هیچ‌وقت دو تونل همزمان فعال نباشن —
   /// مثلاً کاربر وسط Tor هست، روی یه vless می‌زنه: Tor باید بمیره.
-  /// Bounded await. Every teardown in the switch path is now guarded:
-  /// if a service will not stop within [sec] seconds, we give up on it
-  /// and continue instead of blocking the whole UI. This is what made
-  /// protocol switching freeze — a single stuck Psiphon/Aether stop
-  /// could hang the flow forever.
-  Future<void> _bounded(Future<void> Function() task, {int sec = 4}) async {
-    try {
-      await task().timeout(Duration(seconds: sec));
-    } catch (_) {}
-  }
-
+  /// Tear down every other session before starting a new one so no two
+  /// tunnels are ever active at once (Tor -> VLESS -> Aether, etc.).
+  ///
+  /// No timeout wrapper here. `Future.timeout()` does NOT cancel the
+  /// underlying future in Dart — it only makes the caller stop waiting.
+  /// The original teardown keeps running in the background and fires its
+  /// native cleanup several seconds later, exactly when the new tunnel is
+  /// coming up. That closes sockets or destroys the fresh TUN while the
+  /// status bar still shows a VPN icon, which is why every server looked
+  /// "connected" but carried nothing.
+  ///
+  /// The strict sequencing is worth the occasional longer wait: a tunnel
+  /// that actually works beats a tunnel that returns fast but is dead.
   Future<void> _disconnectAllSessionsForNewConnect() async {
-    // 1) Session services. Each capped at 4 s.
-    await _bounded(() async {
+    try {
       if (TorSessionService.instance.anyRouting) {
         await TorSessionService.instance.disconnect();
       }
-    });
-    await _bounded(() async {
+    } catch (_) {}
+    try {
       if (TunnelSessionService.instance.anyRouting) {
         await TunnelSessionService.instance.disconnect();
       }
-    });
-    await _bounded(() async {
+    } catch (_) {}
+    try {
       if (SshSessionService.instance.anyRouting) {
         await SshSessionService.instance.disconnect();
       }
-    });
-    await _bounded(() async {
+    } catch (_) {}
+    try {
       if (MasterDnsSessionService.instance.anyRouting) {
         await MasterDnsSessionService.instance.disconnect();
       }
-    });
-    await _bounded(() async {
+    } catch (_) {}
+    try {
       if (WarpMasqueSessionService.instance.anyRouting) {
         await WarpMasqueSessionService.instance.disconnect();
       }
-    });
-    await _bounded(() async {
+    } catch (_) {}
+    try {
       if (DesyncService.isRunning) {
         await DesyncService.stop();
       }
-    });
-    // 2) Process-backed sessions. V2Ray is the one that MUST complete
-    // before the new tunnel starts — VpnService is a singleton and two
-    // generations racing leaves the key icon up with nothing behind it.
-    // The 4 s timeout is applied to Aether and Psiphon only, whose
-    // teardown is a native process and can block the UI for a long time.
-    await _bounded(() => AetherService.disconnect());
-    await _bounded(() => PsiphonService.stop());
+    } catch (_) {}
+    try {
+      await AetherService.disconnect();
+    } catch (_) {}
+    try {
+      await PsiphonService.stop();
+    } catch (_) {}
     try {
       if (V2RayEngine.isConnected) {
         await V2RayEngine.disconnect();
       }
     } catch (_) {}
-    // 3) Reset local state regardless — the user's new connect must not
-    //    be blocked by a stuck teardown.
     if (mounted) {
       setState(() {
         _connected = false;
@@ -3384,8 +3382,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _disconnectAll() async {
-    await _bounded(() => AetherService.disconnect());
-    await _bounded(() => PsiphonService.stop());
+    try {
+      await AetherService.disconnect();
+    } catch (_) {}
+    try {
+      await PsiphonService.stop();
+    } catch (_) {}
     try {
       await V2RayEngine.disconnect();
     } catch (_) {}

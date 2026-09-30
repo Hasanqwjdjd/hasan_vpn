@@ -359,6 +359,31 @@ class MainActivity : FlutterActivity() {
             }
 
 
+        // Stubs for channels whose Kotlin services were removed but whose
+        // Dart counterparts (master_dns_session_service.dart,
+        // tunnel_session_service.dart, warp_masque_session_service.dart)
+        // still call invokeMethod on init. Without these, the very first
+        // call throws MissingPluginException inside the connect flow and
+        // aborts it before VpnService.prepare() ever runs, which is why
+        // Aether showed "connected" in the UI but the VPN key icon never
+        // appeared. Returning success(false/null) lets the Dart side move
+        // on without an exception.
+        for (name in listOf(
+            "com.hasan.hasan_vpn/masterdns",
+            "com.hasan.hasan_vpn/tunnel",
+            "com.hasan.hasan_vpn/warpmasque",
+        )) {
+            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, name)
+                .setMethodCallHandler { call, result ->
+                    when (call.method) {
+                        "status" -> result.success(
+                            mapOf("running" to false, "ok" to false)
+                        )
+                        else -> result.success(false)
+                    }
+                }
+        }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, logsChannel)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
