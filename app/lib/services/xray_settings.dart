@@ -13,6 +13,10 @@ class XraySettings {
   /// Set by applyToConfig when geminiUsExit is on.
   static bool _pendingUsGeminiExit = false;
 
+  /// True when geminiUsExit is on but no `us-exit` outbound exists in
+  /// the config. Callers can read this after applyToConfig to warn.
+  static bool lastRunHadUsExitWarning = false;
+
   static const String _key = 'xray_core_settings_v2';
 
   /// Defaults aligned with v2rayNG / PattNG common defaults.
@@ -513,33 +517,47 @@ class XraySettings {
       map['dns'] = dns;
 
       // ─── Gemini US-exit routing rule ───
+      // Only inject the rule if an outbound with tag `us-exit` actually
+      // exists in the config. Otherwise the rule silently does nothing
+      // while the toggle looks on.
+      lastRunHadUsExitWarning = false;
       if (_pendingUsGeminiExit) {
         try {
-          final routing = map['routing'] is Map
-              ? Map<String, dynamic>.from(map['routing'] as Map)
-              : <String, dynamic>{};
-          final rules = List<Map<String, dynamic>>.from(
-            (routing['rules'] as List? ?? const [])
-                .whereType<Map>()
-                .map((e) => Map<String, dynamic>.from(e)),
+          final outs = (map['outbounds'] is List)
+              ? (map['outbounds'] as List)
+              : const <dynamic>[];
+          final hasUsExit = outs.any(
+            (o) => o is Map && o['tag']?.toString() == 'us-exit',
           );
-          final exists = rules.any((r) =>
-              r['domain'] is List &&
-              (r['domain'] as List).contains('geosite:google-gemini'));
-          if (!exists) {
-            rules.insert(0, <String, dynamic>{
-              'type': 'field',
-              'domain': <String>[
-                'geosite:google-gemini',
-                'domain:gemini.google.com',
-                'domain:bard.google.com',
-                'domain:generativelanguage.googleapis.com',
-              ],
-              'outboundTag': 'us-exit',
-            });
+          if (!hasUsExit) {
+            lastRunHadUsExitWarning = true;
+          } else {
+            final routing = map['routing'] is Map
+                ? Map<String, dynamic>.from(map['routing'] as Map)
+                : <String, dynamic>{};
+            final rules = List<Map<String, dynamic>>.from(
+              (routing['rules'] as List? ?? const [])
+                  .whereType<Map>()
+                  .map((e) => Map<String, dynamic>.from(e)),
+            );
+            final exists = rules.any((r) =>
+                r['domain'] is List &&
+                (r['domain'] as List).contains('geosite:google-gemini'));
+            if (!exists) {
+              rules.insert(0, <String, dynamic>{
+                'type': 'field',
+                'domain': <String>[
+                  'geosite:google-gemini',
+                  'domain:gemini.google.com',
+                  'domain:bard.google.com',
+                  'domain:generativelanguage.googleapis.com',
+                ],
+                'outboundTag': 'us-exit',
+              });
+            }
+            routing['rules'] = rules;
+            map['routing'] = routing;
           }
-          routing['rules'] = rules;
-          map['routing'] = routing;
         } catch (_) {}
       }
 
