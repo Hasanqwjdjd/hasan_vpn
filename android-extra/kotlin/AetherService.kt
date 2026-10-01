@@ -463,6 +463,15 @@ class AetherService : Service() {
         environment["TMPDIR"] = cacheDir.absolutePath
         environment["SSL_CERT_DIR"] = "/system/etc/security/cacerts"
         environment["NO_COLOR"] = "1"
+        // AETHER_CONFIG anchors Aether's "sibling path" lookup. Without it
+        // the Rust binary falls back to std::env::current_exe(), which on
+        // Android resolves to applicationInfo.nativeLibraryDir — and the
+        // pt/psiphon-tunnel-core we staged lives in filesDir, not there.
+        // So the internal Psiphon chain never found its console client,
+        // the registration request went out direct and got blocked, and
+        // libaether.so exited with "error sending request for url
+        // api.cloudflareclient.com". MLM passes the same variable.
+        environment["AETHER_CONFIG"] = File(filesDir, "aether.toml").absolutePath
         environment.putAll(env)
 
         SafeLog.i(TAG, "launch cmd=${binary.absolutePath} cwd=${filesDir.absolutePath} envKeys=${env.keys.sorted()}")

@@ -214,7 +214,13 @@ class PsiphonRuntimeService : Service() {
                     "loadLibrary" -> null
                     "bindToDevice" -> null
                     "onListeningSocksProxyPort" -> {
-                        val port = (args?.firstOrNull() as? Int ?: 0)
+                        // The GoMobile runtime passes the port as a Go int,
+                        // which the JVM sees as java.lang.Long. `as? Int`
+                        // silently failed, the port defaulted to 0, and
+                        // Xray was then chained to 127.0.0.1:0 — that is
+                        // why Psiphon reported "Connected" but no traffic
+                        // ever flowed. Cast through Number first.
+                        val port = (args?.firstOrNull() as? Number)?.toInt() ?: 0
                         if (port in 1..65535) {
                             localSocksPort = port
                             Log.i(TAG, "Psiphon SOCKS ready on 127.0.0.1:$port")
@@ -471,7 +477,10 @@ class PsiphonRuntimeService : Service() {
             .takeUnless { it.isBlank() || it == "ANY" || it == "AUTO" }.orEmpty()
 
     private fun instanceSocksPort(): Int = runCatching {
-        tunnel?.javaClass?.getMethod("getLocalSocksProxyPort")?.invoke(tunnel) as Int
+        // Same Number dance as onListeningSocksProxyPort — the reflected
+        // return is a java.lang.Long, and a direct `as Int` throws
+        // ClassCastException, so the fallback of 0 was always used.
+        (tunnel?.javaClass?.getMethod("getLocalSocksProxyPort")?.invoke(tunnel) as Number).toInt()
     }.getOrDefault(localSocksPort)
 
     private fun materializeReadOnlyRuntimeDex(runtimeDir: File): File {
