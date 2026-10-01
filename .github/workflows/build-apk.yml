@@ -181,7 +181,7 @@ jobs:
         run: |
           set -e
           KT_DIR="build_src/android/app/src/main/kotlin/com/hasan/hasan_vpn"
-          mkdir -p "$KT_DIR"
+          mkdir -p "$KT_DIR" "$KT_DIR/game"
           rm -f build_src/android/app/src/main/java/com/hasan/hasan_vpn/MainActivity.java 2>/dev/null || true
           cp -f android-extra/kotlin/MainActivity.kt "$KT_DIR/MainActivity.kt"
           cp -f android-extra/kotlin/VpnTuner.kt "$KT_DIR/VpnTuner.kt"
@@ -202,6 +202,15 @@ jobs:
           cp -f android-extra/kotlin/PsiphonRuntimeService.kt "$KT_DIR/PsiphonRuntimeService.kt"
           cp -f android-extra/kotlin/PsiphonStatus.kt "$KT_DIR/PsiphonStatus.kt"
           cp -f android-extra/kotlin/DesyncEngine.kt "$KT_DIR/DesyncEngine.kt"
+          cp -f android-extra/kotlin/AntiSanctionManager.kt "$KT_DIR/AntiSanctionManager.kt"
+          cp -f android-extra/kotlin/GameDnsVpnService.kt "$KT_DIR/GameDnsVpnService.kt"
+          cp -f android-extra/kotlin/game/GameDnsList.kt "$KT_DIR/game/GameDnsList.kt"
+          cp -f android-extra/kotlin/game/GameDatabase.kt "$KT_DIR/game/GameDatabase.kt"
+          cp -f android-extra/kotlin/game/GamePingTester.kt "$KT_DIR/game/GamePingTester.kt"
+          cp -f android-extra/kotlin/game/DnsRaceTester.kt "$KT_DIR/game/DnsRaceTester.kt"
+          cp -f android-extra/kotlin/game/DedicatedDnsResolver.kt "$KT_DIR/game/DedicatedDnsResolver.kt"
+          cp -f android-extra/kotlin/game/UaeDnsResolver.kt "$KT_DIR/game/UaeDnsResolver.kt"
+          cp -f android-extra/kotlin/game/GameBoosterManager.kt "$KT_DIR/game/GameBoosterManager.kt"
           CORE_DIR="build_src/android/app/src/main/kotlin/com/v2ray/ang/core"
           mkdir -p "$CORE_DIR"
           cp -f android-extra/kotlin/PingNGProxy.kt "$CORE_DIR/PingNGProxy.kt"
@@ -409,6 +418,20 @@ jobs:
                   '</application>',
                   1,
               )
+          
+          if 'GameDnsVpnService' not in text:
+              game_dns = """    <service
+                  android:name="com.hasan.hasan_vpn.GameDnsVpnService"
+                  android:enabled="true"
+                  android:exported="false"
+                  android:permission="android.permission.BIND_VPN_SERVICE">
+                  <intent-filter>
+                      <action android:name="android.net.VpnService" />
+                  </intent-filter>
+              </service>
+          """
+              text = text.replace("</application>", game_dns + "</application>", 1)
+
           if 'TorForegroundService' not in text:
               svc = """    <service
                   android:name="com.hasan.hasan_vpn.TorForegroundService"
