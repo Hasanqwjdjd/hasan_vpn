@@ -98,6 +98,26 @@ class MainActivity : FlutterActivity() {
                     "getBatteryOptStatus" -> result.success(mapOf("ignored" to false))
                     "requestBatteryOpt", "openBatterySettings" -> result.success(true)
                     "getInstalledApps" -> result.success(emptyList<Map<String, Any>>())
+                    "openApp" -> {
+                        val pkg = call.argument<String>("package")
+                        if (pkg.isNullOrBlank()) {
+                            result.error("openApp", "missing package", null)
+                        } else {
+                            try {
+                                val intent = applicationContext.packageManager
+                                    .getLaunchIntentForPackage(pkg)
+                                if (intent == null) {
+                                    result.error("openApp", "not installed", null)
+                                } else {
+                                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    applicationContext.startActivity(intent)
+                                    result.success(true)
+                                }
+                            } catch (e: Exception) {
+                                result.error("openApp", e.message, null)
+                            }
+                        }
+                    }
                     "notifPermission" -> { requestNotificationPermission(); result.success(true) }
                     "telemetryShow" -> {
                         val title = call.argument<String>("title") ?: "Hasan VPN"

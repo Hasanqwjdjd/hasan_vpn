@@ -53,7 +53,14 @@ class _TwoSecondDragStartListener extends ReorderableDragStartListener {
 
 class GameDnsScreen extends StatefulWidget {
   final String language;
-  const GameDnsScreen({super.key, this.language = 'fa'});
+  /// When true, no Scaffold/AppBar is rendered — the widget is embedded
+  /// inside a TabBarView of another screen (GameHubScreen).
+  final bool embedded;
+  const GameDnsScreen({
+    super.key,
+    this.language = 'fa',
+    this.embedded = false,
+  });
 
   @override
   State<GameDnsScreen> createState() => _GameDnsScreenState();
@@ -490,6 +497,44 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
   @override
   Widget build(BuildContext context) {
     final visible = _visibleEntries;
+
+    if (widget.embedded) {
+      // Embedded mode: no Scaffold, no AppBar — parent provides chrome.
+      return Column(
+        children: [
+          if (_showSearch) _buildSearchBar(),
+          _buildActiveCard(),
+          _buildBoosterPanel(),
+          if (_testingAll) _buildProgressBar(),
+          _buildCategoryChips(),
+          _buildStabilityLegend(),
+          _buildSortRow(visible.length),
+          Expanded(
+            child: visible.isEmpty
+                ? Center(
+                    child: Text(_t('چیزی پیدا نشد', 'Nothing found'),
+                        style: TextStyle(color: AppColors.muted(context))))
+                : ReorderableListView.builder(
+                    scrollController: _listScrollController,
+                    buildDefaultDragHandles: false,
+                    itemCount: visible.length,
+                    onReorder: (oldIndex, newIndex) {
+                      if (newIndex > oldIndex) newIndex -= 1;
+                      final ids = visible.map((e) => e.id).toList();
+                      final moved = ids.removeAt(oldIndex);
+                      ids.insert(newIndex, moved);
+                      _saveManualOrder(ids);
+                    },
+                    itemBuilder: (context, i) => _TwoSecondDragStartListener(
+                      key: ValueKey(visible[i].id),
+                      index: i,
+                      child: _buildTile(visible[i]),
+                    ),
+                  ),
+          ),
+        ],
+      );
+    }
 
     return Scaffold(
       backgroundColor: AppColors.bg(context),
