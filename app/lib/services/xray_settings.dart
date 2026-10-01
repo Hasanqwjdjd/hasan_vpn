@@ -419,6 +419,41 @@ class XraySettings {
           'poolSize': 65535,
         };
       }
+      // ─── AntiSanction: Cloudflare + Gemini DoH injection ───
+      // Domain-scoped DoH servers go first so they win over the default.
+      _pendingUsGeminiExit = false;
+      try {
+        final san = await AntiSanctionService.status();
+        if (san['filterBypass'] == true) {
+          servers.insert(0, <String, dynamic>{
+            'address': 'https://1.1.1.1/dns-query',
+            'domains': <String>[
+              'geosite:cloudflare',
+              'domain:cloudflare.com',
+              'domain:cloudflareclient.com',
+              'domain:cfargotunnel.com',
+            ],
+          });
+        }
+        if (san['geminiFix'] == true) {
+          servers.insert(0, <String, dynamic>{
+            'address': 'https://dns.google/dns-query',
+            'domains': <String>[
+              'domain:gemini.google.com',
+              'domain:bard.google.com',
+              'domain:generativelanguage.googleapis.com',
+              'domain:ai.google.dev',
+              'domain:aistudio.google.com',
+              'domain:makersuite.google.com',
+              'domain:deepmind.com',
+              'domain:deepmind.google',
+              'domain:pro.x.com',
+            ],
+          });
+        }
+        _pendingUsGeminiExit = san['geminiUsExit'] == true;
+      } catch (_) {}
+
       dns['servers'] = servers;
       // DNS leak prevention: هیچ DNS query‌ای نباید مستقیم بره.
       // Xray DNS module خودش جواب می‌ده و query‌ها را از تونل می‌فرستد.
