@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/app_colors.dart';
+import '../services/connection_log_service.dart';
 
 class PerAppQualityScreen extends StatefulWidget {
   final String language;
@@ -25,6 +26,13 @@ class _PerAppQualityScreenState extends State<PerAppQualityScreen> {
   bool _loading = true;
   bool _permissionGranted = true;
   List<Map<String, dynamic>> _appStats = [];
+
+  // Session-level stats aggregated from ConnectionLogService (7-day
+  // window). Per-app RTT would require foreground-app usage stats; the
+  // session view is what we can reliably measure.
+  double? _avgRttMs;
+  int? _sampleCount;
+  int _sessionCount = 0;
 
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
@@ -52,11 +60,16 @@ class _PerAppQualityScreenState extends State<PerAppQualityScreen> {
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
+      // Aggregate session stats from the connection log (last 7 days).
+      final stats = await _computeSessionStats();
       if (!mounted) return;
       setState(() {
         _appStats = parsed;
         _permissionGranted = true;
         _loading = false;
+        _avgRttMs = stats.avgRttMs;
+        _sampleCount = stats.sampleCount;
+        _sessionCount = stats.sessionCount;
       });
     } on PlatformException catch (e) {
       if (!mounted) return;
@@ -71,6 +84,42 @@ class _PerAppQualityScreenState extends State<PerAppQualityScreen> {
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// Parse the connection log for the last 7 days and compute
+  /// average RTT and total sample count from disconnect records.
+  Future<({double? avgRttMs, int? sampleCount, int sessionCount})>
+      _computeSessionStats() async {
+    try {
+      final entries = await ConnectionLogService.load();
+      final cutoff = DateTime.now().subtract(const Duration(days: 7));
+      var totalRtt = 0;
+      var samples = 0;
+      var sessions = 0;
+      final rttRe = RegExp(r'rtt\s+(\d+)ms');
+      for (final e in entries) {
+        if (e.timestamp.isBefore(cutoff)) continue;
+        if (e.type == 'disconnect') {
+          sessions++;
+          final d = e.detail ?? '';
+          final m = rttRe.firstMatch(d);
+          if (m != null) {
+            final v = int.tryParse(m.group(1)!);
+            if (v != null && v > 0) {
+              totalRtt += v;
+              samples++;
+            }
+          }
+        }
+      }
+      return (
+        avgRttMs: samples > 0 ? totalRtt / samples : null,
+        sampleCount: samples > 0 ? samples : null,
+        sessionCount: sessions,
+      );
+    } catch (_) {
+      return (avgRttMs: null, sampleCount: null, sessionCount: 0);
     }
   }
 
@@ -114,7 +163,12 @@ class _PerAppQualityScreenState extends State<PerAppQualityScreen> {
           ? const Center(child: CircularProgressIndicator())
           : !_permissionGranted
               ? _buildPermissionPrompt()
-              : _buildStatsList(),
+              : Column(
+                  children: [
+                    _buildSessionCard(),
+                    Expanded(child: _buildStatsList()),
+                  ],
+                ),
     );
   }
 
@@ -178,6 +232,107 @@ class _PerAppQualityScreenState extends State<PerAppQualityScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSessionCard() {
+    if (_sessionCount == 0 && _avgRttMs == null) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.timeline,
+                  color: AppColors.accent, size: 16),
+              const SizedBox(width: 8),
+              Text(
+                _t('آمار ۷ روز اخیر (کل VPN)',
+                    'Last 7 days (whole VPN)'),
+                style: TextStyle(
+                  color: AppColors.fg(context),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _statCell(
+                  _t('میانگین پینگ', 'Avg RTT'),
+                  _avgRttMs != null
+                      ? '${_avgRttMs!.toStringAsFixed(0)} ms'
+                      : '—',
+                  _avgRttMs != null && _avgRttMs! < 150
+                      ? const Color(0xFF3DCF9A)
+                      : (_avgRttMs != null && _avgRttMs! < 300
+                          ? const Color(0xFFFFB74D)
+                          : AppColors.danger),
+                ),
+              ),
+              Expanded(
+                child: _statCell(
+                  _t('تعداد سشن', 'Sessions'),
+                  '$_sessionCount',
+                  AppColors.fg(context),
+                ),
+              ),
+              Expanded(
+                child: _statCell(
+                  _t('نمونه‌ها', 'Samples'),
+                  _sampleCount?.toString() ?? '—',
+                  AppColors.muted(context),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _t(
+              'RTT در سطح session اندازه‌گیری می‌شود؛ نمایش per-app نیاز به دسترسی foreground دارد.',
+              'RTT is session-level; per-app display needs foreground usage access.',
+            ),
+            style: TextStyle(
+              color: AppColors.muted2(context),
+              fontSize: 10,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statCell(String label, String value, Color valueColor) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+              color: AppColors.muted2(context), fontSize: 10),
+        ),
+      ],
     );
   }
 
