@@ -96,9 +96,39 @@ object TorService {
 
                 // ۲. مسیر پلاگین‌ها هم از nativeLibraryDir
                 val obfs4Path = File(nativeDir, "libobfs4proxy.so").absolutePath
+                val lyrebirdPath = File(nativeDir, "liblyrebird.so").absolutePath
                 val snowflakePath = File(nativeDir, "libsnowflake.so").absolutePath
                 val conjurePath = File(nativeDir, "libconjure.so").absolutePath
                 val dnsttPath = File(nativeDir, "libdnstt.so").absolutePath
+
+                // lyrebird (modern) implements obfs4 / meek_lite / webtunnel;
+                // fall back to legacy libobfs4proxy.so when lyrebird is absent.
+                val lyrebird = lyrebirdPath.takeIf { File(it).exists() }
+                val obfs4 = obfs4Path.takeIf { File(it).exists() }
+                val obfsFamilyPt = lyrebird ?: obfs4
+                val snowflake = snowflakePath.takeIf { File(it).exists() }
+                val conjure = conjurePath.takeIf { File(it).exists() }
+                val dnstt = dnsttPath.takeIf { File(it).exists() }
+
+                // Fail loudly if the PT binary required for this bridge type is missing.
+                val missingPt: String? = when (bridgeType) {
+                    "obfs4", "meek_lite", "webtunnel", "custom" ->
+                        if (obfsFamilyPt == null)
+                            "missing PT binary for $bridgeType (need liblyrebird.so or libobfs4proxy.so)"
+                        else null
+                    "snowflake" ->
+                        if (snowflake == null) "missing PT binary: libsnowflake.so" else null
+                    "conjure" ->
+                        if (conjure == null) "missing PT binary: libconjure.so" else null
+                    "dnstt" ->
+                        if (dnstt == null) "missing PT binary: libdnstt.so" else null
+                    else -> null // vanilla: only libtor.so (already checked)
+                }
+                if (missingPt != null) {
+                    lastError = missingPt
+                    SafeLog.e(TAG, missingPt)
+                    return mapOf("ok" to false, "error" to missingPt)
+                }
 
                 // ۳. ساخت torrc
                 val torrc = File(torDir, "torrc")
@@ -106,10 +136,10 @@ object TorService {
                     dataDir,
                     bridgeType,
                     customBridges,
-                    obfs4Path.takeIf { File(it).exists() },
-                    snowflakePath.takeIf { File(it).exists() },
-                    conjurePath.takeIf { File(it).exists() },
-                    dnsttPath.takeIf { File(it).exists() },
+                    obfsFamilyPt,
+                    snowflake,
+                    conjure,
+                    dnstt,
                     sni,
                 )
                 torrc.writeText(torrcText)
@@ -333,6 +363,35 @@ object TorService {
                         defaultObfs4Bridges
                     }
                     bridges.take(2).forEach { sb.appendLine("Bridge $it") }
+                }
+            }
+            "custom" -> {
+                // User-supplied bridge lines; PT plugins already registered above.
+                if (obfs4Path != null && !customBridges.isNullOrEmpty()) {
+                    sb.appendLine("UseBridges 1")
+                    customBridges.take(4).forEach { line ->
+                        val t = line.trim()
+                        if (t.startsWith("Bridge ", ignoreCase = true)) {
+                            sb.appendLine(t)
+                        } else {
+                            sb.appendLine("Bridge $t")
+                        }
+                    }
+                }
+            }
+            "webtunnel" -> {
+                if (obfs4Path != null) {
+                    sb.appendLine("UseBridges 1")
+                    if (!customBridges.isNullOrEmpty()) {
+                        customBridges.take(2).forEach { line ->
+                            val t = line.trim()
+                            if (t.startsWith("Bridge ", ignoreCase = true)) {
+                                sb.appendLine(t)
+                            } else {
+                                sb.appendLine("Bridge $t")
+                            }
+                        }
+                    }
                 }
             }
             "meek_lite" -> {
