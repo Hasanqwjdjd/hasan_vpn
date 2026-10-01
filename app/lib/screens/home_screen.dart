@@ -4570,24 +4570,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             padding: const EdgeInsets.symmetric(horizontal: 4),
             constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
           ),
-          // Batch test — kept visible.
-          IconButton(
-            icon: _batchRunning
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppColors.accent),
-                  )
-                : const Icon(Icons.grid_view,
-                    color: AppColors.accent, size: 20),
-            onPressed: _batchRunning ? null : _runWarpBatchTest,
-            tooltip: _t('تست دسته‌ای WARP/WARP+/MASQUE',
-                'Batch test WARP/WARP+/MASQUE'),
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-          ),
           // Settings — was removed by mistake; users had no way to reach it.
           IconButton(
             icon: Icon(Icons.settings,
