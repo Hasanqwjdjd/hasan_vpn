@@ -129,7 +129,7 @@ class FastProbe {
     var jitter = 0;
     if (rtts.isNotEmpty) {
       rtts.sort();
-      median = rtts[rtts.length \~/ 2];
+      median = rtts[rtts.length ~/ 2];
       jitter = rtts.length >= 2 ? (rtts.last - rtts.first) : 0;
     }
 

@@ -63,7 +63,7 @@ class QuickConnect {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(_prefsKey) ?? <String>[];
     final id = winner['id']?.toString() ??
-        '\( {winner['host']}: \){winner['port'] ?? 443}';
+        '${winner['host']}:${winner['port'] ?? 443}';
     final next = <String>[id, ...raw.where((e) => e != id)].take(3).toList();
     await prefs.setStringList(_prefsKey, next);
   }
