@@ -52,6 +52,7 @@ class _TorScreenState extends State<TorScreen> {
     {'id': 'meek_lite', 'fa': 'Meek / Azure front', 'en': 'Meek / Azure front'},
     {'id': 'obfs4', 'fa': 'obfs4', 'en': 'obfs4'},
     {'id': 'custom', 'fa': 'پل سفارشی (چسباندن)', 'en': 'Custom bridges (paste)'},
+    {'id': 'conjure', 'fa': 'Conjure', 'en': 'Conjure'},
     {'id': 'dnstt', 'fa': 'DNSTT', 'en': 'DNSTT'},
   ];
 
