@@ -22,7 +22,6 @@ import '../services/tor_sni_presets.dart';
 import '../services/xray_json.dart';
 import 'free_config_screen.dart';
 import 'qr_scan_screen.dart';
-import 'tor_screen.dart';
 
 class AddConfigScreen extends StatefulWidget {
   final String language;
@@ -4098,13 +4097,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
-  Widget _buildTorForm() {
-    return TorScreen(
-      language: widget.language,
-      embedded: true,
-    );
-  }
-
   Widget _buildTypeCard({
     required String title,
     required String subtitle,
@@ -4860,14 +4852,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: const Color(0xFF26A69A),
             ),
             _buildTypeCard(
-              title: 'Tor',
-              subtitle: _t('اتصال واقعی به شبکهٔ رسمی Tor با پل‌های رایگان',
-                  'Real connection to the official Tor network with free bridges'),
-              icon: Icons.security,
-              type: 'tor',
-              color: const Color(0xFFEF5350),
-            ),
-            _buildTypeCard(
               title: 'Chain (2-hop)',
               subtitle: _t(
                 'زنجیره دو سرور — اول relay، بعد proxy',
@@ -5109,9 +5093,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               const SizedBox(height: 16),
             ] else if (_selectedType == 'siphon') ...[
               _buildSiphonForm(),
-            ] else if (_selectedType == 'tor') ...[
-              _buildTorForm(),
-            ] else if (_selectedType == 'chain') ...[
+                        ] else if (_selectedType == 'chain') ...[
               _buildChainForm(),
             ],
           ],
