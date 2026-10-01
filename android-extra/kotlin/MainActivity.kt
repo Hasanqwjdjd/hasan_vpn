@@ -1,10 +1,14 @@
 package com.hasan.hasan_vpn
 
 import android.Manifest
+import android.app.ActivityManager
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -296,6 +300,10 @@ class MainActivity : FlutterActivity() {
                         HevLauncher.stop()
                         result.success(true)
                     }
+                    // 0001: OS-level truth — is XrayVPNService still alive?
+                    "isXrayVpnServiceRunning" -> {
+                        result.success(isXrayVpnServiceRunning())
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -485,6 +493,33 @@ class MainActivity : FlutterActivity() {
             ) {
                 requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7001)
             }
+        }
+    }
+
+    /**
+     * 0001 — true if XrayVPNService is running in this app process.
+     * ActivityManager sees same-app services by full class name even when
+     * the class lives in the flutter_vless plugin module.
+     * Fallback: ConnectivityManager TRANSPORT_VPN.
+     */
+    private fun isXrayVpnServiceRunning(): Boolean {
+        try {
+            @Suppress("DEPRECATION")
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            @Suppress("DEPRECATION")
+            val running = am.getRunningServices(Integer.MAX_VALUE)
+            val target = "com.github.tfox.flutter_vless.xray.service.XrayVPNService"
+            if (running.any { it.service.className == target }) return true
+        } catch (_: Exception) {}
+
+        return try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return false
+            val active = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(active) ?: return false
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        } catch (_: Exception) {
+            false
         }
     }
 }

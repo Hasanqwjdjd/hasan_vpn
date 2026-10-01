@@ -87,6 +87,8 @@ class V2RayEngine {
   static bool _connected = false;
   static bool _sawState = false;
   static DateTime? _startedAt;
+  static Timer? _osRefreshTimer;
+  static DateTime? _lastOsRefresh;
   static VpnServer? _current;
   static String _lastState = '';
 
@@ -197,6 +199,48 @@ class V2RayEngine {
       debugPrint('V2Ray init error: $e');
     }
     _initialized = true;
+    // 0001: reconcile Dart flag with OS after cold start / process restart.
+    await refreshOsConnectionState();
+    _osRefreshTimer?.cancel();
+    _osRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      unawaited(refreshOsConnectionState());
+    });
+  }
+
+  /// Query native side for whether XrayVPNService is actually running.
+  /// Keeps `_connected` in sync after process death / UI rebuild.
+  /// Rate-limited to once per 2s. Skips utility sessions (Tor/Aether/...).
+  static Future<void> refreshOsConnectionState() async {
+    final now = DateTime.now();
+    if (_lastOsRefresh != null &&
+        now.difference(_lastOsRefresh!) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastOsRefresh = now;
+    if (isUtilitySession) return;
+    try {
+      final running = await _deviceChannel
+          .invokeMethod<bool>('isXrayVpnServiceRunning')
+          .timeout(const Duration(seconds: 2));
+      if (running == true) {
+        if (!_connected) {
+          debugPrint(
+              'V2Ray: OS says XrayVPNService running - marking connected');
+        }
+        _connected = true;
+      } else if (running == false && _connected) {
+        final started = _startedAt;
+        final inGrace = started != null &&
+            now.difference(started) < const Duration(seconds: 15);
+        if (!inGrace) {
+          debugPrint(
+              'V2Ray: OS says XrayVPNService stopped - marking disconnected');
+          _connected = false;
+        }
+      }
+    } catch (e) {
+      debugPrint('V2Ray refreshOsConnectionState: $e');
+    }
   }
 
   static Future<bool> requestPermission() async {
