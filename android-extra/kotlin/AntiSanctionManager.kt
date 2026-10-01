@@ -31,10 +31,23 @@ object AntiSanctionManager {
 
     fun status(ctx: Context): Map<String, Any?> {
         val p = prefs(ctx)
+        // First-launch defaults: filterBypass + geminiFix ON, us-exit OFF.
+        // We lazily persist the defaults so subsequent reads are stable.
+        val fb = p.getBoolean(KEY_FILTER, true)
+        val gf = p.getBoolean(KEY_GEMINI, true)
+        val us = p.getBoolean(KEY_US, false)
+        if (!p.contains(KEY_FILTER) || !p.contains(KEY_GEMINI) ||
+            !p.contains(KEY_US)) {
+            p.edit()
+                .putBoolean(KEY_FILTER, fb)
+                .putBoolean(KEY_GEMINI, gf)
+                .putBoolean(KEY_US, us)
+                .apply()
+        }
         return mapOf(
-            "filterBypass" to p.getBoolean(KEY_FILTER, false),
-            "geminiFix" to p.getBoolean(KEY_GEMINI, false),
-            "geminiUsExit" to p.getBoolean(KEY_US, false),
+            "filterBypass" to fb,
+            "geminiFix" to gf,
+            "geminiUsExit" to us,
         )
     }
 
