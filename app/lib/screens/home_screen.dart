@@ -40,7 +40,6 @@ import '../services/warp_cache_codec.dart';
 import '../services/geo_assets_service.dart';
 import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
-import '../services/quick_connect.dart';
 import '../services/exit_ip_service.dart';
 import '../services/geo_flag.dart';
 import '../services/server_batch_export.dart';
@@ -3230,48 +3229,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// Quick Connect: probe every directly-dialable server, pick the best by
-  /// rtt + 2*jitter + 20*loss, select it and hand it to the unchanged
-  /// connect flow (_toggleConnection).
-  Future<void> _quickConnect() async {
-    if (_connecting || _connected) {
-      _showMsg(_t('اول اتصال فعلی را قطع کنید', 'Disconnect first'));
-      return;
-    }
-    final cands = _servers.where((s) =>
-        s.host.isNotEmpty &&
-        s.port > 0 &&
-        s.protocol != VpnProtocol.ssh &&
-        s.protocol != VpnProtocol.tunnel &&
-        s.protocol != VpnProtocol.aether &&
-        s.protocol != VpnProtocol.psiphon);
-    final list = cands
-        .map((s) => <String, dynamic>{
-              'id': s.id,
-              'host': s.host,
-              'port': s.port,
-              'protocol':
-                  s.protocol == VpnProtocol.hysteria2 ? 'udp' : 'tcp',
-            })
-        .toList();
-    if (list.isEmpty) {
-      _showMsg(_t('سروری برای تست نیست', 'No servers to test'));
-      return;
-    }
-    _showMsg(_t('در حال یافتن بهترین سرور...', 'Finding the best server...'));
-    final best = await QuickConnect.pickBest(list);
-    if (!mounted) return;
-    if (best == null) {
-      _showMsg(_t('سرور سالمی پیدا نشد', 'No reachable server found'));
-      return;
-    }
-    final idx = _servers.indexWhere((s) => s.id == best['id']);
-    if (idx < 0) return;
-    setState(() => _selected = _servers[idx]);
-    await SettingsService.setLastServer(_servers[idx].id);
-    await _toggleConnection();
-  }
-
   Future<void> _toggleConnection() async {
     if (_connecting) {
       _cancelConnect = true;
@@ -4663,9 +4620,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 case 'sort':
                   _toggleSort();
                   break;
-                case 'quick':
-                  _quickConnect();
-                  break;
                 case 'select':
                   setState(() {
                     _selectionMode = !_selectionMode;
@@ -4692,10 +4646,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   const SizedBox(width: 10),
                   Text(_t('برو به آخر', 'Bottom')),
                 ]),
-              ),
-              PopupMenuItem(
-                value: 'quick',
-                child: Text(_t('اتصال سریع', 'Quick Connect')),
               ),
               PopupMenuItem(
                 value: 'sort',
