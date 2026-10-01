@@ -157,6 +157,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final Set<String> _selectedIds = <String>{};
   bool _showSearch = false;
   bool _cancelConnect = false;
+  VpnServer? _connectingServer;
   bool _polling = false;
 
   int _pollTick = 0;
@@ -3233,6 +3234,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_connecting) {
       _cancelConnect = true;
       setState(() => _status = _t('در حال لغو...', 'Cancelling...'));
+      // Actively kill the native process so the in-flight await returns
+      // immediately, instead of waiting for the timeout.
+      final which = _connectingServer;
+      if (which != null) {
+        if (which.isAether) {
+          // ignore: unawaited_futures
+          AetherService.disconnect();
+        } else if (which.isPsiphon) {
+          // ignore: unawaited_futures
+          PsiphonService.stop(reason: 'user-cancel');
+        }
+      }
       return;
     }
     if (_connected) {
@@ -3317,6 +3330,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       if (_cancelConnect) return;
 
+      // Remember which server we are attempting so cancel can target the
+      // right native service.
+      _connectingServer = selected;
+
       final bool connected;
       final String? error;
       if (selected.isAether) {
@@ -3375,6 +3392,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         _connected = connected;
         _connecting = false;
+        _connectingServer = null;
         _active = connected ? selected : null;
         // log
         if (connected) {
