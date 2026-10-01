@@ -20,6 +20,8 @@ import '../services/warp_endpoint_health_monitor.dart';
 import '../services/update_service.dart';
 import 'announcements_screen.dart';
 import 'game_dns_screen.dart';
+import 'game_booster_screen.dart';
+import 'anti_sanction_screen.dart';
 import 'live_monitor_screen.dart';
 import 'test_settings_screen.dart';
 import 'hev_engine_screen.dart';
@@ -455,6 +457,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
 
+          const SizedBox(height: 8),
+          _card(
+            context,
+            InkWell(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => GameBoosterScreen(language: _lang),
+                  ),
+                );
+                if (mounted) setState(() {});
+              },
+              child: Row(
+                children: [
+                  Icon(Icons.speed, color: AppColors.muted(context), size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _t('بوستر بازی (مسابقه DNS و پینگ بازی)', 'Game Booster (DNS race & game ping)'),
+                      style: TextStyle(color: AppColors.fg(context), fontSize: 14),
+                    ),
+                  ),
+                  Icon(Icons.chevron_left,
+                      color: AppColors.muted2(context), size: 20),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          _card(
+            context,
+            InkWell(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AntiSanctionScreen(language: _lang),
+                  ),
+                );
+                if (mounted) setState(() {});
+              },
+              child: Row(
+                children: [
+                  Icon(Icons.travel_explore, color: AppColors.muted(context), size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _t('رفع تحریم / جمینای', 'Sanction / Gemini fix'),
+                      style: TextStyle(color: AppColors.fg(context), fontSize: 14),
+                    ),
+                  ),
+                  Icon(Icons.chevron_left,
+                      color: AppColors.muted2(context), size: 20),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
           // ------- تست و امنیت -------
           _sectionTitle(_t('تست و امنیت', 'Test & Security')),
           _card(
