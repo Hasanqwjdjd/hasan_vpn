@@ -19,7 +19,6 @@ import 'telemetry_service.dart';
 import 'xray_json.dart';
 import 'xray_settings.dart';
 import 'desync_service.dart';
-import 'pingng_args.dart';
 import 'routing_service.dart';
 import 'geo_assets_service.dart';
 
@@ -631,8 +630,6 @@ class V2RayEngine {
         config = await _applyGameBooster(config);
 
         // BLOCKER 2: push MTU / IPv6 / DNS to native VpnTuner before start.
-        // PingNG native Desync — start listener + inject dialerProxy.
-        config = await _applyPingNgDesync(config, server);
       }
 
       await _pushVpnTunParams();
@@ -688,110 +685,6 @@ class V2RayEngine {
   /// نکته: Xray-core obfuscation AmneziaWG (Jc, Jmin, Jmax, S1, S2,
   /// H1..H4) رو پشتیبانی نمی‌کنه. اگه اینا توی کانفیگ باشه، ما فقط
   /// بخش WireGuard استاندارد رو استخراج می‌کنیم.
-  /// PingNG native Desync — wires a local SOCKS5 listener as the
-  /// `dialerProxy` of the primary outbound.
-  ///
-  /// Flow:
-  ///   1. Allocate a free localhost port
-  ///   2. Build the ciadpi-style argument list (preset or custom)
-  ///   3. Start the native listener via MethodChannel
-  ///   4. Inject a socks outbound (tag=pingng-desync) into the config
-  ///   5. Point the primary outbound's sockopt.dialerProxy at that tag
-  ///
-  /// Returns the config unchanged when desync is Off or the native engine
-  /// refuses to start (soft failure — connection continues without desync).
-  static Future<String> _applyPingNgDesync(
-    String config,
-    VpnServer server,
-  ) async {
-    if (!PingNgArgs.isEnabled(server.pingNgProfile)) return config;
-
-    int port = 0;
-    try {
-      final probe = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-      port = probe.port;
-      await probe.close();
-    } catch (e) {
-      debugPrint('desync: failed to allocate port: $e');
-      return config;
-    }
-
-    final args = PingNgArgs.build(
-      profile: server.pingNgProfile,
-      customArgs: server.pingNgArgs,
-      port: port,
-      udpDesync: server.pingNgUdpDesync,
-    );
-    if (args == null || args.isEmpty) return config;
-
-    final boundPort = await DesyncService.start(args: args, port: port);
-    if (boundPort == null) {
-      debugPrint('desync: native engine rejected the command line');
-      return config;
-    }
-
-    // Inject the socks outbound + dialerProxy
-    try {
-      final obj = jsonDecode(config);
-      if (obj is! Map) return config;
-      final cfg = Map<String, dynamic>.from(obj);
-      final outbounds = (cfg['outbounds'] as List?)?.toList() ?? <dynamic>[];
-      if (outbounds.isEmpty) return config;
-
-      // Primary = first non-direct/block outbound
-      int primaryIdx = outbounds.indexWhere((o) {
-        if (o is! Map) return false;
-        final tag = o['tag']?.toString() ?? '';
-        final proto = o['protocol']?.toString() ?? '';
-        if (tag == 'direct' || tag == 'block') return false;
-        if (proto == 'freedom' || proto == 'blackhole') return false;
-        return true;
-      });
-      if (primaryIdx < 0) primaryIdx = 0;
-
-      final primary = Map<String, dynamic>.from(outbounds[primaryIdx] as Map);
-      final stream = Map<String, dynamic>.from(
-          primary['streamSettings'] as Map? ?? {});
-      final sockopt = Map<String, dynamic>.from(
-          stream['sockopt'] as Map? ?? {});
-
-      // احترام به dialerProxy موجود (مثلاً chain یا WARP) — نسازیم اگه پره
-      if (sockopt['dialerProxy'] != null &&
-          sockopt['dialerProxy'].toString().isNotEmpty) {
-        debugPrint('desync: dialerProxy already set, skipping');
-        await DesyncService.stop();
-        return config;
-      }
-
-      sockopt['dialerProxy'] = 'pingng-desync';
-      stream['sockopt'] = sockopt;
-      primary['streamSettings'] = stream;
-      outbounds[primaryIdx] = primary;
-
-      // حذف نسخه‌ی قبلی (اگر reload شده)
-      outbounds.removeWhere(
-          (o) => o is Map && o['tag'] == 'pingng-desync');
-      outbounds.add({
-        'tag': 'pingng-desync',
-        'protocol': 'socks',
-        'settings': {
-          'servers': [
-            {'address': '127.0.0.1', 'port': boundPort},
-          ],
-        },
-      });
-
-      cfg['outbounds'] = outbounds;
-      debugPrint('desync: attached to 127.0.0.1:$boundPort '
-          '(${server.pingNgProfile})');
-      return jsonEncode(cfg);
-    } catch (e) {
-      debugPrint('desync: config inject failed: \$e');
-      await DesyncService.stop();
-      return config;
-    }
-  }
-
   static String _buildAmneziaWgConfig(VpnServer server) {
     try {
       final link = server.shareLink;

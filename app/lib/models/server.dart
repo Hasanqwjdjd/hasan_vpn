@@ -214,20 +214,6 @@ class VpnServer {
   /// DNS سفارشی این سرور. null = از تنظیمات کلی استفاده کن.
   String? dns;
 
-  /// PingNG native Desync profile. یکی از: Off / Light / Balanced /
-  /// Severe / Adaptive / Custom. null = Off (بدون desync).
-  String? pingNgProfile;
-
-  /// آرگومان‌های سفارشی ciadpi برای حالت Custom (فقط وقتی
-  /// pingNgProfile == 'Custom' استفاده می‌شه). مثال:
-  ///   --proto=tls --split 1+s --tlsrec 1+s --disorder 3+s
-  String? pingNgArgs;
-
-  /// اگه true باشه، Desync علاوه بر TLS روی UDP هم اعمال می‌شه
-  /// (`--proto=t,u` + `--udp-fake 1`). برای سرورهای Hysteria2/QUIC
-  /// که روی UDP کار می‌کنن لازمه.
-  bool pingNgUdpDesync;
-
   /// حالت WARPSCOUT scan که این سرور با آن ساخته شده:
   /// Fast / Medium / Slow / Custom. null = سرور غیر-WARP.
   String? warpEndpointMode;
@@ -257,9 +243,6 @@ class VpnServer {
     this.nameOverride,
     this.tls = TlsOptions.empty,
     this.dns,
-    this.pingNgProfile,
-    this.pingNgArgs,
-    this.pingNgUdpDesync = false,
     this.warpEndpointMode,
     this.warpMasqueEndpointCandidates,
     this.ping,
@@ -294,9 +277,6 @@ class VpnServer {
     bool? isPinned,
     TlsOptions? tls,
     String? dns,
-    String? pingNgProfile,
-    String? pingNgArgs,
-    bool? pingNgUdpDesync,
     String? warpEndpointMode,
     String? warpMasqueEndpointCandidates,
     List<String>? backupAddresses,
@@ -315,9 +295,6 @@ class VpnServer {
         nameOverride: nameOverride ?? this.nameOverride,
         tls: tls ?? this.tls,
         dns: dns ?? this.dns,
-        pingNgProfile: pingNgProfile ?? this.pingNgProfile,
-        pingNgArgs: pingNgArgs ?? this.pingNgArgs,
-        pingNgUdpDesync: pingNgUdpDesync ?? this.pingNgUdpDesync,
         warpEndpointMode: warpEndpointMode ?? this.warpEndpointMode,
         warpMasqueEndpointCandidates: warpMasqueEndpointCandidates ?? this.warpMasqueEndpointCandidates,
         backupAddresses: backupAddresses ?? this.backupAddresses,

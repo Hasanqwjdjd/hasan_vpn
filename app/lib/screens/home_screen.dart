@@ -23,10 +23,7 @@ import '../models/tunnel_profile.dart';
 import '../models/ssh_profile.dart';
 import '../services/ssh_session_service.dart';
 import '../services/master_dns_session_service.dart';
-import '../services/final_mask_finder.dart';
 import '../services/desync_service.dart';
-import '../services/pingng_args.dart';
-import '../services/desync_tuner.dart';
 import '../services/warp_masque_session_service.dart';
 import '../services/warp_masque_service.dart';
 import '../services/warp_service.dart';
@@ -133,7 +130,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _manualDisconnect = false;
   Timer? _widgetTimerRefresh;
   bool _smartResumeEnabled = true;
-  VoidCallback? _finalMaskDialogRefresh;
   List<String> _manualOrder = <String>[];
   static const String _sortKey = 'settings_sort_ascending_v1';
   bool _sortAscending = true;
@@ -493,376 +489,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _editServerFull(server);
   }
 
-  /// Auto-Tune Desync — پورت Dart از PingNgDesyncTuner.
-  ///
-  /// سرور رو با هر candidate دوباره وصل می‌کنه، سریع‌ترین رو برمی‌گردونه
-  /// و args برنده رو به caller می‌ده که توی فیلد Custom بذاره.
-  Future<String?> _findBestDesync(
-    VpnServer server,
-    BuildContext dialogCtx,
-  ) async {
-    if (DesyncTuner.isRunning) return null;
-
-    final results = <DesyncResult>[];
-    int currentIdx = 0;
-    int total = 0;
-    String currentLabel = '';
-    bool cancelled = false;
-    bool advanced = false;
-    bool udpOnly = false;
-    // The cancel button closes the progress dialog itself; without this flag
-    // the outer flow would pop a second time and take the edit dialog with it,
-    // dumping the user back on the home screen.
-    bool dialogPopped = false;
-
-    Future<void> showProgressDialog() async {
-      if (!mounted) return;
-      return showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dCtx) => StatefulBuilder(
-          builder: (dCtx, setDlg) {
-            _finalMaskDialogRefresh = () {
-              if (dCtx.mounted) setDlg(() {});
-            };
-            return AlertDialog(
-              backgroundColor: AppColors.surface(dCtx),
-              title: Text(
-                _t('در حال اسکن Desync', 'Scanning Desync'),
-                style: TextStyle(color: AppColors.fg(dCtx), fontSize: 16),
-              ),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    LinearProgressIndicator(
-                      value: total > 0 ? currentIdx / total : 0,
-                      color: AppColors.accent,
-                      backgroundColor: AppColors.border(dCtx),
-                    ),
-                    const SizedBox(height: 10),
-                    Text('$currentIdx / $total',
-                        style: TextStyle(
-                            color: AppColors.muted(dCtx), fontSize: 11)),
-                    const SizedBox(height: 6),
-                    if (currentLabel.isNotEmpty)
-                      Text(
-                        currentLabel,
-                        style: TextStyle(
-                            color: AppColors.fg(dCtx), fontSize: 12),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    const SizedBox(height: 10),
-                    Container(
-                      constraints: const BoxConstraints(maxHeight: 200),
-                      decoration: BoxDecoration(
-                        color: AppColors.bg(dCtx),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.border(dCtx)),
-                      ),
-                      child: results.isEmpty
-                          ? Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Text(
-                                _t('شروع...', 'Starting...'),
-                                style: TextStyle(
-                                    color: AppColors.muted2(dCtx),
-                                    fontSize: 11),
-                              ),
-                            )
-                          : ListView.builder(
-                              shrinkWrap: true,
-                              itemCount: results.length,
-                              itemBuilder: (_, i) {
-                                final r = results[i];
-                                return ListTile(
-                                  dense: true,
-                                  title: Text(
-                                    r.candidate.label,
-                                    style: TextStyle(
-                                        color: AppColors.fg(dCtx),
-                                        fontSize: 11),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  trailing: Text(
-                                    r.ok ? '${r.ms}ms' : '✕',
-                                    style: TextStyle(
-                                      color: r.ok
-                                          ? AppColors.accent
-                                          : AppColors.danger,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Checkbox(
-                          value: advanced,
-                          onChanged: (v) {
-                            setDlg(() => advanced = v ?? false);
-                          },
-                          activeColor: AppColors.accent,
-                        ),
-                        Text(
-                          _t('حالت پیشرفته (کندتر)', 'Advanced (slower)'),
-                          style: TextStyle(
-                              color: AppColors.muted2(dCtx), fontSize: 11),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        Checkbox(
-                          value: udpOnly,
-                          onChanged: (v) {
-                            setDlg(() => udpOnly = v ?? false);
-                          },
-                          activeColor: AppColors.accent,
-                        ),
-                        Expanded(
-                          child: Text(
-                            _t('حالت UDP (Hysteria2/QUIC)',
-                                'UDP mode (Hysteria2/QUIC)'),
-                            style: TextStyle(
-                                color: AppColors.muted2(dCtx), fontSize: 11),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    cancelled = true;
-                    DesyncTuner.cancel();
-                    try { V2RayEngine.disconnect(); } catch (_) {}
-                    dialogPopped = true;
-                    Navigator.pop(dCtx);
-                  },
-                  child: Text(_t('لغو', 'Cancel'),
-                      style: TextStyle(color: AppColors.muted(dCtx))),
-                ),
-              ],
-            );
-          },
-        ),
-      );
-    }
-
-    // ignore: unawaited_futures
-    showProgressDialog();
-
-    DesyncResult? best;
-    try {
-      best = await DesyncTuner.findBest(
-        server,
-        advancedProvider: () => advanced,
-        isCancelled: () => cancelled,
-        udpOnly: udpOnly,
-        onProgress: (idx, t, c) {
-          currentIdx = idx;
-          total = t;
-          currentLabel = c.label;
-          _finalMaskDialogRefresh?.call();
-        },
-        onResult: (r) {
-          results.add(r);
-          _finalMaskDialogRefresh?.call();
-        },
-      );
-    } catch (e) {
-      debugPrint('DesyncTuner error: $e');
-    }
-
-    _finalMaskDialogRefresh = null;
-    if (!mounted) return null;
-    if (!dialogPopped) {
-      Navigator.of(context, rootNavigator: true).pop();
-    }
-
-    if (cancelled) return null;
-    if (best == null) {
-      _showMsg(_t('هیچ preset ای جواب نداد', 'No preset worked'));
-      return null;
-    }
-    _showMsg(_t(
-        'بهترین preset: ${best.candidate.label} (${best.ms}ms)',
-        'Best preset: ${best.candidate.label} (${best.ms}ms)'));
-    return best.candidate.args;
-  }
-
-  Future<void> _findBestFinalMask(
-    VpnServer server,
-    TextEditingController finalMaskCtrl,
-    BuildContext dialogCtx,
-  ) async {
-    if (FinalMaskFinder.isRunning) return;
-
-    final results = <FinalMaskResult>[];
-    int currentIdx = 0;
-    int total = FinalMaskFinder.presets.length;
-    String currentLabel = '';
-    bool cancelled = false;
-
-    Future<void> showProgressDialog() async {
-      if (!mounted) return;
-      return showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dCtx) => StatefulBuilder(
-          builder: (dCtx, setDlg) {
-            // rebuild از بیرون
-            _finalMaskDialogRefresh = () {
-              if (dCtx.mounted) setDlg(() {});
-            };
-            return AlertDialog(
-              backgroundColor: AppColors.surface(dCtx),
-              title: Text(
-                _t('در حال اسکن FinalMask', 'Scanning FinalMask'),
-                style: TextStyle(color: AppColors.fg(dCtx), fontSize: 16),
-              ),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    LinearProgressIndicator(
-                      value: total > 0 ? currentIdx / total : 0,
-                      color: AppColors.accent,
-                      backgroundColor: AppColors.border(dCtx),
-                    ),
-                    const SizedBox(height: 10),
-                    Text('$currentIdx / $total',
-                        style: TextStyle(
-                            color: AppColors.muted(dCtx), fontSize: 11)),
-                    const SizedBox(height: 6),
-                    if (currentLabel.isNotEmpty)
-                      Text(
-                        currentLabel,
-                        style: TextStyle(
-                            color: AppColors.fg(dCtx), fontSize: 12),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    const SizedBox(height: 10),
-                    Container(
-                      constraints: const BoxConstraints(maxHeight: 200),
-                      decoration: BoxDecoration(
-                        color: AppColors.bg(dCtx),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.border(dCtx)),
-                      ),
-                      child: results.isEmpty
-                          ? Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Text(
-                                _t('شروع...', 'Starting...'),
-                                style: TextStyle(
-                                    color: AppColors.muted2(dCtx),
-                                    fontSize: 11),
-                              ),
-                            )
-                          : ListView.builder(
-                              shrinkWrap: true,
-                              itemCount: results.length,
-                              itemBuilder: (_, i) {
-                                final r = results[i];
-                                return ListTile(
-                                  dense: true,
-                                  title: Text(
-                                    r.preset.label,
-                                    style: TextStyle(
-                                        color: AppColors.fg(dCtx),
-                                        fontSize: 11),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  trailing: Text(
-                                    r.ok ? '${r.ms}ms' : '✕',
-                                    style: TextStyle(
-                                      color: r.ok
-                                          ? AppColors.accent
-                                          : AppColors.danger,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    cancelled = true;
-                    FinalMaskFinder.cancel();
-                    try { V2RayEngine.disconnect(); } catch (_) {}
-                    Navigator.pop(dCtx);
-                  },
-                  child: Text(_t('لغو', 'Cancel'),
-                      style: TextStyle(color: AppColors.muted(dCtx))),
-                ),
-              ],
-            );
-          },
-        ),
-      );
-    }
-
-    // ignore: unawaited_futures
-    showProgressDialog();
-
-    FinalMaskResult? best;
-    try {
-      best = await FinalMaskFinder.findBest(
-        server,
-        onProgress: (idx, t, preset) {
-          currentIdx = idx;
-          total = t;
-          currentLabel = preset.label;
-          _finalMaskDialogRefresh?.call();
-        },
-        onResult: (r) {
-          results.add(r);
-          _finalMaskDialogRefresh?.call();
-        },
-      );
-    } catch (e) {
-      debugPrint('findBest error: $e');
-    }
-
-    _finalMaskDialogRefresh = null;
-    if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).pop();
-
-    if (cancelled) return;
-    if (best == null) {
-      _showMsg(_t('هیچ preset ای جواب نداد', 'No preset worked'));
-      return;
-    }
-
-    finalMaskCtrl.text = best.preset.finalMask;
-    _showMsg(_t(
-      'بهترین: ${best.preset.label} (${best.ms}ms)',
-      'Best: ${best.preset.label} (${best.ms}ms)',
-    ));
-  }
-
   Future<void> _editServerFull(VpnServer server) async {
     final nameCtrl = TextEditingController(text: server.displayName);
     final sniCtrl = TextEditingController(text: server.sniOrHost ?? '');
@@ -886,10 +512,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final backupCtrl =
         TextEditingController(text: server.backupAddresses.join(', '));
 
-    String pingNgProfile = server.pingNgProfile ?? 'Off';
-    bool pingNgUdp = server.pingNgUdpDesync;
-    final pingNgArgsCtrl =
-        TextEditingController(text: server.pingNgArgs ?? '');
 
     String fp = server.tls.fingerprint ?? 'none';
     bool insecure = server.tls.allowInsecure;
@@ -1091,90 +713,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     field('dialMode', dialModeCtrl),
                     field('targetStrategy', targetStratCtrl, hint: 'AsIs'),
 
-                    const SizedBox(height: 12),
-                    Text(_t('PingNG Desync (دور زدن DPI)', 'PingNG Desync (DPI bypass)'),
-                        style: TextStyle(
-                            color: AppColors.accent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 6),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        _t(
-                          'Split/Disorder/FakeSNI روی ClientHello — بدون root. موتور native داخل libPingNG.so اجرا می‌شه و ترافیک از یک SOCKS5 لوکال رد می‌شه.',
-                          'Split/Disorder/FakeSNI on ClientHello — no root required. A native engine inside libPingNG.so exposes a local SOCKS5 that Xray dials through.',
-                        ),
-                        style: TextStyle(
-                            color: AppColors.muted2(ctx),
-                            fontSize: 10,
-                            height: 1.4),
-                      ),
-                    ),
-                    DropdownButtonFormField<String>(
-                      value: pingNgProfile,
-                      dropdownColor: AppColors.elevated(ctx),
-                      style: TextStyle(color: AppColors.fg(ctx), fontSize: 13),
-                      decoration: InputDecoration(
-                        labelText: _t('حالت Desync', 'Desync mode'),
-                        labelStyle:
-                            TextStyle(color: AppColors.muted(ctx), fontSize: 12),
-                        isDense: true,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 'Off', child: Text('Off')),
-                        DropdownMenuItem(value: 'Light', child: Text('Light')),
-                        DropdownMenuItem(value: 'Balanced', child: Text('Balanced')),
-                        DropdownMenuItem(value: 'Severe', child: Text('Severe')),
-                        DropdownMenuItem(value: 'Adaptive', child: Text('Adaptive')),
-                        DropdownMenuItem(value: 'Custom', child: Text('Custom')),
-                      ],
-                      onChanged: (v) =>
-                          setLocal(() => pingNgProfile = v ?? 'Off'),
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      activeColor: AppColors.accent,
-                      title: Text(
-                        _t('Desync روی UDP (Hysteria2/QUIC)',
-                            'Desync on UDP (Hysteria2/QUIC)'),
-                        style: TextStyle(color: AppColors.fg(ctx), fontSize: 12),
-                      ),
-                      subtitle: Text(
-                        _t('برای سرورهایی که روی UDP کار می\u200cکنن فعال کن',
-                            'Enable for servers that run on UDP'),
-                        style: TextStyle(
-                            color: AppColors.muted2(ctx), fontSize: 10),
-                      ),
-                      value: pingNgUdp,
-                      onChanged: (v) => setLocal(() => pingNgUdp = v),
-                    ),
-                    if (pingNgProfile == 'Custom') ...[
-                      const SizedBox(height: 6),
-                      field(
-                        _t('آرگومان سفارشی ciadpi', 'Custom ciadpi arguments'),
-                        pingNgArgsCtrl,
-                        maxLines: 3,
-                        hint: '--proto=tls --split 1+s --tlsrec 1+s --disorder 3+s --fake -1 --ttl 8',
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(
-                          _t(
-                            'فرمت ciadpi: --split، --split-range، --disorder، --fake، --oob، --disoob، --tlsrec، --tls-sni، --ttl، --delay-range و ...',
-                            'ciadpi grammar: --split, --split-range, --disorder, --fake, --oob, --disoob, --tlsrec, --tls-sni, --ttl, --delay-range, ...',
-                          ),
-                          style: TextStyle(
-                              color: AppColors.muted2(ctx),
-                              fontSize: 10,
-                              height: 1.4),
-                        ),
-                      ),
-                    ],
+
                   ],
                 ),
               ),
@@ -1200,12 +739,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   'dialMode': dialModeCtrl.text.trim(),
                   'browserDialer': browserDialer,
                   'targetStrategy': targetStratCtrl.text.trim(),
-                  'pingNgProfile': pingNgProfile,
-                  'pingNgUdp': pingNgUdp,
                   'backupAddresses': backupCtrl.text.trim(),
-                  'pingNgArgs': pingNgProfile == 'Custom'
-                      ? pingNgArgsCtrl.text.trim()
-                      : null,
                   'dns': dnsCtrl.text.trim(),
                 }),
                 child: Text(_t('ذخیره', 'Save'),
@@ -1249,9 +783,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
 
       final newDns = (result['dns'] as String?)?.trim() ?? '';
-      final newPingProfile = (result['pingNgProfile'] as String?)?.trim();
-      final newPingArgs = (result['pingNgArgs'] as String?)?.trim();
-      final newPingUdp = result['pingNgUdp'] == true;
 
       // Multi-address failover (BackPack-derived).
       final newBackups = ((result['backupAddresses'] as String?) ?? '')
@@ -1265,13 +796,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         nameOverride: newName.isNotEmpty ? newName : null,
         tls: newTls,
         dns: newDns.isEmpty ? null : newDns,
-        pingNgProfile: (newPingProfile == null || newPingProfile.isEmpty)
-            ? 'Off'
-            : newPingProfile,
-        pingNgArgs: (newPingArgs == null || newPingArgs.isEmpty)
-            ? null
-            : newPingArgs,
-        pingNgUdpDesync: newPingUdp,
         backupAddresses: newBackups,
       );
 
@@ -1309,7 +833,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       targetStratCtrl.dispose();
       dnsCtrl.dispose();
       sniPoolCtrl.dispose();
-      pingNgArgsCtrl.dispose();
     }
   }
 
@@ -5506,34 +5029,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           });
           // ignore: unawaited_futures
           ConnectionLogService.logConnect(server.displayName);
-          // Desync روی WARP MASQUE: پروکسی HTTP CONNECT لوکال که
-          // outer TLS را از داخل SOCKS5 موتور Desync عبور می‌دهد.
-          final desyncOn = PingNgArgs.isEnabled(server.pingNgProfile);
-          int desyncPort = 0;
-          if (desyncOn) {
-            try {
-              final probe = await ServerSocket.bind(
-                  InternetAddress.loopbackIPv4, 0);
-              final candidatePort = probe.port;
-              await probe.close();
-              final args = PingNgArgs.build(
-                profile: server.pingNgProfile,
-                customArgs: server.pingNgArgs,
-                port: candidatePort,
-                udpDesync: server.pingNgUdpDesync,
-              );
-              if (args != null && args.isNotEmpty) {
-                final bound = await DesyncService.start(
-                  args: args,
-                  port: candidatePort,
-                );
-                if (bound != null) desyncPort = bound;
-              }
-            } catch (e) {
-              debugPrint('desync-for-masque failed: $e');
-              desyncPort = 0;
-            }
-          }
 
           await WarpMasqueSessionService.instance.connect(
             server.id,
@@ -5543,8 +5038,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             sni: sni,
             dns: dns,
             http2: h2,
-            desyncEnabled: desyncPort > 0,
-            desyncSocksPort: desyncPort,
             deviceName: deviceName.isEmpty ? 'Hasan-VPN' : deviceName,
           );
           return;

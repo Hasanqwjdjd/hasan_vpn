@@ -152,13 +152,6 @@ class ServerTile extends StatelessWidget {
   /// badge های کوچیک برای نشان دادن ویژگی‌های خاص سرور.
   List<String> get _badges {
     final out = <String>[];
-    // Desync
-    final profile = server.pingNgProfile;
-    if (profile != null && profile.isNotEmpty && profile != 'Off') {
-      out.add(profile == 'Custom' ? 'DSYNC·C' : 'DSYNC');
-    }
-    if (server.pingNgUdpDesync) out.add('UDP');
-
     // MASQUE servers are always fronted by Cloudflare Anycast; the parallel
     // scanner always runs, so show "CF" and "SCAN·P" even without a mode.
     if (server.protocol == VpnProtocol.warpMasque) {
