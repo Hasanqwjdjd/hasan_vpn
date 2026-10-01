@@ -3044,9 +3044,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // ignore: unawaited_futures
           HomeWidgetService.setCountryFlag(newFlag);
         }
-        // flag فقط اگه تغییر کرده
-        if (newFlag != '🌐' && active.flag != newFlag) {
-          final updated = active.copyWith(flag: newFlag);
+        // Auto-name only when the user has not set a manual name.
+        final hasManualName = active.nameOverride != null &&
+            active.nameOverride!.isNotEmpty;
+        final flagChanged = newFlag != '🌐' && active.flag != newFlag;
+
+        String? autoName;
+        if (!hasManualName &&
+            newFlag != '🌐' &&
+            info.country != null &&
+            info.country!.isNotEmpty) {
+          final farsi = GeoFlag.farsiName(info.country);
+          final localized = _isFa && farsi.isNotEmpty ? farsi : info.country!;
+          autoName = '$newFlag $localized';
+        }
+        final nameChanged = autoName != null && active.name != autoName;
+
+        if (flagChanged || nameChanged) {
+          final updated = active.copyWith(
+            flag: newFlag != '🌐' ? newFlag : active.flag,
+            name: nameChanged ? autoName! : active.name,
+          );
           setState(() {
             if (_active?.id == active.id) _active = updated;
             final si = _servers.indexWhere((s) => s.id == active.id);
