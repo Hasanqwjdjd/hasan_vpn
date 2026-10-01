@@ -352,15 +352,20 @@ class AetherProfile {
   // ------------------------------------------------------------ attempt plan
 
   static Duration _timeoutFor(String scan) {
+    // Adjusted for Iranian mobile: on Irancell/MCI, even a fast scan
+    // path (masque/H2) needs ~20-30 s to finish because of the extra
+    // RTTs to Cloudflare and the TCP handshake overhead. The previous
+    // 15 s turbo / 25 s balanced windows cut off the first working
+    // attempt on most 4G sessions.
     switch (scan) {
       case 'turbo':
-        return const Duration(seconds: 15);
+        return const Duration(seconds: 20);
       case 'balanced':
-        return const Duration(seconds: 25);
+        return const Duration(seconds: 35);
       case 'ironclad':
-        return const Duration(seconds: 45);
+        return const Duration(seconds: 60);
       default: // thorough, verified
-        return const Duration(seconds: 45);
+        return const Duration(seconds: 55);
     }
   }
 
