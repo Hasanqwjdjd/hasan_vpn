@@ -2,11 +2,16 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'anti_sanction_service.dart';
+
 /// Core Xray / VPN settings applied at config-generation time.
 /// Keys and defaults mirror v2rayNG / PattNG preference semantics
 /// (see 2dust/v2rayNG SettingsManager + preference XML).
 class XraySettings {
   XraySettings._();
+
+  /// Set by applyToConfig when geminiUsExit is on.
+  static bool _pendingUsGeminiExit = false;
 
   static const String _key = 'xray_core_settings_v2';
 
@@ -471,6 +476,37 @@ class XraySettings {
         dns['queryStrategy'] = 'UseIP';
       }
       map['dns'] = dns;
+
+      // ─── Gemini US-exit routing rule ───
+      if (_pendingUsGeminiExit) {
+        try {
+          final routing = map['routing'] is Map
+              ? Map<String, dynamic>.from(map['routing'] as Map)
+              : <String, dynamic>{};
+          final rules = List<Map<String, dynamic>>.from(
+            (routing['rules'] as List? ?? const [])
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e)),
+          );
+          final exists = rules.any((r) =>
+              r['domain'] is List &&
+              (r['domain'] as List).contains('geosite:google-gemini'));
+          if (!exists) {
+            rules.insert(0, <String, dynamic>{
+              'type': 'field',
+              'domain': <String>[
+                'geosite:google-gemini',
+                'domain:gemini.google.com',
+                'domain:bard.google.com',
+                'domain:generativelanguage.googleapis.com',
+              ],
+              'outboundTag': 'us-exit',
+            });
+          }
+          routing['rules'] = rules;
+          map['routing'] = routing;
+        } catch (_) {}
+      }
 
       final strategy = settings['domainStrategy']?.toString() ?? 'AsIs';
       if (map['routing'] is Map) {
