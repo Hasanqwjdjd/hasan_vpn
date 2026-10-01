@@ -192,6 +192,7 @@ jobs:
           cp -f android-extra/kotlin/SafeLog.kt "$KT_DIR/SafeLog.kt"
           cp -f android-extra/kotlin/TorService.kt "$KT_DIR/TorService.kt"
           cp -f android-extra/kotlin/TorForegroundService.kt "$KT_DIR/TorForegroundService.kt"
+          cp -f android-extra/kotlin/TorMoatFetcher.kt "$KT_DIR/TorMoatFetcher.kt"
           cp -f android-extra/kotlin/LiveMonitorService.kt "$KT_DIR/LiveMonitorService.kt"
           cp -f android-extra/kotlin/QuickConnectWidget1x1.kt "$KT_DIR/QuickConnectWidget1x1.kt"
           cp -f android-extra/kotlin/WidgetBgConnectActivity.kt "$KT_DIR/WidgetBgConnectActivity.kt"
