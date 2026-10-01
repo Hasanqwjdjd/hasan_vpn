@@ -35,9 +35,6 @@ class XraySettings {
     'shareProxyLan': false,
     'randomPort': false,
     'dnsProtocol': 'udp',
-    'dohUrl': 'https://cloudflare-dns.com/dns-query',
-    'directDns': '1.1.1.1',
-    'dnsHosts': '',
     'dnsLeakProtection': true,
     'skipCertVerify': false,
     // Reality overrides — وقتی کاربر پر کنه، روی همه outboundهای reality
@@ -401,18 +398,11 @@ class XraySettings {
           .toList();
       final servers = <dynamic>[];
       final proto = settings['dnsProtocol']?.toString() ?? 'udp';
-      final doh = settings['dohUrl']?.toString() ?? '';
-      if (proto == 'https' && doh.isNotEmpty) {
+      const doh = 'https://cloudflare-dns.com/dns-query';
+      if (proto == 'https') {
         servers.add({'address': doh});
       } else {
         servers.addAll(vpnDns);
-      }
-      final directDns = settings['directDns']?.toString() ?? '';
-      if (directDns.isNotEmpty) {
-        for (final d in directDns.split(',')) {
-          final t = d.trim();
-          if (t.isNotEmpty) servers.add(t);
-        }
       }
       if (settings['localDns'] == true) {
         servers.insert(0, 'localhost');
@@ -479,17 +469,6 @@ class XraySettings {
         dns['queryStrategy'] = 'UseIPv4';
       } else {
         dns['queryStrategy'] = 'UseIP';
-      }
-      final hostsRaw = settings['dnsHosts']?.toString() ?? '';
-      if (hostsRaw.isNotEmpty) {
-        final hosts = <String, String>{};
-        for (final part in hostsRaw.split(',')) {
-          final kv = part.trim().split(':');
-          if (kv.length >= 2) {
-            hosts[kv[0].trim()] = kv.sublist(1).join(':').trim();
-          }
-        }
-        if (hosts.isNotEmpty) dns['hosts'] = hosts;
       }
       map['dns'] = dns;
 

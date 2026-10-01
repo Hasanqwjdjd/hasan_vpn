@@ -11,7 +11,6 @@ import 'security_test_screen.dart';
 import 'backup_screen.dart';
 import 'connection_log_screen.dart';
 import 'engines_screen.dart';
-import 'server_health_screen.dart';
 import 'quality_history_screen.dart';
 import '../services/warp_scout_scheduler.dart';
 import '../services/quality_alert.dart';
@@ -520,40 +519,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _t(
                     'لیست هسته‌های native با نسخه و چک آپدیت خودکار',
                     'Native cores list with version & auto update check',
-                  ),
-                  style: TextStyle(
-                      color: AppColors.muted2(context), fontSize: 11),
-                ),
-                trailing: Icon(Icons.chevron_left,
-                    color: AppColors.muted(context)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          _card(
-            context,
-            InkWell(
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        ServerHealthScreen(language: _lang),
-                  ),
-                );
-              },
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.monitor_heart_outlined,
-                    color: AppColors.accent),
-                title: Text(
-                  _t('سلامت سرورها', 'Server health'),
-                  style: TextStyle(color: AppColors.fg(context)),
-                ),
-                subtitle: Text(
-                  _t(
-                    'وضعیت همه سرورها — سالم/هشدار/مشکل‌دار/تست‌نشده',
-                    'Status of all servers — healthy/warning/critical/untested',
                   ),
                   style: TextStyle(
                       color: AppColors.muted2(context), fontSize: 11),
