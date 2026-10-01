@@ -140,6 +140,42 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
         title: Text(_t('پراکسی هر برنامه', 'Per-app proxy')),
         backgroundColor: AppColors.bg(context),
         actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.import_export),
+            tooltip: _t('پشتیبان‌گیری / بازیابی', 'Backup / Restore'),
+            color: AppColors.surface(context),
+            onSelected: (v) {
+              if (v == 'export') {
+                _exportBackup();
+              } else if (v == 'import') {
+                _importBackup();
+              }
+            },
+            itemBuilder: (bCtx) => <PopupMenuEntry<String>>[
+              PopupMenuItem(
+                value: 'export',
+                child: Row(children: [
+                  Icon(Icons.upload_file,
+                      size: 16, color: AppColors.fg(bCtx)),
+                  const SizedBox(width: 8),
+                  Text(_t('برون‌بری به کلیپ‌بورد (کپی)',
+                      'Export to clipboard (copy)'),
+                      style: TextStyle(color: AppColors.fg(bCtx))),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'import',
+                child: Row(children: [
+                  Icon(Icons.download,
+                      size: 16, color: AppColors.fg(bCtx)),
+                  const SizedBox(width: 8),
+                  Text(_t('درون‌ریزی از کلیپ‌بورد (پیست)',
+                      'Import from clipboard (paste)'),
+                      style: TextStyle(color: AppColors.fg(bCtx))),
+                ]),
+              ),
+            ],
+          ),
           if (_mode != 'all')
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
@@ -347,6 +383,69 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
               ],
             ),
     );
+  }
+
+  /// Backup: mode + selected packages → JSON in clipboard.
+  Future<void> _exportBackup() async {
+    final data = <String, dynamic>{
+      'version': 1,
+      'mode': _mode,
+      'apps': (_selected.toList()..sort()),
+      'exportedAt': DateTime.now().toIso8601String(),
+    };
+    final json = const JsonEncoder.withIndent('  ').convert(data);
+    await Clipboard.setData(ClipboardData(text: json));
+    if (!mounted) return;
+    _showMsg(_t(
+      'کپی شد در کلیپ‌بورد (${_selected.length} برنامه)',
+      'Copied to clipboard (${_selected.length} apps)',
+    ));
+  }
+
+  /// Restore: read JSON from clipboard, apply mode + apps.
+  Future<void> _importBackup() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text?.trim() ?? '';
+    if (text.isEmpty) {
+      _showMsg(_t('کلیپ‌بورد خالی است', 'Clipboard is empty'));
+      return;
+    }
+    try {
+      final decoded = jsonDecode(text);
+      if (decoded is! Map) {
+        _showMsg(_t('فرمت نامعتبر', 'Invalid format'));
+        return;
+      }
+      final mode = decoded['mode']?.toString() ?? 'all';
+      if (!const {'all', 'blacklist', 'whitelist'}.contains(mode)) {
+        _showMsg(_t('حالت نامعتبر در JSON', 'Invalid mode in JSON'));
+        return;
+      }
+      final appsRaw = decoded['apps'];
+      if (appsRaw is! List) {
+        _showMsg(_t('لیست apps پیدا نشد', 'apps list missing'));
+        return;
+      }
+      final apps = appsRaw
+          .map((e) => e.toString().trim())
+          .where((s) => s.isNotEmpty)
+          .toList()
+        ..sort();
+      await SettingsService.setProxyMode(mode);
+      await SettingsService.setBlockedApps(apps);
+      if (!mounted) return;
+      setState(() {
+        _mode = mode;
+        _selected.clear();
+        _selected.addAll(apps);
+      });
+      _showMsg(_t(
+        'بازیابی شد: ${apps.length} برنامه (حالت $mode)',
+        'Restored: ${apps.length} apps (mode $mode)',
+      ));
+    } catch (e) {
+      _showMsg(_t('خطا در بازیابی: $e', 'Import error: $e'));
+    }
   }
 
   void _onBulkAction(String action) async {
