@@ -3308,6 +3308,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         _connecting = true;
         _livePing = null;
+        _connectAttemptLabel = null;
+        _connectAttemptTarget = null;
         _status = _t('آماده‌سازی...', 'Preparing...');
       });
     }
@@ -4612,6 +4614,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   style: TextStyle(
                       color: AppColors.muted(context), fontSize: 11),
                 ),
+                if (_connecting &&
+                    (_connectAttemptLabel != null ||
+                        _connectAttemptTarget != null)) ...[
+                  const SizedBox(height: 1),
+                  Text(
+                    <String>[
+                      if (_connectAttemptLabel != null)
+                        _connectAttemptLabel!,
+                      if (_connectAttemptTarget != null)
+                        _connectAttemptTarget!,
+                    ].join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.accent,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -4760,7 +4783,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         color: AppColors.accent,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
+                    if (_connectAttemptLabel != null ||
+                        _connectAttemptTarget != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 3),
+                        child: Text(
+                          <String>[
+                            if (_connectAttemptLabel != null)
+                              _connectAttemptLabel!,
+                            if (_connectAttemptTarget != null)
+                              _connectAttemptTarget!,
+                          ].join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.accent,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                     Text(_t('لغو', 'Cancel'),
                         style: TextStyle(
                             color: AppColors.muted(context), fontSize: 11)),
