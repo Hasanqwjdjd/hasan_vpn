@@ -40,6 +40,63 @@ class ConnectionLogService {
   static const String _key = 'connection_log_v1';
   static const int _maxEntries = 200;
 
+  // ─── Session accumulator (in-memory only) ───
+  // در طول هر session، home_screen بعد از هر probe موفق یک sample اضافه
+  // می‌کند. در logDisconnect، خلاصه‌اش به detail اضافه و پاک می‌شود.
+  static final List<int> _sessRtt = <int>[];
+  static final List<int> _sessJitter = <int>[];
+  static final List<double> _sessLoss = <double>[];
+
+  static void _resetSession() {
+    _sessRtt.clear();
+    _sessJitter.clear();
+    _sessLoss.clear();
+  }
+
+  /// Feed a fresh probe sample into the current session accumulator.
+  /// Safe to call from anywhere; no-op when the value is missing.
+  static void recordSample({
+    int? rttMs,
+    int? jitterMs,
+    double? lossPct,
+  }) {
+    if (rttMs != null && rttMs > 0) _sessRtt.add(rttMs);
+    if (jitterMs != null && jitterMs >= 0) _sessJitter.add(jitterMs);
+    if (lossPct != null && lossPct >= 0) _sessLoss.add(lossPct);
+  }
+
+  /// Human-readable summary of the samples seen so far, or null.
+  static String? _sessionSummaryText() {
+    if (_sessRtt.isEmpty && _sessJitter.isEmpty && _sessLoss.isEmpty) {
+      return null;
+    }
+    int avgI(List<int> xs) =>
+        xs.isEmpty ? 0 : xs.reduce((a, b) => a + b) ~/ xs.length;
+    int minI(List<int> xs) =>
+        xs.isEmpty ? 0 : xs.reduce((a, b) => a < b ? a : b);
+    int maxI(List<int> xs) =>
+        xs.isEmpty ? 0 : xs.reduce((a, b) => a > b ? a : b);
+    double avgD(List<double> xs) =>
+        xs.isEmpty ? 0 : xs.reduce((a, b) => a + b) / xs.length;
+
+    final parts = <String>[];
+    if (_sessRtt.isNotEmpty) {
+      parts.add('rtt ${avgI(_sessRtt)}ms '
+          '(${minI(_sessRtt)}–${maxI(_sessRtt)})');
+    }
+    if (_sessJitter.isNotEmpty) {
+      parts.add('jitter ${avgI(_sessJitter)}ms');
+    }
+    if (_sessLoss.isNotEmpty) {
+      parts.add('loss ${avgD(_sessLoss).toStringAsFixed(1)}%');
+    }
+    final n = _sessRtt.isNotEmpty
+        ? _sessRtt.length
+        : (_sessJitter.isNotEmpty ? _sessJitter.length : _sessLoss.length);
+    parts.add('n=$n');
+    return parts.join(' · ');
+  }
+
   /// Notifier که UI می‌تونه listen کنه — هر بار add/clear صدا زده می‌شه.
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
@@ -79,25 +136,32 @@ class ConnectionLogService {
   }
 
   static Future<void> clear() async {
+    _resetSession();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_key);
     _bump();
   }
 
   /// helper برای ثبت سریع
-  static Future<void> logConnect(String target) =>
-      add(ConnectionLogEntry(
-        timestamp: DateTime.now(),
-        type: 'connect',
-        target: target,
-      ));
+  static Future<void> logConnect(String target) {
+    _resetSession();
+    return add(ConnectionLogEntry(
+      timestamp: DateTime.now(),
+      type: 'connect',
+      target: target,
+    ));
+  }
 
-  static Future<void> logDisconnect(String target) =>
-      add(ConnectionLogEntry(
-        timestamp: DateTime.now(),
-        type: 'disconnect',
-        target: target,
-      ));
+  static Future<void> logDisconnect(String target) {
+    final summary = _sessionSummaryText();
+    _resetSession();
+    return add(ConnectionLogEntry(
+      timestamp: DateTime.now(),
+      type: 'disconnect',
+      target: target,
+      detail: summary,
+    ));
+  }
 
   static Future<void> logError(String target, String detail) =>
       add(ConnectionLogEntry(

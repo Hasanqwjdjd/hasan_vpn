@@ -3101,6 +3101,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         pingMs: result.ms!,
         jitterMs: result.jitter ?? 0,
       );
+      // Feed the connection-log session accumulator so that the
+      // disconnect entry can show avg/min/max RTT + jitter.
+      ConnectionLogService.recordSample(
+        rttMs: result.ms,
+        jitterMs: result.jitter,
+      );
       // ذخیره در تاریخچه
       final latest = _qualityMonitor.latest.value;
       // ارسال کیفیت به notification
