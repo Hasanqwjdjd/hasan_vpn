@@ -98,6 +98,118 @@ class MainActivity : FlutterActivity() {
                     "getBatteryOptStatus" -> result.success(mapOf("ignored" to false))
                     "requestBatteryOpt", "openBatterySettings" -> result.success(true)
                     "getInstalledApps" -> result.success(emptyList<Map<String, Any>>())
+                    "perAppStats" -> {
+                        Thread {
+                            try {
+                                val hasPerm = try {
+                                    val appOps = applicationContext
+                                        .getSystemService(Context.APP_OPS_SERVICE)
+                                            as android.app.AppOpsManager
+                                    @Suppress("DEPRECATION")
+                                    val mode = appOps.checkOpNoThrow(
+                                        android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+                                        android.os.Process.myUid(),
+                                        applicationContext.packageName,
+                                    )
+                                    mode == android.app.AppOpsManager.MODE_ALLOWED
+                                } catch (_: Exception) { false }
+
+                                if (!hasPerm) {
+                                    runOnUiThread {
+                                        result.error(
+                                            "PERMISSION_DENIED",
+                                            "usage stats not granted",
+                                            null,
+                                        )
+                                    }
+                                    return@Thread
+                                }
+
+                                val nsm = applicationContext
+                                    .getSystemService(Context.NETWORK_STATS_SERVICE)
+                                        as android.app.usage.NetworkStatsManager
+                                val pm = applicationContext.packageManager
+                                @Suppress("DEPRECATION")
+                                val packages = pm.getInstalledPackages(0)
+
+                                val now = System.currentTimeMillis()
+                                val weekAgo = now - (7L * 24L * 60L * 60L * 1000L)
+
+                                val out = ArrayList<Map<String, Any?>>()
+                                for (pi in packages) {
+                                    val pkg = pi.packageName ?: continue
+                                    val uid = try {
+                                        pm.getApplicationInfo(pkg, 0).uid
+                                    } catch (_: Exception) { continue }
+                                    var tx = 0L
+                                    var rx = 0L
+                                    try {
+                                        val wifi = nsm.queryDetailsForUid(
+                                            android.net.NetworkCapabilities.TRANSPORT_WIFI,
+                                            null, weekAgo, now, uid,
+                                        )
+                                        if (wifi != null) {
+                                            val b = android.app.usage.NetworkStats.Bucket()
+                                            while (wifi.hasNextBucket()) {
+                                                wifi.getNextBucket(b)
+                                                tx += b.txBytes
+                                                rx += b.rxBytes
+                                            }
+                                            wifi.close()
+                                        }
+                                        val cell = nsm.queryDetailsForUid(
+                                            android.net.NetworkCapabilities.TRANSPORT_CELLULAR,
+                                            null, weekAgo, now, uid,
+                                        )
+                                        if (cell != null) {
+                                            val b2 = android.app.usage.NetworkStats.Bucket()
+                                            while (cell.hasNextBucket()) {
+                                                cell.getNextBucket(b2)
+                                                tx += b2.txBytes
+                                                rx += b2.rxBytes
+                                            }
+                                            cell.close()
+                                        }
+                                    } catch (_: Exception) { continue }
+                                    if (tx == 0L && rx == 0L) continue
+                                    val label = try {
+                                        pm.getApplicationLabel(
+                                            pm.getApplicationInfo(pkg, 0)
+                                        ).toString()
+                                    } catch (_: Exception) { pkg }
+                                    out.add(mapOf(
+                                        "packageName" to pkg,
+                                        "name" to label,
+                                        "txBytes" to tx,
+                                        "rxBytes" to rx,
+                                        "avgRttMs" to null,
+                                        "packetLossPct" to null,
+                                    ))
+                                }
+                                out.sortByDescending {
+                                    (it["txBytes"] as? Long ?: 0L) +
+                                        (it["rxBytes"] as? Long ?: 0L)
+                                }
+                                runOnUiThread { result.success(out) }
+                            } catch (e: Exception) {
+                                runOnUiThread {
+                                    result.error("perAppStats", e.message, null)
+                                }
+                            }
+                        }.start()
+                    }
+                    "openUsageSettings" -> {
+                        try {
+                            val intent = Intent(
+                                android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS,
+                            )
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            applicationContext.startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("openUsageSettings", e.message, null)
+                        }
+                    }
                     "openApp" -> {
                         val pkg = call.argument<String>("package")
                         if (pkg.isNullOrBlank()) {

@@ -59,9 +59,9 @@ class QualityBadge extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.15),
+            color: color.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: color.withOpacity(0.5), width: 0.8),
+            border: Border.all(color: color.withValues(alpha: 0.5), width: 0.8),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -94,9 +94,9 @@ class QualityBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.4), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -183,7 +183,7 @@ class QualitySparkline extends StatelessWidget {
           minV: minV,
           range: range,
           color: AppColors.accent,
-          bg: AppColors.muted2(context).withOpacity(0.15),
+          bg: AppColors.muted2(context).withValues(alpha: 0.15),
         ),
       ),
     );
@@ -212,7 +212,7 @@ class _SparkPainter extends CustomPainter {
     final barWidth = dx * 0.7;
 
     final barPaint = Paint()
-      ..color = color.withOpacity(0.6)
+      ..color = color.withValues(alpha: 0.6)
       ..style = PaintingStyle.fill;
     final linePaint = Paint()
       ..color = color

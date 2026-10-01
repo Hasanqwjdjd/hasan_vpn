@@ -1061,7 +1061,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               decoration: BoxDecoration(
                 color: AppColors.bg(context),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: color.withOpacity(0.5)),
+                border: Border.all(color: color.withValues(alpha: 0.5)),
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
@@ -1366,9 +1366,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: teal.withOpacity(0.08),
+            color: teal.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: teal.withOpacity(0.35)),
+            border: Border.all(color: teal.withValues(alpha: 0.35)),
           ),
           child: Text(
             _psiphonAuto
@@ -1800,9 +1800,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.3)),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [
@@ -1905,9 +1905,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.3)),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [
@@ -2204,9 +2204,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.3)),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [
@@ -2493,9 +2493,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.3)),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [
@@ -3193,9 +3193,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.3)),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [
@@ -3539,9 +3539,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.3)),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [
@@ -3730,9 +3730,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.3)),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [
@@ -3905,9 +3905,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.3)),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [
@@ -4112,7 +4112,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: selected
-              ? color.withOpacity(0.15)
+              ? color.withValues(alpha: 0.15)
               : AppColors.surface(context),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
@@ -4126,7 +4126,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.2),
+                color: color.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, color: color, size: 22),
@@ -4194,7 +4194,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               label: Text(label),
               selected: isSel,
               onSelected: (_) => onSelected(v),
-              selectedColor: color.withOpacity(0.25),
+              selectedColor: color.withValues(alpha: 0.25),
               backgroundColor: AppColors.surface(context),
               labelStyle: TextStyle(
                 color: isSel ? color : AppColors.muted(context),
@@ -4260,9 +4260,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.3)),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [

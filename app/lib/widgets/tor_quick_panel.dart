@@ -43,7 +43,7 @@ class _TorQuickPanelState extends State<TorQuickPanel> {
           decoration: BoxDecoration(
             color: AppColors.surface(context),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.accent.withOpacity(0.5)),
+            border: Border.all(color: AppColors.accent.withValues(alpha: 0.5)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

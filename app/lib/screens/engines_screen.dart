@@ -140,10 +140,10 @@ class _EnginesScreenState extends State<EnginesScreen> {
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppColors.warn.withOpacity(0.12),
+                    color: AppColors.warn.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                        color: AppColors.warn.withOpacity(0.5), width: 1),
+                        color: AppColors.warn.withValues(alpha: 0.5), width: 1),
                   ),
                   child: Row(
                     children: [
@@ -205,7 +205,7 @@ class _EnginesScreenState extends State<EnginesScreen> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: hasUpdate
-                ? AppColors.warn.withOpacity(0.5)
+                ? AppColors.warn.withValues(alpha: 0.5)
                 : AppColors.border(context),
             width: hasUpdate ? 1.2 : 1,
           ),
@@ -279,10 +279,10 @@ class _EnginesScreenState extends State<EnginesScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 5),
                       decoration: BoxDecoration(
-                        color: AppColors.warn.withOpacity(0.12),
+                        color: AppColors.warn.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                            color: AppColors.warn.withOpacity(0.4),
+                            color: AppColors.warn.withValues(alpha: 0.4),
                             width: 0.8),
                       ),
                       child: Row(

@@ -575,7 +575,7 @@ class _PerAppProxyScreenState extends State<PerAppProxyScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: active
-              ? AppColors.accent.withOpacity(0.15)
+              ? AppColors.accent.withValues(alpha: 0.15)
               : AppColors.surface(context),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(

@@ -191,7 +191,7 @@ class _DnsRaceTabState extends State<_DnsRaceTab> {
       children: [
         if (_boosting)
           Card(
-            color: accent.withOpacity(0.15),
+            color: accent.withValues(alpha: 0.15),
             child: ListTile(
               leading: Icon(Icons.bolt, color: accent),
               title: Text(
@@ -484,7 +484,7 @@ class _GamesTabState extends State<_GamesTab> {
                                 fit: BoxFit.cover,
                                 gaplessPlayback: true)
                             : Container(
-                                color: accent.withOpacity(0.15),
+                                color: accent.withValues(alpha: 0.15),
                                 alignment: Alignment.center,
                                 child: Text(emoji,
                                     style: const TextStyle(fontSize: 20)),
@@ -535,7 +535,7 @@ class _GamesTabState extends State<_GamesTab> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: pingColor.withOpacity(0.15),
+                          color: pingColor.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
@@ -598,7 +598,7 @@ class _GamesTabState extends State<_GamesTab> {
                         style: OutlinedButton.styleFrom(
                           foregroundColor: accent,
                           side: BorderSide(
-                              color: accent.withOpacity(0.6)),
+                              color: accent.withValues(alpha: 0.6)),
                           padding:
                               const EdgeInsets.symmetric(vertical: 6),
                         ),

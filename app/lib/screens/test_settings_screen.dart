@@ -167,7 +167,7 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
           ChoiceChip(
             label: Text(label(o)),
             selected: o == value,
-            selectedColor: AppColors.accent.withOpacity(0.25),
+            selectedColor: AppColors.accent.withValues(alpha: 0.25),
             onSelected: (_) {
               setState(() => onPick(o));
               _save();
@@ -221,7 +221,7 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: _mode == item.mode
-                      ? AppColors.accent.withOpacity(0.15)
+                      ? AppColors.accent.withValues(alpha: 0.15)
                       : AppColors.surface(context),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(

@@ -322,9 +322,9 @@ class _ServerHealthScreenState extends State<ServerHealthScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
+          color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.4), width: 1),
+          border: Border.all(color: color.withValues(alpha: 0.4), width: 1),
         ),
         child: Column(
           children: [
@@ -401,8 +401,8 @@ class _ServerHealthScreenState extends State<ServerHealthScreen> {
       ),
       selected: active,
       selectedColor: color,
-      backgroundColor: color.withOpacity(0.1),
-      side: BorderSide(color: color.withOpacity(0.5)),
+      backgroundColor: color.withValues(alpha: 0.1),
+      side: BorderSide(color: color.withValues(alpha: 0.5)),
       onSelected: (_) {
         setState(() {
           _filter = tier;
@@ -421,7 +421,7 @@ class _ServerHealthScreenState extends State<ServerHealthScreen> {
         color: AppColors.surface(context),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: color.withOpacity(0.35),
+          color: color.withValues(alpha: 0.35),
           width: 1,
         ),
       ),
@@ -431,7 +431,7 @@ class _ServerHealthScreenState extends State<ServerHealthScreen> {
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
+              color: color.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
             child: Icon(_tierIcon(h.tier), color: color, size: 18),

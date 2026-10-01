@@ -384,10 +384,10 @@ class ServerTile extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 4, vertical: 1),
                         decoration: BoxDecoration(
-                          color: AppColors.accent.withOpacity(0.15),
+                          color: AppColors.accent.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(
-                            color: AppColors.accent.withOpacity(0.4),
+                            color: AppColors.accent.withValues(alpha: 0.4),
                             width: 0.5,
                           ),
                         ),
@@ -456,10 +456,10 @@ class ServerTile extends StatelessWidget {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 4, vertical: 1),
                                   decoration: BoxDecoration(
-                                    color: AppColors.warn.withOpacity(0.15),
+                                    color: AppColors.warn.withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(3),
                                     border: Border.all(
-                                      color: AppColors.warn.withOpacity(0.5),
+                                      color: AppColors.warn.withValues(alpha: 0.5),
                                       width: 0.5,
                                     ),
                                   ),

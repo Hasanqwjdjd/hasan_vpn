@@ -157,6 +157,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final Set<String> _selectedIds = <String>{};
   bool _showSearch = false;
   bool _cancelConnect = false;
+  String? _connectAttemptLabel;
+  String? _connectAttemptTarget;
   VpnServer? _connectingServer;
   bool _polling = false;
 
@@ -3342,7 +3344,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           isCancelled: () => _cancelConnect,
           onProgress: (message) {
             if (!mounted || _cancelConnect) return;
-            setState(() => _status = message.replaceAll('\n', ' · '));
+            final flat = message.replaceAll('\n', ' · ');
+            // Extract "Aether 1/3 · MASQUE/H2 · balanced" shape
+            final m = RegExp(r'Aether\s+(\d+/\d+)\s*·\s*([^·\n]+)').firstMatch(flat);
+            setState(() {
+              _status = flat;
+              if (m != null) {
+                _connectAttemptLabel = m.group(1);
+                _connectAttemptTarget = m.group(2)?.trim();
+              }
+            });
           },
         );
         error = AetherService.lastError;
@@ -3356,7 +3367,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           isCancelled: () => _cancelConnect,
           onProgress: (message) {
             if (!mounted || _cancelConnect) return;
-            setState(() => _status = message.replaceAll('\n', ' · '));
+            final flat = message.replaceAll('\n', ' · ');
+            // Shapes:
+            //   "Psiphon · connecting (baseline·cdn) 1/45"
+            //   "Psiphon · connecting (aether·fronted-meek)"
+            final m = RegExp(r'\(([^)]+)\)\s*(\d+/\d+)?').firstMatch(flat);
+            setState(() {
+              _status = flat;
+              if (m != null) {
+                _connectAttemptTarget = m.group(1);
+                _connectAttemptLabel = m.group(2);
+              }
+            });
           },
         );
         error = PsiphonService.lastError;
@@ -3393,6 +3415,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _connected = connected;
         _connecting = false;
         _connectingServer = null;
+        _connectAttemptLabel = null;
+        _connectAttemptTarget = null;
         _active = connected ? selected : null;
         // log
         if (connected) {
@@ -4141,7 +4165,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: active
-              ? AppColors.accent.withOpacity(0.15)
+              ? AppColors.accent.withValues(alpha: 0.15)
               : AppColors.surface(context),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
@@ -4188,7 +4212,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: active
-              ? AppColors.accent.withOpacity(0.15)
+              ? AppColors.accent.withValues(alpha: 0.15)
               : AppColors.surface(context),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
@@ -4709,14 +4733,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             width: 3,
           ),
           color: _connected
-              ? AppColors.accent.withOpacity(0.15)
+              ? AppColors.accent.withValues(alpha: 0.15)
               : (_selected != null
-                  ? AppColors.accent.withOpacity(0.05)
+                  ? AppColors.accent.withValues(alpha: 0.05)
                   : Colors.transparent),
           boxShadow: _connected
               ? [
                   BoxShadow(
-                    color: AppColors.accent.withOpacity(0.3),
+                    color: AppColors.accent.withValues(alpha: 0.3),
                     blurRadius: 20,
                     spreadRadius: 2,
                   ),
@@ -5193,7 +5217,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       margin: const EdgeInsets.symmetric(horizontal: 12),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.accent.withOpacity(0.12),
+        color: AppColors.accent.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.accent),
       ),
@@ -5393,7 +5417,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 label: Text(g),
                                 selected: selectedGroup == g,
                                 selectedColor:
-                                    AppColors.accent.withOpacity(0.25),
+                                    AppColors.accent.withValues(alpha: 0.25),
                                 labelStyle: TextStyle(
                                     color: selectedGroup == g
                                         ? AppColors.accent
@@ -5412,7 +5436,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         label: Text(_t('+ گروه جدید', '+ New group')),
                         selected: selectedGroup == null,
                         selectedColor:
-                            AppColors.accent.withOpacity(0.25),
+                            AppColors.accent.withValues(alpha: 0.25),
                         labelStyle: TextStyle(
                             color: selectedGroup == null
                                 ? AppColors.accent

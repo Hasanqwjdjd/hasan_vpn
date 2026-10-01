@@ -110,7 +110,7 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
                     return Material(
                       color: a.read
                           ? AppColors.elevated(context)
-                          : AppColors.elevated(context).withOpacity(0.95),
+                          : AppColors.elevated(context).withValues(alpha: 0.95),
                       borderRadius: BorderRadius.circular(12),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(12),

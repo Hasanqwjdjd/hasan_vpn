@@ -437,10 +437,10 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen>
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.accent.withOpacity(0.12),
+              color: AppColors.accent.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                  color: AppColors.accent.withOpacity(0.4), width: 1),
+                  color: AppColors.accent.withValues(alpha: 0.4), width: 1),
             ),
             child: Row(
               children: [
@@ -655,7 +655,7 @@ class _QualityHistoryScreenState extends State<QualityHistoryScreen>
                               maxY: maxY <= 0 ? 1 : maxY,
                               color: color,
                               gridColor:
-                                  AppColors.muted2(context).withOpacity(0.2),
+                                  AppColors.muted2(context).withValues(alpha: 0.2),
                               reveal: t,
                             ),
                             size: Size.infinite,
@@ -724,7 +724,7 @@ class _LineChartPainter extends CustomPainter {
       ..strokeWidth = 1.8
       ..style = PaintingStyle.stroke;
     final fillPaint = Paint()
-      ..color = color.withOpacity(0.15)
+      ..color = color.withValues(alpha: 0.15)
       ..style = PaintingStyle.fill;
 
     final linePath = Path();
@@ -755,7 +755,7 @@ class _LineChartPainter extends CustomPainter {
       final normLast = (vLast / maxY).clamp(0.0, 1.0);
       final yLast = size.height * (1 - normLast);
       final glow = Paint()
-        ..color = color.withOpacity(0.25 * reveal)
+        ..color = color.withValues(alpha: 0.25 * reveal)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(Offset(xLast, yLast), 6, glow);
       final dot = Paint()..color = color;

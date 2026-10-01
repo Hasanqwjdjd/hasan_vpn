@@ -411,9 +411,9 @@ class _FreeConfigScreenState extends State<FreeConfigScreen> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppColors.warn.withOpacity(0.12),
+                color: AppColors.warn.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.warn.withOpacity(0.3)),
+                border: Border.all(color: AppColors.warn.withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
@@ -457,7 +457,7 @@ class _FreeConfigScreenState extends State<FreeConfigScreen> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: AppColors.accent.withOpacity(0.15),
+                          color: AppColors.accent.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(5),
                         ),
                         child: Text(

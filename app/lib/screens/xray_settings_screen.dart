@@ -47,12 +47,12 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              AppColors.accent.withOpacity(0.20),
-              AppColors.accent.withOpacity(0.05),
+              AppColors.accent.withValues(alpha: 0.20),
+              AppColors.accent.withValues(alpha: 0.05),
             ],
           ),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.accent.withOpacity(0.35)),
+          border: Border.all(color: AppColors.accent.withValues(alpha: 0.35)),
         ),
         child: Row(
           children: [
@@ -220,7 +220,7 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                   await _set('fragmentInterval', p.interval);
                   await _set('fragmentMaxSplit', 0);
                 },
-                selectedColor: AppColors.accent.withOpacity(0.25),
+                selectedColor: AppColors.accent.withValues(alpha: 0.25),
                 backgroundColor: AppColors.surface(context),
                 labelStyle: TextStyle(
                   color: active ? AppColors.accent : AppColors.fg(context),
@@ -442,7 +442,7 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                           selected: _s['realityFingerprint'] == fp,
                           onSelected: (_) => _set('realityFingerprint', fp),
                           selectedColor:
-                              AppColors.accent.withOpacity(0.25),
+                              AppColors.accent.withValues(alpha: 0.25),
                           backgroundColor: AppColors.surface(context),
                           labelStyle: TextStyle(
                             color: _s['realityFingerprint'] == fp

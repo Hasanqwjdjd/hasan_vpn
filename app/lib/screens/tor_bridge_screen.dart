@@ -238,7 +238,7 @@ class _TorBridgeScreenState extends State<TorBridgeScreen> {
                   });
                   _loadStatic();
                 },
-                selectedColor: accent.withOpacity(0.25),
+                selectedColor: accent.withValues(alpha: 0.25),
                 labelStyle: TextStyle(
                   color: selected ? accent : fg,
                   fontSize: 12,
@@ -369,7 +369,7 @@ class _TorBridgeScreenState extends State<TorBridgeScreen> {
                             horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: _rttColor(rtt, muted, context)
-                              .withOpacity(0.15),
+                              .withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
