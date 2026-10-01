@@ -323,6 +323,16 @@ class MainActivity : FlutterActivity() {
                         }.start()
                     }
                     "stop" -> { TorService.stopWithContext(applicationContext); result.success(true) }
+                    "fetchMoatBridges" -> {
+                        val type = call.argument<String>("type")
+                            ?: call.argument<String>("bridgeType")
+                            ?: "obfs4"
+                        val country = call.argument<String>("country") ?: "ir"
+                        Thread {
+                            val map = TorMoatFetcher.fetch(type, country)
+                            runOnUiThread { result.success(map) }
+                        }.start()
+                    }
                     else -> result.notImplemented()
                 }
             }

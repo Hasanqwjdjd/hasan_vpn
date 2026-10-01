@@ -55,4 +55,22 @@ class TorService {
     final s = await status();
     return s['running'] == true;
   }
+
+  /// Fetch bridge lines from Tor Moat API (Kotlin TorMoatFetcher).
+  /// [type]: obfs4 | snowflake | meek_lite | conjure | webtunnel
+  static Future<Map<String, dynamic>> fetchMoatBridges(
+    String type, {
+    String country = 'ir',
+  }) async {
+    try {
+      final result = await _channel.invokeMapMethod<String, dynamic>(
+        'fetchMoatBridges',
+        {'type': type, 'country': country},
+      );
+      return result ??
+          {'ok': false, 'error': 'no response', 'bridges': <String>[]};
+    } catch (e) {
+      return {'ok': false, 'error': e.toString(), 'bridges': <String>[]};
+    }
+  }
 }

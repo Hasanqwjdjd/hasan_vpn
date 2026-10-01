@@ -15,6 +15,7 @@ import '../services/bridge_ping_info.dart';
 import '../services/tor_service.dart';
 import '../services/tor_sni_presets.dart';
 import '../services/v2ray_engine.dart';
+import 'tor_bridge_screen.dart';
 
 class TorScreen extends StatefulWidget {
   final String language;
@@ -1562,6 +1563,58 @@ class _TorScreenState extends State<TorScreen> {
             ),
             const SizedBox(height: 8),
             _bridgeSelector(),
+            const SizedBox(height: 8),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                onPressed: _settingsLocked
+                    ? null
+                    : () async {
+                        final result = await Navigator.of(context)
+                            .push<Map<String, dynamic>>(
+                          MaterialPageRoute(
+                            builder: (_) => TorBridgeScreen(
+                              language: widget.language,
+                              initialType: _bridgeType == 'vanilla'
+                                  ? 'obfs4'
+                                  : _bridgeType,
+                              initialCustom: _customBridges.isNotEmpty
+                                  ? _customBridges
+                                  : null,
+                            ),
+                          ),
+                        );
+                        if (result == null || !mounted) return;
+                        final t = result['type']?.toString();
+                        final bridges = result['bridges'];
+                        setState(() {
+                          if (t != null &&
+                              _bridgeTypes.any((e) => e['id'] == t)) {
+                            _bridgeType = t;
+                          }
+                          if (bridges is List && bridges.isNotEmpty) {
+                            _customBridges = bridges
+                                .map((e) => e.toString())
+                                .toList();
+                          }
+                        });
+                        await _savePrefs();
+                      },
+                icon: Icon(
+                  Icons.list_alt,
+                  size: 18,
+                  color: AppColors.accent,
+                ),
+                label: Text(
+                  _t('مدیریت / دریافت پل‌ها (Moat)',
+                      'Manage / Fetch bridges (Moat)'),
+                  style: TextStyle(
+                    color: AppColors.accent,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
             if (_bridgeType == 'snowflake' ||
                 _bridgeType == 'meek_lite' ||
                 _bridgeType == 'conjure')
