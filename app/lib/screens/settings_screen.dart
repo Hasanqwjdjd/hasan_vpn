@@ -19,9 +19,8 @@ import '../services/warp_batch_tester.dart';
 import '../services/warp_endpoint_health_monitor.dart';
 import '../services/update_service.dart';
 import 'announcements_screen.dart';
-import 'game_dns_screen.dart';
-import 'game_booster_screen.dart';
 import 'anti_sanction_screen.dart';
+import 'game_hub_screen.dart';
 import 'live_monitor_screen.dart';
 import 'test_settings_screen.dart';
 import 'hev_engine_screen.dart';
@@ -408,7 +407,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          _sectionTitle(_t('DNS بازی', 'Game DNS')),
+          _sectionTitle(_t('گیم بوستر و DNS', 'Game Booster & DNS')),
           _card(
             context,
             InkWell(
@@ -416,7 +415,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 await Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => GameDnsScreen(language: _lang),
+                    builder: (_) => GameHubScreen(language: _lang),
                   ),
                 );
                 if (mounted) setState(() {});
@@ -431,15 +430,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _t('کاهش پینگ بازی', 'Reduce game ping'),
+                          _t('بوستر بازی و DNS', 'Game Booster & DNS'),
                           style: TextStyle(
                               color: AppColors.fg(context), fontSize: 14),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           _t(
-                            'DNS های تست‌شده برای فری‌فایر، پابجی، کلش',
-                            'Tested DNS for Free Fire, PUBG, CoC',
+                            'لیست DNS · رقابت DNS · بازی‌ها · DNS سفارشی',
+                            'DNS list · DNS race · Games · Custom DNS',
                           ),
                           style: TextStyle(
                             color: AppColors.muted2(context),
@@ -457,36 +456,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
 
-          const SizedBox(height: 8),
-          _card(
-            context,
-            InkWell(
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => GameBoosterScreen(language: _lang),
-                  ),
-                );
-                if (mounted) setState(() {});
-              },
-              child: Row(
-                children: [
-                  Icon(Icons.speed, color: AppColors.muted(context), size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _t('بوستر بازی (مسابقه DNS و پینگ بازی)', 'Game Booster (DNS race & game ping)'),
-                      style: TextStyle(color: AppColors.fg(context), fontSize: 14),
-                    ),
-                  ),
-                  Icon(Icons.chevron_left,
-                      color: AppColors.muted2(context), size: 20),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
           _card(
             context,
             InkWell(
