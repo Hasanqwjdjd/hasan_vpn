@@ -332,25 +332,51 @@ class PsiphonAuto {
       ...profiles.where((p) => p.id != preferredProfile?.id),
     ];
 
-    // ─── 1) Meek/fronted اول — شبیه HTTPS، بهترین شانس روی 4G ایران ───
+    // ─── 0) CDN fronting — the ONLY reliable path on Iranian mobile ───
+    // Previously dead code: no attempt ever set mode='cdn', so the CDN
+    // config was never activated. On Irancell/MCI plain SSH/OSSH is
+    // blocked; FRONTED-MEEK-CDN-OSSH goes over Cloudflare and gets
+    // through. Fast 40 s probes so the user gets an answer quickly.
+    for (final p in ordered.take(4)) {
+      final cdnCfg = buildConfig(
+        p,
+        region: reg,
+        establishTimeoutSec: 30,
+        workerPool: 16,
+        modeOverride: 'cdn',
+      );
+      out.add(PsiphonAttempt(
+        label: '${p.id}·cdn',
+        profileId: p.id,
+        mode: 'cdn',
+        configJson: jsonEncode(cdnCfg),
+        timeoutSec: 40,
+      ));
+    }
+
+    // ─── 1) Meek/fronted — HTTPS-shaped, second best chance ───
+    // Shortened from 100/110 s to 45/50 s: if a path is going to fail
+    // on a mobile network it fails within 40 s; waiting 100 s per
+    // attempt just delays the next candidate.
     for (final p in ordered.take(3)) {
-      // همیشه اول یک پروتکل معتبر (نه نام ساختگی)
       add(p, 'mobile', '${p.id}·fronted-meek',
           protocols: const ['FRONTED-MEEK-OSSH'],
-          timeout: 100,
+          timeout: 45,
           workers: 16);
       add(p, 'mobile', '${p.id}·meek-http',
           protocols: const ['FRONTED-MEEK-HTTP-OSSH'],
-          timeout: 100,
+          timeout: 45,
           workers: 16);
       add(p, 'stealth', '${p.id}·stealth-all',
-          protocols: stealthProtocols, timeout: 110, workers: 14);
+          protocols: stealthProtocols, timeout: 55, workers: 14);
     }
 
-    // ─── 2) auto کامل با timeout بلند (Irancell کند است) ───
+    // ─── 2) auto با timeout متوسط ───
+    // قبلاً 120/90 بود؛ حالا 60/50 — تلاش کوتاه‌تر جلوی انتظار طولانی را
+    // می‌گیرد و اگر این‌ها fail شوند، کاربر واقعاً به مسیر بعدی می‌رسد.
     for (final p in ordered.take(3)) {
-      add(p, 'auto', '${p.id}·auto-long', timeout: 120, workers: 16);
-      add(p, 'auto', '${p.id}·auto-mid', timeout: 90, workers: 12);
+      add(p, 'auto', '${p.id}·auto-mid', timeout: 60, workers: 16);
+      add(p, 'auto', '${p.id}·auto-short', timeout: 45, workers: 12);
     }
 
     // ─── 3) مناطق پرتکرار روی موبایل ایران ───
@@ -377,14 +403,14 @@ class PsiphonAuto {
 
     // ─── 5) worker / platform alternate ───
     for (final p in ordered.take(2)) {
-      add(p, 'auto', '${p.id}·pool24', timeout: 100, workers: 24);
-      add(p, 'auto', '${p.id}·pool4', timeout: 120, workers: 4);
+      add(p, 'auto', '${p.id}·pool24', timeout: 50, workers: 24);
+      add(p, 'auto', '${p.id}·pool4', timeout: 60, workers: 4);
       add(p, 'auto', '${p.id}·http-on',
-          timeout: 100, disableHttp: false, workers: 12);
+          timeout: 50, disableHttp: false, workers: 12);
       add(p, 'auto', '${p.id}·plat-psi',
-          timeout: 100, platform: 'Android_11_com.psiphon3', workers: 12);
+          timeout: 50, platform: 'Android_11_com.psiphon3', workers: 12);
       add(p, 'auto', '${p.id}·plat-obv',
-          timeout: 100,
+          timeout: 50,
           platform: 'Android_10_com.android.psiphon',
           workers: 12);
     }
