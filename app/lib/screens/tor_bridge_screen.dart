@@ -36,6 +36,8 @@ class _TorBridgeScreenState extends State<TorBridgeScreen> {
   final TextEditingController _pasteCtrl = TextEditingController();
   List<String> _lines = [];
   bool _fetching = false;
+  bool _testingAll = false;
+  bool _sortByRtt = false;
   String? _error;
   final Map<String, int?> _rtts = {};
 
@@ -152,6 +154,38 @@ class _TorBridgeScreenState extends State<TorBridgeScreen> {
     }
   }
 
+  Color _rttColor(int? rtt, Color muted, BuildContext ctx) {
+    if (rtt == null) return muted;
+    if (rtt < 0) return AppColors.danger;
+    if (rtt < 150) return const Color(0xFF3DCF9A);
+    if (rtt < 400) return const Color(0xFFFFB74D);
+    return const Color(0xFFE07070);
+  }
+
+  /// تست همه‌ی خطوط موازی (worker pool=6).
+  Future<void> _testAll() async {
+    if (_testingAll || _lines.isEmpty) return;
+    setState(() {
+      _testingAll = true;
+      _rtts.clear();
+    });
+    // چانک ۶ تایی
+    const workers = 6;
+    for (var i = 0; i < _lines.length; i += workers) {
+      if (!mounted) break;
+      final chunk = _lines.sublist(
+        i,
+        (i + workers).clamp(0, _lines.length),
+      );
+      await Future.wait(chunk.map(_testLine));
+    }
+    if (!mounted) return;
+    setState(() {
+      _testingAll = false;
+      _sortByRtt = true;
+    });
+  }
+
   void _popWithResult() {
     Navigator.of(context).pop(<String, dynamic>{
       'type': _type == 'custom' ? 'obfs4' : _type,
@@ -229,6 +263,26 @@ class _TorBridgeScreenState extends State<TorBridgeScreen> {
                 foregroundColor: Colors.white,
               ),
             ),
+          if (_lines.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: ElevatedButton.icon(
+                onPressed: _testingAll ? null : _testAll,
+                icon: _testingAll
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.speed, size: 18),
+                label: Text(_t('تست همه پل‌ها', 'Test all bridges')),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: surface,
+                  foregroundColor: accent,
+                  side: BorderSide(color: accent),
+                ),
+              ),
+            ),
           if (_needsTextarea) ...[
             const SizedBox(height: 8),
             TextField(
@@ -263,7 +317,19 @@ class _TorBridgeScreenState extends State<TorBridgeScreen> {
               ),
             ),
           const SizedBox(height: 8),
-          ..._lines.map((line) {
+          ...(() {
+            final list = List<String>.from(_lines);
+            if (_sortByRtt) {
+              list.sort((a, b) {
+                final ra = _rtts[a];
+                final rb = _rtts[b];
+                final va = (ra == null || ra < 0) ? 999999 : ra;
+                final vb = (rb == null || rb < 0) ? 999999 : rb;
+                return va.compareTo(vb);
+              });
+            }
+            return list;
+          })().map((line) {
             final rtt = _rtts[line];
             String label = '';
             if (rtt == null && _rtts.containsKey(line)) {
@@ -298,9 +364,22 @@ class _TorBridgeScreenState extends State<TorBridgeScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (label.isNotEmpty)
-                      Text(
-                        label,
-                        style: TextStyle(color: muted, fontSize: 11),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _rttColor(rtt, muted, context)
+                              .withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            color: _rttColor(rtt, muted, context),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
                     IconButton(
                       icon: const Icon(Icons.speed, size: 18),
