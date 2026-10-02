@@ -604,7 +604,17 @@ class AetherService {
         'ip': _privateRanges,
         'outboundTag': 'direct',
       },
-      // TCP only through SOCKS (UDP would fail on Psiphon socks).
+      // Explicit UDP catch-all: Psiphon/Aether SOCKS cannot carry UDP.
+      // Without this rule, Xray falls back to the FIRST outbound
+      // ('proxy') for any unmatched UDP packet, which then fails
+      // silently. That is the "connected but nothing loads" symptom
+      // users see when DNS-over-UDP or app heartbeat UDP is dropped.
+      <String, dynamic>{
+        'type': 'field',
+        'network': 'udp',
+        'outboundTag': 'direct',
+      },
+      // TCP only through SOCKS.
       <String, dynamic>{
         'type': 'field',
         'network': 'tcp',
@@ -668,11 +678,9 @@ class AetherService {
               },
             ],
           },
-          'streamSettings': <String, dynamic>{
-            'sockopt': <String, dynamic>{
-              'dialerProxy': '',
-            },
-          },
+          // No streamSettings — an empty 'dialerProxy' string makes
+          // some Xray versions fail with "proxy not found" and the
+          // whole SOCKS outbound stops responding.
         },
         <String, dynamic>{
           'tag': 'direct',
