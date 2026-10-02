@@ -308,17 +308,29 @@ class AetherService {
     try {
       final activePort =
           V2RayEngine.isConnected ? V2RayEngine.localSocksPort : 0;
-      final proxyPort = activePort > 0
-          ? activePort
-          : await WarpRegistrationProxy.ensureStarted();
-      if (proxyPort != null && proxyPort > 0) {
-        env['AETHER_UPSTREAM'] = 'socks5://127.0.0.1:$proxyPort';
-        env['ALL_PROXY'] = 'socks5h://127.0.0.1:$proxyPort';
-        env['HTTPS_PROXY'] = 'socks5h://127.0.0.1:$proxyPort';
-        env['http_proxy'] = 'socks5h://127.0.0.1:$proxyPort';
-        env['https_proxy'] = 'socks5h://127.0.0.1:$proxyPort';
+      int? proxyPort = activePort > 0 ? activePort : null;
+      if (proxyPort == null) {
+        // No active Xray session. Try the bundled WARP-registration
+        // proxy — but it depends on a Cloudflare Workers endpoint that
+        // may be dead. If it does not come up, fail fast with a message
+        // the UI can show, instead of starting Aether with a dead
+        // AETHER_UPSTREAM and letting it retry for 90 s.
+        proxyPort = await WarpRegistrationProxy.ensureStarted();
       }
-    } catch (_) {}
+      if (proxyPort == null || proxyPort <= 0) {
+        lastError = 'برای اتصال Aether، اول یک سرور VLESS/VMess/Trojan وصل کنید'
+            ' (Aether برای ساخت حساب WARP به یک پروکسی فعال نیاز دارد)';
+        return false;
+      }
+      env['AETHER_UPSTREAM'] = 'socks5://127.0.0.1:$proxyPort';
+      env['ALL_PROXY'] = 'socks5h://127.0.0.1:$proxyPort';
+      env['HTTPS_PROXY'] = 'socks5h://127.0.0.1:$proxyPort';
+      env['http_proxy'] = 'socks5h://127.0.0.1:$proxyPort';
+      env['https_proxy'] = 'socks5h://127.0.0.1:$proxyPort';
+    } catch (e) {
+      lastError = 'Aether upstream setup failed: $e';
+      return false;
+    }
 
     // Find-server: ensure gool/mim scan uses auto peers when endpoints missing
     if ((env['AETHER_PROTOCOL'] == 'gool') &&

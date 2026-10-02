@@ -911,8 +911,15 @@ class _TorScreenState extends State<TorScreen> {
         });
       } else if (mounted) {
         setState(() => _bootstrapMsg = _t(
-            'دریافت پل WebTunnel ناموفق — دوباره تلاش کنید',
-            'Could not fetch WebTunnel bridge — try again'));
+            'پل WebTunnel از Tor موجود نیست — به Snowflake سوئیچ کنید',
+            'WebTunnel bridge not available from Tor — switch to Snowflake'));
+        // Auto-fallback to Snowflake since WebTunnel is unlikely to
+        // appear from Moat for Iranian users (its bridges are scarce
+        // and the Moat challenge protocol is not fully implemented).
+        if (_bridgeTypes.any((e) => e['id'] == 'snowflake')) {
+          setState(() => _bridgeType = 'snowflake');
+          await _savePrefs();
+        }
       }
     } catch (_) {
     } finally {
