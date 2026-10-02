@@ -305,28 +305,29 @@ class AetherService {
     //      registration handshake. That is why the fallback keeps failing
     //      even though the binary correctly reports "dialling out through
     //      the socks5 proxy at 127.0.0.1".
+    // Aether dials Cloudflare directly by default. Live tests showed
+    // api.cloudflareclient.com is NOT blocked on Iranian mobile networks
+    // — going through a proxy actually made it worse, because the
+    // bundled WarpRegistrationProxy endpoint is dead and returning
+    // "Connection refused". Only use a proxy when the user has an active
+    // Xray session AND explicitly opted in via the server's `upstream`
+    // query parameter (aether://?upstream=socks5://...).
+    //
+    // If V2Ray is connected but the profile did NOT ask for upstream,
+    // leave Aether direct — do not silently chain.
     try {
-      final activePort =
-          V2RayEngine.isConnected ? V2RayEngine.localSocksPort : 0;
-      int? proxyPort = activePort > 0 ? activePort : null;
-      if (proxyPort == null) {
-        // No active Xray session. Try the bundled WARP-registration
-        // proxy — but it depends on a Cloudflare Workers endpoint that
-        // may be dead. If it does not come up, fail fast with a message
-        // the UI can show, instead of starting Aether with a dead
-        // AETHER_UPSTREAM and letting it retry for 90 s.
-        proxyPort = await WarpRegistrationProxy.ensureStarted();
+      final wantsUpstream = profile.upstream.isNotEmpty;
+      if (wantsUpstream) {
+        final activePort =
+            V2RayEngine.isConnected ? V2RayEngine.localSocksPort : 0;
+        if (activePort > 0) {
+          env['AETHER_UPSTREAM'] = 'socks5://127.0.0.1:$activePort';
+          env['ALL_PROXY'] = 'socks5h://127.0.0.1:$activePort';
+          env['HTTPS_PROXY'] = 'socks5h://127.0.0.1:$activePort';
+          env['http_proxy'] = 'socks5h://127.0.0.1:$activePort';
+          env['https_proxy'] = 'socks5h://127.0.0.1:$activePort';
+        }
       }
-      if (proxyPort == null || proxyPort <= 0) {
-        lastError = 'برای اتصال Aether، اول یک سرور VLESS/VMess/Trojan وصل کنید'
-            ' (Aether برای ساخت حساب WARP به یک پروکسی فعال نیاز دارد)';
-        return false;
-      }
-      env['AETHER_UPSTREAM'] = 'socks5://127.0.0.1:$proxyPort';
-      env['ALL_PROXY'] = 'socks5h://127.0.0.1:$proxyPort';
-      env['HTTPS_PROXY'] = 'socks5h://127.0.0.1:$proxyPort';
-      env['http_proxy'] = 'socks5h://127.0.0.1:$proxyPort';
-      env['https_proxy'] = 'socks5h://127.0.0.1:$proxyPort';
     } catch (e) {
       lastError = 'Aether upstream setup failed: $e';
       return false;

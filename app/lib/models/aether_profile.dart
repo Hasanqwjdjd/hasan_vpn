@@ -371,11 +371,14 @@ class AetherProfile {
 
   AetherAttempt _attempt(String proto, bool h2, String scanMode,
       {String? forceNoize}) {
+    // balanced (the aethernoize profile the CLI picks by default when
+    // the user presses Enter) is what worked in live tests. 'gfw' was
+    // too aggressive and matched nothing on some Cloudflare edges.
     return AetherAttempt(
       protocol: proto,
       h2: h2,
       scan: scanMode,
-      noize: noize == 'auto' ? forceNoize : noize,
+      noize: noize == 'auto' ? (forceNoize ?? 'balanced') : noize,
       timeout: _timeoutFor(scanMode),
     );
   }
@@ -399,21 +402,22 @@ class AetherProfile {
     }
 
     if (protocol == 'auto') {
-      // Short, ordered ladder. It used to be eight attempts wide, each
-      // with its own 30 s timeout — so a single tap on "connect" ran the
-      // phone for up to four minutes and burned battery until the last
-      // protocol gave up. Three attempts is enough: the first two cover
-      // the two families that win on Iranian mobile (H2/443 and WG-in-WG)
-      // and the third is the H3 fallback for when UDP/QUIC happens to be
-      // open. Anything past that was only reached on a network where
-      // nothing was going to work anyway.
+      // Ordering based on live tests (Termux aether v2.1.0 on Iranian
+      // mobile, Oct 2026):
+      //   1. GOOL (WG-in-WG) — the only protocol that reliably comes up
+      //      on Iranian 4G/5G. Direct dial to Cloudflare works; the binary
+      //      gets an exit IP within ~15 s.
+      //   2. MASQUE/H2 — TCP 443, works when UDP is throttled.
+      //   3. MIM — same as MASQUE but two hops.
+      //   4. MASQUE/H3 — no gateway found in any test, last on the ladder.
       final fixedScan = scan == 'smart' ? null : scan;
+      attempts.add(_attempt('gool', false, fixedScan ?? 'turbo',
+          forceNoize: 'balanced'));
       attempts.add(_attempt('masque', true, fixedScan ?? 'balanced',
-          forceNoize: 'gfw')); // H2 / TCP 443 — fastest on 4G
-      attempts.add(_attempt('gool', false, fixedScan ?? 'balanced',
-          forceNoize: 'gfw')); // WG-in-WG for hostile nets
+          forceNoize: 'balanced'));
+      attempts.add(_attempt('mim', true, fixedScan ?? 'balanced',
+          forceNoize: 'balanced'));
       attempts.add(_attempt('masque', false, fixedScan ?? 'balanced'));
-      // H3 / QUIC
     } else {
       final String proto;
       final bool h2;
@@ -442,27 +446,27 @@ class AetherProfile {
       if (scan == 'smart') {
         // failover چندمرحله‌ای — موبایل هم داخل همین زنجیره است
         if (proto == 'gool' || proto == 'mim') {
-          attempts.add(_attempt(proto, h2, 'balanced', forceNoize: 'gfw'));
-          attempts.add(_attempt(proto, h2, 'thorough', forceNoize: 'gfw'));
+          attempts.add(_attempt(proto, h2, 'balanced', forceNoize: 'balanced'));
+          attempts.add(_attempt(proto, h2, 'thorough', forceNoize: 'balanced'));
           attempts.add(_attempt(proto, h2, 'thorough', forceNoize: 'aggressive'));
           attempts.add(_attempt(proto, h2, 'verified', forceNoize: 'aggressive'));
         } else if (h2) {
           // MASQUE/H2: TCP 443 — اولویت برای 4G
-          attempts.add(_attempt(proto, true, 'balanced', forceNoize: 'gfw'));
+          attempts.add(_attempt(proto, true, 'balanced', forceNoize: 'balanced'));
           attempts.add(_attempt(proto, true, 'thorough', forceNoize: 'aggressive'));
-          attempts.add(_attempt(proto, true, 'verified', forceNoize: 'gfw'));
+          attempts.add(_attempt(proto, true, 'verified', forceNoize: 'balanced'));
           attempts.add(_attempt(proto, false, 'turbo')); // H3 fallback
         } else {
           attempts.add(_attempt(proto, h2, 'turbo'));
           attempts.add(_attempt(proto, h2, 'balanced'));
           attempts.add(_attempt(proto, h2, 'thorough'));
-          attempts.add(_attempt(proto, h2, 'verified', forceNoize: 'gfw'));
+          attempts.add(_attempt(proto, h2, 'verified', forceNoize: 'balanced'));
         }
       } else {
         attempts.add(_attempt(proto, h2, scan));
         // یک پشتیبان با noize قوی‌تر
         if (scan != 'ironclad') {
-          attempts.add(_attempt(proto, h2, 'ironclad', forceNoize: 'gfw'));
+          attempts.add(_attempt(proto, h2, 'ironclad', forceNoize: 'balanced'));
         }
       }
     }
