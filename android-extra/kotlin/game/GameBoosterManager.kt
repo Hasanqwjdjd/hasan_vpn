@@ -25,9 +25,12 @@ object GameBoosterManager {
         "secondary" to activeSecondary,
     )
 
-    fun raceDns(hostname: String = "pubgmobile.com"): Map<String, Any?> {
+    fun raceDns(
+        hostname: String = "pubgmobile.com",
+        extraIps: List<String> = emptyList(),
+    ): Map<String, Any?> {
         return try {
-            val results = DnsRaceTester.findWorkingDnsServers(hostname)
+            val results = DnsRaceTester.findWorkingDnsServers(hostname, extraIps)
             val mapped = results.map { r ->
                 mapOf(
                     "ip" to r.dnsServer.ip,

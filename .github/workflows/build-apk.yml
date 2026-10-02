@@ -390,6 +390,7 @@ jobs:
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
               <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
               <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+              <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"/>
           """
           if 'android.permission.INTERNET' not in text:
               text = text.replace("<application", perms + "    <application", 1)

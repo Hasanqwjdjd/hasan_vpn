@@ -9,10 +9,12 @@ class GameBoosterService {
 
   static Future<Map<String, dynamic>> raceDns({
     String hostname = 'pubgmobile.com',
+    List<String> extraIps = const [],
   }) async {
     try {
       final r = await _ch.invokeMapMethod<String, dynamic>('raceDns', {
         'hostname': hostname,
+        'extraIps': extraIps,
       });
       return r ?? {'ok': false, 'results': <dynamic>[]};
     } catch (e) {

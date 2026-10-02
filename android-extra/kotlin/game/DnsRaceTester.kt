@@ -36,12 +36,28 @@ object DnsRaceTester {
     /**
      * Race all DNS servers for [hostname]. Returns sorted-by-latency successful results.
      */
-    fun findWorkingDnsServers(testHostname: String): List<DnsResult> {
-        val pool = Executors.newFixedThreadPool(8)
+    fun findWorkingDnsServers(
+        testHostname: String,
+        extraIps: List<String> = emptyList(),
+    ): List<DnsResult> {
+        // Merge the built-in list with any user-supplied DNS from the
+        // Dart "DNS List" tab. Skip duplicates and blank entries.
+        val merged = GameDnsList.servers.toMutableList()
+        for (ip in extraIps) {
+            val trimmed = ip.trim()
+            if (trimmed.isEmpty()) continue
+            if (merged.any { it.ip == trimmed }) continue
+            merged.add(GameDnsList.DnsServer(
+                trimmed,
+                "Custom · $trimmed",
+                GameDnsList.DnsCategory.PUBLIC_INTL,
+            ))
+        }
+        val pool = Executors.newFixedThreadPool(12)
         val out = ConcurrentLinkedQueue<DnsResult>()
         try {
             val jobs = mutableListOf<Callable<Unit>>()
-            for (dns in GameDnsList.servers) {
+            for (dns in merged) {
                 val ports = if (dns.category == GameDnsList.DnsCategory.PUBLIC_INTL) {
                     listOf(53)
                 } else {

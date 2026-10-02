@@ -21,6 +21,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/app_colors.dart';
 import '../services/game_booster_service.dart';
+import '../services/dns_directory.dart';
 import 'game_dns_screen.dart';
 
 class GameHubScreen extends StatefulWidget {
@@ -131,7 +132,20 @@ class _DnsRaceTabState extends State<_DnsRaceTab> {
       _results = [];
       _winner = null;
     });
-    final r = await GameBoosterService.raceDns();
+    // Collect all primary IPv4 addresses from the on-device DNS
+    // directory and hand them to the native race. This is why the
+    // race previously only showed Electro: the built-in Kotlin list
+    // contains a handful of resolvers and everything else was ignored.
+    final extra = <String>{};
+    for (final e in kAllDnsEntries) {
+      final p = e.primary;
+      if (p != null && p.contains('.') && !p.contains(':')) {
+        extra.add(p);
+      }
+    }
+    final r = await GameBoosterService.raceDns(
+      extraIps: extra.toList(),
+    );
     if (!mounted) return;
     setState(() {
       _racing = false;
@@ -333,6 +347,36 @@ class _GamesTabState extends State<_GamesTab> {
 
   Future<({Map<String, Uint8List> icons, Set<String> installed})>
       _loadInstalledApps() async {
+    // Icon extraction + base64 encoding on the native side is slow
+    // (~1-2 s for a phone with 200+ apps). Cache the result for 6
+    // hours; on subsequent opens the games tab paints instantly.
+    const cacheKey = 'game_hub_icons_v1';
+    const installedKey = 'game_hub_installed_v1';
+    const stampKey = 'game_hub_icons_stamp_v1';
+    const ttl = Duration(hours: 6);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stampStr = prefs.getString(stampKey);
+      if (stampStr != null) {
+        final stamp = DateTime.tryParse(stampStr);
+        if (stamp != null &&
+            DateTime.now().difference(stamp) < ttl) {
+          final cached = prefs.getString(cacheKey);
+          final installedList = prefs.getStringList(installedKey);
+          if (cached != null && installedList != null) {
+            final decoded = jsonDecode(cached) as Map;
+            final icons = <String, Uint8List>{};
+            decoded.forEach((k, v) {
+              try {
+                icons[k.toString()] = base64Decode(v.toString());
+              } catch (_) {}
+            });
+            return (icons: icons, installed: installedList.toSet());
+          }
+        }
+      }
+    } catch (_) {}
+
     try {
       final raw = await _deviceChannel.invokeMethod<List<dynamic>>('listApps');
       final icons = <String, Uint8List>{};
@@ -351,6 +395,19 @@ class _GamesTabState extends State<_GamesTab> {
           }
         }
       }
+      // Persist for next open.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final enc = <String, String>{};
+        icons.forEach((k, v) {
+          try {
+            enc[k] = base64Encode(v);
+          } catch (_) {}
+        });
+        await prefs.setString(cacheKey, jsonEncode(enc));
+        await prefs.setStringList(installedKey, installed.toList());
+        await prefs.setString(stampKey, DateTime.now().toIso8601String());
+      } catch (_) {}
       return (icons: icons, installed: installed);
     } catch (_) {
       return (icons: <String, Uint8List>{}, installed: <String>{});

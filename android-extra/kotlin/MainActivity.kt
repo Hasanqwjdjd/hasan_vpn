@@ -528,8 +528,12 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "raceDns" -> {
                         val hostname = call.argument<String>("hostname") ?: "pubgmobile.com"
+                        @Suppress("UNCHECKED_CAST")
+                        val extraIps = call.argument<List<String>>("extraIps") ?: emptyList()
                         Thread {
-                            val map = com.hasan.hasan_vpn.game.GameBoosterManager.raceDns(hostname)
+                            val map = com.hasan.hasan_vpn.game.GameBoosterManager.raceDns(
+                                hostname, extraIps,
+                            )
                             runOnUiThread { result.success(map) }
                         }.start()
                     }

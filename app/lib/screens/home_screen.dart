@@ -1520,13 +1520,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _syncRealConnectionState() async {
     if (!mounted || _connecting) return;
     try {
-      // Utility sessions (Tor / Aether / Psiphon / SSH / Tunnel) have
-      // their own liveness signals, and V2Ray's flag alone says nothing
-      // about them. Leave the state alone when one of them is routing.
-      if (TorSessionService.instance.anyRouting ||
+      // Utility sessions (Tor / Aether / Psiphon / SSH / Tunnel / MasterDNS /
+      // WarpMasque) each have their own liveness signal. V2Ray's flag alone
+      // says nothing about them, so if ANY of them is routing we must leave
+      // the UI state alone — otherwise returning from another app wipes the
+      // "connected" label while the native tunnel is still alive.
+      final anyUtility =
+          TorSessionService.instance.anyRouting ||
           TunnelSessionService.instance.anyRouting ||
           SshSessionService.instance.anyRouting ||
-          V2RayEngine.isUtilitySession) {
+          MasterDnsSessionService.instance.anyRouting ||
+          WarpMasqueSessionService.instance.anyRouting ||
+          AetherService.isConnected ||
+          PsiphonService.isConnected ||
+          V2RayEngine.isUtilitySession;
+      if (anyUtility) {
+        // Trust the utility service. Keep _active and _connected as they
+        // were; just make sure the status label reflects "connected".
+        if (mounted && !_connected && _active != null) {
+          setState(() {
+            _connected = true;
+            _status = _t('متصل شد', 'Connected');
+          });
+        }
         return;
       }
       final alive = V2RayEngine.isConnected;
@@ -6059,18 +6075,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         children: [
           FloatingActionButton(
             heroTag: 'connect_fab',
-            onPressed: _connecting ? null : _toggleConnection,
-            backgroundColor: _connected
-                ? AppColors.accent
-                : AppColors.elevated(context),
+            // While connecting, keep the button tappable so the user can
+            // cancel immediately. _toggleConnection sets _cancelConnect and
+            // actively stops the native Aether/Psiphon process.
+            onPressed: _toggleConnection,
+            backgroundColor: _connecting
+                ? AppColors.danger.withValues(alpha: 0.85)
+                : (_connected
+                    ? AppColors.accent
+                    : AppColors.elevated(context)),
             child: _connecting
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: AppColors.accent,
-                    ),
+                ? Icon(
+                    Icons.close,
+                    color: Colors.white,
+                    size: 24,
                   )
                 : Icon(
                     _connected ? Icons.shield : Icons.power_settings_new,

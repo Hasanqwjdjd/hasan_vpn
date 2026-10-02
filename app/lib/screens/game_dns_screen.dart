@@ -500,8 +500,83 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
 
     if (widget.embedded) {
       // Embedded mode: no Scaffold, no AppBar — parent provides chrome.
+      // But the parent (GameHubScreen) does not know about our internal
+      // actions, so expose a compact action row at the top of the tab.
       return Column(
         children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+            child: Row(
+              children: [
+                _embBtn(
+                  icon: Icons.speed,
+                  label: _t('پینگ همه', 'Ping all'),
+                  onTap: _testingAll ? null : _pingAllVisible,
+                ),
+                const SizedBox(width: 4),
+                _embBtn(
+                  icon: _showSearch ? Icons.close : Icons.search,
+                  label: _showSearch
+                      ? _t('بستن جستجو', 'Close search')
+                      : _t('جستجو', 'Search'),
+                  onTap: () =>
+                      setState(() => _showSearch = !_showSearch),
+                ),
+                const SizedBox(width: 4),
+                _embBtn(
+                  icon: Icons.auto_awesome,
+                  label: _t('بهترین', 'Best'),
+                  onTap: _autoSelectBest,
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: Icon(Icons.import_export,
+                      color: AppColors.muted(context), size: 18),
+                  tooltip: _t('ورود/خروج', 'Import/Export'),
+                  onPressed: () {
+                    showModalBottomSheet<void>(
+                      context: context,
+                      backgroundColor: AppColors.surface(context),
+                      builder: (ctx) => SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ListTile(
+                              leading: const Icon(Icons.upload_file),
+                              title: Text(_t('برون‌بری (کپی)',
+                                  'Export (copy)')),
+                              onTap: () {
+                                Navigator.pop(ctx);
+                                _exportRegistry();
+                              },
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.download),
+                              title: Text(_t('درون‌ریزی (پیست)',
+                                  'Import (paste)')),
+                              onTap: () {
+                                Navigator.pop(ctx);
+                                _importRegistry();
+                              },
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.qr_code_scanner),
+                              title: Text(_t('ورود با QR',
+                                  'Import via QR')),
+                              onTap: () {
+                                Navigator.pop(ctx);
+                                _importFromQr();
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
           if (_showSearch) _buildSearchBar(),
           _buildActiveCard(),
           _buildBoosterPanel(),
