@@ -2060,20 +2060,55 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// callback کیفیت پایین — هشدار + لرزش کوتاه.
   void _onLowQuality(int score) {
     if (!mounted) return;
-    // لرزش کوتاه (فقط اگه اپ در foreground باشه)
     try {
       HapticFeedback.mediumImpact();
-      // الگوی دو-ضربه‌ای برای هشدار واضح‌تر
       Future.delayed(const Duration(milliseconds: 180), () {
-        try {
-          HapticFeedback.lightImpact();
-        } catch (_) {}
+        try { HapticFeedback.lightImpact(); } catch (_) {}
       });
     } catch (_) {}
     _showMsg(_t(
-      'کیفیت اتصال افت کرد (امتیاز ' + score.toString() + ') — endpoint رو تغییر بده',
-      'Connection quality dropped (score ' + score.toString() + ') — change endpoint',
+      'کیفیت اتصال افت کرد (امتیاز ' + score.toString() + ')',
+      'Quality dropped (score ' + score.toString() + ')',
     ));
+
+    // Auto-switch: on repeated low quality, try a better server.
+    // Only for standard VLESS/VMess/Trojan servers — utility sessions
+    // (Aether, Psiphon, Tor, etc.) do not have a "next best" to hop to.
+    final cur = _active;
+    if (cur == null) return;
+    if (cur.isAether || cur.isPsiphon) return;
+    if (cur.protocol == VpnProtocol.ssh ||
+        cur.protocol == VpnProtocol.tunnel ||
+        cur.protocol == VpnProtocol.warpMasque ||
+        cur.protocol == VpnProtocol.masterdns ||
+        cur.protocol == VpnProtocol.chain) {
+      return;
+    }
+    final curPing = cur.ping ?? 9999;
+    final candidates = _servers
+        .where((s) =>
+            s.id != cur.id &&
+            s.protocol != VpnProtocol.aether &&
+            s.protocol != VpnProtocol.psiphon &&
+            s.protocol != VpnProtocol.ssh &&
+            s.protocol != VpnProtocol.tunnel &&
+            s.protocol != VpnProtocol.warpMasque &&
+            s.protocol != VpnProtocol.masterdns &&
+            s.protocol != VpnProtocol.chain &&
+            s.ping != null &&
+            s.ping! > 0 &&
+            s.ping! < curPing - 30)
+        .toList();
+    if (candidates.isEmpty) return;
+    candidates.sort((a, b) => (a.ping ?? 9999).compareTo(b.ping ?? 9999));
+    final best = candidates.first;
+    setState(() => _selected = best);
+    _showMsg(_t(
+      'سوئیچ خودکار به ${best.displayName} (${best.ping}ms)',
+      'Auto-switch to ${best.displayName} (${best.ping}ms)',
+    ));
+    // ignore: unawaited_futures
+    _autoReconnect();
   }
 
   void _onQualityRecovered() {

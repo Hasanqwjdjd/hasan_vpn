@@ -32,6 +32,7 @@ class AetherService {
 
   static const String _appPackage = 'com.hasan.hasan_vpn';
   static const String _lastGoodKey = 'aether_last_good_v1';
+  static const String _lastPeersKey = 'aether_last_peers_v1';
 
   static bool _connected = false;
   static VpnServer? _current;
@@ -100,6 +101,26 @@ class AetherService {
 
   // ------------------------------------------------------- last good profile
 
+  static Future<({String outer, String inner})?> _loadLastPeers() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_lastPeersKey);
+      if (raw == null || raw.isEmpty) return null;
+      final parts = raw.split('|');
+      if (parts.length != 2) return null;
+      if (parts[0].isEmpty || parts[1].isEmpty) return null;
+      return (outer: parts[0], inner: parts[1]);
+    } catch (_) { return null; }
+  }
+
+  static Future<void> _saveLastPeers(String outer, String inner) async {
+    if (outer.isEmpty || inner.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_lastPeersKey, '$outer|$inner');
+    } catch (_) {}
+  }
+
   static Future<AetherAttempt?> _loadLastGood() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -156,7 +177,19 @@ class AetherService {
         return false;
       }
 
-      final profile = AetherProfile.fromLink(server.shareLink);
+      var profile = AetherProfile.fromLink(server.shareLink);
+      final cachedPeers = await _loadLastPeers();
+      if (cachedPeers != null &&
+          (profile.protocol == 'gool' ||
+              profile.protocol == 'mim' ||
+              profile.protocol == 'auto') &&
+          profile.outer.isEmpty &&
+          profile.inner.isEmpty) {
+        profile = AetherProfile.fromQuery(
+          Uri.parse(profile.toLink()).queryParameters
+            ..addAll({'outer': cachedPeers.outer, 'inner': cachedPeers.inner}),
+        );
+      }
       final plan = profile.plan(lastGood: await _loadLastGood());
       final firstRun = info['hasIdentity'] != true;
 

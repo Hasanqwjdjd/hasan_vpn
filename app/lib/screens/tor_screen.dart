@@ -738,6 +738,14 @@ class _TorScreenState extends State<TorScreen> {
         _bridgeType = bt;
       });
       var bridgesToUse = _bridgesForConnect();
+      if (bt == 'webtunnel' && bridgesToUse.isEmpty) {
+        try {
+          final fresh = await TorBridges.fetchDynamic('webtunnel', country: 'ir');
+          if (fresh != null && fresh.isNotEmpty) {
+            bridgesToUse = fresh;
+          }
+        } catch (_) {}
+      }
       if (bt == 'dnstt') {
         final line = _buildDnsttBridgeLine();
         if (line != null) {
@@ -910,7 +918,24 @@ class _TorScreenState extends State<TorScreen> {
       } catch (_) {}
     }
     var bridgesToUse = _bridgesForConnect();
-    // dnstt inject
+    // WebTunnel has no fixed public bridges — they must be fetched from
+    // Moat. Auto-fetch on first connect so the user does not see an
+    // empty list and a silent failure.
+    if (_bridgeType == 'webtunnel' && bridgesToUse.isEmpty) {
+      setState(() => _bootstrapMsg =
+          _t('دریافت پل WebTunnel از Tor…', 'Fetching WebTunnel bridge from Tor…'));
+      try {
+        final fresh = await TorBridges.fetchDynamic('webtunnel', country: 'ir');
+        if (fresh != null && fresh.isNotEmpty) {
+          bridgesToUse = fresh;
+          // Persist so subsequent connects are instant.
+          if (!_customBridges.contains(fresh.first)) {
+            _customBridges.insert(0, fresh.first);
+            await _savePrefs();
+          }
+        }
+      } catch (_) {}
+    }
     // dnstt inject
     if (_bridgeType == 'dnstt') {
       final line = _buildDnsttBridgeLine();
