@@ -229,6 +229,50 @@ class _PerAppQualityScreenState extends State<PerAppQualityScreen> {
                 style: TextStyle(color: AppColors.muted(context)),
               ),
             ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surface(context),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.border(context)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.info_outline,
+                          color: AppColors.accent, size: 16),
+                      const SizedBox(width: 6),
+                      Text(
+                        _t('اگر روی MIUI/HyperOS اجازه نمی‌دهد',
+                            'If MIUI/HyperOS denies access'),
+                        style: TextStyle(
+                          color: AppColors.fg(context),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _t(
+                      'در Settings → Apps → Hasan VPN → Restricted settings '
+                      'گزینه Allow را بزنید و سپس برگردید و دوباره تلاش کنید.',
+                      'In Settings → Apps → Hasan VPN → Restricted settings, '
+                      'tap Allow and try again.',
+                    ),
+                    style: TextStyle(
+                      color: AppColors.muted(context),
+                      fontSize: 11,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
