@@ -3475,14 +3475,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _connectAttemptLabel = null;
         _connectAttemptTarget = null;
         _active = connected ? selected : null;
-        // log
-        if (connected) {
-          // ignore: unawaited_futures
-          ConnectionLogService.logConnect(selected!.displayName);
-        } else if (error != null && error.isNotEmpty) {
-          // ignore: unawaited_futures
-          ConnectionLogService.logError(selected!.displayName, error);
-        }
         
         if (connected) {
           _status = _t('متصل شد', 'Connected');
@@ -3494,6 +3486,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _status = _t('اتصال ناموفق', 'Failed');
         }
       });
+
+      // Logging moved OUTSIDE setState: an async call inside setState
+      // can be silently dropped if it throws, and Flutter prefers
+      // setState to be a pure synchronous state update. Logging a
+      // Psiphon/Aether success here makes sure every connection type
+      // shows up in the history, not just VLESS/VMess.
+      if (connected && selected != null) {
+        // ignore: unawaited_futures
+        ConnectionLogService.logConnect(selected.displayName)
+            .then((_) => debugPrint('LOGGED connect: ${selected.displayName}'))
+            .catchError((e) => debugPrint('LOGGING FAILED: $e'));
+      } else if (error != null && error.isNotEmpty && selected != null) {
+        // ignore: unawaited_futures
+        ConnectionLogService.logError(selected.displayName, error)
+            .catchError((e) => debugPrint('LOG ERROR FAILED: $e'));
+      }
       if (connected) {
         await SettingsService.setLastServer(selected.id);
         // ignore: unawaited_futures
