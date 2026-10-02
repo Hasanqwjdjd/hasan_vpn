@@ -3492,14 +3492,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // setState to be a pure synchronous state update. Logging a
       // Psiphon/Aether success here makes sure every connection type
       // shows up in the history, not just VLESS/VMess.
-      if (connected && selected != null) {
+      final loggedServer = selected;
+      if (connected && loggedServer != null) {
+        final name = loggedServer.displayName;
         // ignore: unawaited_futures
-        ConnectionLogService.logConnect(selected.displayName)
-            .then((_) => debugPrint('LOGGED connect: ${selected.displayName}'))
+        ConnectionLogService.logConnect(name)
+            .then((_) => debugPrint('LOGGED connect: $name'))
             .catchError((e) => debugPrint('LOGGING FAILED: $e'));
-      } else if (error != null && error.isNotEmpty && selected != null) {
+      } else if (error != null &&
+          error.isNotEmpty &&
+          loggedServer != null) {
+        final name = loggedServer.displayName;
         // ignore: unawaited_futures
-        ConnectionLogService.logError(selected.displayName, error)
+        ConnectionLogService.logError(name, error)
             .catchError((e) => debugPrint('LOG ERROR FAILED: $e'));
       }
       if (connected) {
