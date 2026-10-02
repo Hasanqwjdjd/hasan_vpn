@@ -3026,6 +3026,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (TorSessionService.instance.anyRouting ||
           TunnelSessionService.instance.anyRouting ||
           SshSessionService.instance.anyRouting ||
+          MasterDnsSessionService.instance.anyRouting ||
+          WarpMasqueSessionService.instance.anyRouting ||
+          AetherService.isConnected ||
+          PsiphonService.isConnected ||
           V2RayEngine.isUtilitySession) {
         _pollTick++;
         if (_pollTick % 3 == 1) {

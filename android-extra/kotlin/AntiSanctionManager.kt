@@ -31,9 +31,9 @@ object AntiSanctionManager {
 
     fun status(ctx: Context): Map<String, Any?> {
         val p = prefs(ctx)
-        // First-launch defaults: filterBypass + geminiFix ON, us-exit OFF.
-        // We lazily persist the defaults so subsequent reads are stable.
-        val fb = p.getBoolean(KEY_FILTER, true)
+        // Defaults: filter bypass OFF (it broke VLESS servers whose CDN
+        // hostnames are in geosite:cloudflare), Gemini fix ON, US exit OFF.
+        val fb = p.getBoolean(KEY_FILTER, false)
         val gf = p.getBoolean(KEY_GEMINI, true)
         val us = p.getBoolean(KEY_US, false)
         if (!p.contains(KEY_FILTER) || !p.contains(KEY_GEMINI) ||
