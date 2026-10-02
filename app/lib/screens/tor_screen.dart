@@ -135,6 +135,9 @@ class _TorScreenState extends State<TorScreen> {
         });
         await _savePrefs();
       }
+      // Prefetch WebTunnel bridges if that is the saved default type.
+      // The user should never see an empty list and a silent failure.
+      unawaited(_prefetchWebtunnelIfNeeded());
       if (widget.autoConnect && mounted && !_running && !_connecting) {
         await _toggle();
       }
@@ -883,6 +886,40 @@ class _TorScreenState extends State<TorScreen> {
     ));
   }
 
+  /// WebTunnel has no fixed public bridges. Fetch them from Moat so the
+  /// UI never shows an empty list. Called on initState and on dropdown
+  /// change so the fetch happens before the user presses Connect.
+  bool _webtunnelPrefetching = false;
+  Future<void> _prefetchWebtunnelIfNeeded() async {
+    if (_bridgeType != 'webtunnel') return;
+    if (_webtunnelPrefetching) return;
+    final existing = TorBridges.forType('webtunnel');
+    if (existing.isNotEmpty) return;
+    _webtunnelPrefetching = true;
+    try {
+      if (mounted) {
+        setState(() => _bootstrapMsg =
+            _t('دریافت پل WebTunnel از Tor…',
+                'Fetching WebTunnel bridge from Tor…'));
+      }
+      final fresh =
+          await TorBridges.fetchDynamic('webtunnel', country: 'ir');
+      if (fresh != null && fresh.isNotEmpty && mounted) {
+        setState(() {
+          _bootstrapMsg = _t('پل WebTunnel آماده است',
+              'WebTunnel bridge ready');
+        });
+      } else if (mounted) {
+        setState(() => _bootstrapMsg = _t(
+            'دریافت پل WebTunnel ناموفق — دوباره تلاش کنید',
+            'Could not fetch WebTunnel bridge — try again'));
+      }
+    } catch (_) {
+    } finally {
+      _webtunnelPrefetching = false;
+    }
+  }
+
   Future<void> _toggle() async {
     if (_connecting) return;
     if (_running) {
@@ -1354,6 +1391,9 @@ class _TorScreenState extends State<TorScreen> {
                   if (v == null) return;
                   setState(() => _bridgeType = v);
                   await _savePrefs();
+                  // Kick off WebTunnel prefetch immediately so the user
+                  // does not have to wait after pressing Connect.
+                  unawaited(_prefetchWebtunnelIfNeeded());
                 },
         ),
       ),
