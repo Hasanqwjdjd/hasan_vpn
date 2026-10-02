@@ -686,6 +686,45 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
     );
   }
 
+  Widget _embBtn({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.elevated(context),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.border(context)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon,
+                size: 14,
+                color: onTap == null
+                    ? AppColors.muted2(context)
+                    : AppColors.accent),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: onTap == null
+                    ? AppColors.muted2(context)
+                    : AppColors.fg(context),
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
