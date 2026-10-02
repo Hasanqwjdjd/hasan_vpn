@@ -66,7 +66,11 @@ class GameDnsScreen extends StatefulWidget {
   State<GameDnsScreen> createState() => _GameDnsScreenState();
 }
 
-class _GameDnsScreenState extends State<GameDnsScreen> {
+class _GameDnsScreenState extends State<GameDnsScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => widget.embedded;
+
   final _registry = DnsRegistryService.instance;
   final _pinger = DnsPingService.instance;
 
@@ -496,6 +500,7 @@ class _GameDnsScreenState extends State<GameDnsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required by AutomaticKeepAliveClientMixin
     final visible = _visibleEntries;
 
     if (widget.embedded) {

@@ -98,7 +98,11 @@ class _DnsRaceTab extends StatefulWidget {
   State<_DnsRaceTab> createState() => _DnsRaceTabState();
 }
 
-class _DnsRaceTabState extends State<_DnsRaceTab> {
+class _DnsRaceTabState extends State<_DnsRaceTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   bool _racing = false;
   bool _boosting = false;
   String? _error;
@@ -195,6 +199,7 @@ class _DnsRaceTabState extends State<_DnsRaceTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required by AutomaticKeepAliveClientMixin
     final fg = AppColors.fg(context);
     final muted = AppColors.muted(context);
     final surface = AppColors.surface(context);
@@ -301,7 +306,11 @@ class _GamesTab extends StatefulWidget {
   State<_GamesTab> createState() => _GamesTabState();
 }
 
-class _GamesTabState extends State<_GamesTab> {
+class _GamesTabState extends State<_GamesTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   static const _deviceChannel = MethodChannel('com.hasan.hasan_vpn/device');
 
   bool _loading = true;
@@ -458,6 +467,7 @@ class _GamesTabState extends State<_GamesTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required by AutomaticKeepAliveClientMixin
     final fg = AppColors.fg(context);
     final muted = AppColors.muted(context);
     final surface = AppColors.surface(context);
@@ -715,7 +725,11 @@ class _CustomDnsTab extends StatefulWidget {
   State<_CustomDnsTab> createState() => _CustomDnsTabState();
 }
 
-class _CustomDnsTabState extends State<_CustomDnsTab> {
+class _CustomDnsTabState extends State<_CustomDnsTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   final _primaryCtrl = TextEditingController(text: '8.8.8.8');
   final _secondaryCtrl = TextEditingController(text: '1.1.1.1');
   bool _busy = false;
@@ -761,6 +775,7 @@ class _CustomDnsTabState extends State<_CustomDnsTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required by AutomaticKeepAliveClientMixin
     final fg = AppColors.fg(context);
     final muted = AppColors.muted(context);
     final surface = AppColors.surface(context);
