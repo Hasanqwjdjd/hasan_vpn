@@ -604,4 +604,3 @@ class MainActivity : FlutterActivity() {
         Log.w("MainActivity", "isXrayVpnServiceRunning failed", e)
         false
     }
-}
