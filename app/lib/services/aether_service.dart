@@ -305,29 +305,38 @@ class AetherService {
     //      registration handshake. That is why the fallback keeps failing
     //      even though the binary correctly reports "dialling out through
     //      the socks5 proxy at 127.0.0.1".
-    // Aether dials Cloudflare directly by default. Live tests showed
-    // api.cloudflareclient.com is NOT blocked on Iranian mobile networks
-    // — going through a proxy actually made it worse, because the
-    // bundled WarpRegistrationProxy endpoint is dead and returning
-    // "Connection refused". Only use a proxy when the user has an active
-    // Xray session AND explicitly opted in via the server's `upstream`
-    // query parameter (aether://?upstream=socks5://...).
+    // Real-world behaviour on Iranian networks:
     //
-    // If V2Ray is connected but the profile did NOT ask for upstream,
-    // leave Aether direct — do not silently chain.
+    //   * api.cloudflareclient.com is DNS-poisoned / IP-blocked on most
+    //     Iranian ISPs. Direct dial fails with "error sending request".
+    //   * When Xray is up (VLESS / VMess / Trojan), its local SOCKS is
+    //     already inside the tunnel to a non-Iranian server, and Aether
+    //     reaches Cloudflare through it.
+    //   * When Xray is NOT up, the only option left is a direct dial,
+    //     which will fail on Iran but works on foreign networks.
+    //
+    // So the rule is: prefer SOCKS. Only go direct when no Xray session
+    // is available.
     try {
-      final wantsUpstream = profile.upstream.isNotEmpty;
-      if (wantsUpstream) {
-        final activePort =
-            V2RayEngine.isConnected ? V2RayEngine.localSocksPort : 0;
-        if (activePort > 0) {
-          env['AETHER_UPSTREAM'] = 'socks5://127.0.0.1:$activePort';
-          env['ALL_PROXY'] = 'socks5h://127.0.0.1:$activePort';
-          env['HTTPS_PROXY'] = 'socks5h://127.0.0.1:$activePort';
-          env['http_proxy'] = 'socks5h://127.0.0.1:$activePort';
-          env['https_proxy'] = 'socks5h://127.0.0.1:$activePort';
+      final activePort =
+          V2RayEngine.isConnected ? V2RayEngine.localSocksPort : 0;
+      if (activePort > 0) {
+        env['AETHER_UPSTREAM'] = 'socks5://127.0.0.1:$activePort';
+        env['ALL_PROXY'] = 'socks5h://127.0.0.1:$activePort';
+        env['HTTPS_PROXY'] = 'socks5h://127.0.0.1:$activePort';
+        env['http_proxy'] = 'socks5h://127.0.0.1:$activePort';
+        env['https_proxy'] = 'socks5h://127.0.0.1:$activePort';
+      } else if (profile.upstream.isNotEmpty) {
+        // Explicit upstream in the link but no V2Ray — try the bundled
+        // WarpRegistrationProxy as a last resort (usually dead, but
+        // harmless to attempt).
+        final p = await WarpRegistrationProxy.ensureStarted();
+        if (p != null && p > 0) {
+          env['AETHER_UPSTREAM'] = 'socks5://127.0.0.1:$p';
+          env['ALL_PROXY'] = 'socks5h://127.0.0.1:$p';
         }
       }
+      // else: no V2Ray, no explicit upstream → direct dial.
     } catch (e) {
       lastError = 'Aether upstream setup failed: $e';
       return false;

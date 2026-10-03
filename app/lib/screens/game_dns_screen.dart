@@ -428,10 +428,14 @@ class _GameDnsScreenState extends State<GameDnsScreen>
       _total = list.length;
     });
 
+    // With _entryBudget = 6s per entry, 238 entries at concurrency 12
+    // take up to ~2 minutes. Bumping to 24 halves that on phones with
+    // enough sockets; the ping batch already caps at the number of
+    // entries so this is safe for small lists too.
     final results = await _pinger.pingBatch(
       list,
       samples: 3,
-      concurrency: 12,
+      concurrency: 24,
       onProgress: (done, total) {
         if (!mounted) return;
         setState(() => _tested = done);
