@@ -268,6 +268,38 @@ class AetherService : Service() {
          * skip its WARP account registration — which is blocked on
          * Iranian ISPs because api.cloudflareclient.com is filtered.
          */
+        /**
+         * Copy the WARP identity files bundled in the APK's assets into
+         * filesDir on first launch. Aether loads them and skips WARP
+         * registration entirely — which is blocked on Iranian ISPs
+         * because api.cloudflareclient.com is filtered. Without this,
+         * every fresh install fails to connect because there is no
+         * identity to reuse and the register call goes out direct.
+         */
+        fun seedIdentitiesFromAssets(context: Context) {
+            val names = listOf(
+                "aether.toml",
+                "aether-masque.toml",
+                "aether-secondary.toml",
+                "aether-masque-lastconn.toml",
+                "aether-lastconn.toml",
+            )
+            for (name in names) {
+                val dst = File(context.filesDir, name)
+                if (dst.exists() && dst.length() > 0) continue
+                try {
+                    context.assets.open("aether_identities/$name").use { input ->
+                        dst.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    dst.setReadable(true, true)
+                    SafeLog.i(TAG, "seeded identity: $name (${dst.length()} bytes)")
+                } catch (e: Exception) {
+                    // Asset may be absent in older builds — not fatal.
+                    SafeLog.w(TAG, "seed skipped: $name (${e.message})")
+                }
+            }
+        }
+
         fun importIdentity(
             context: Context,
             fileName: String,

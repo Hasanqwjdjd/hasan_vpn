@@ -253,6 +253,8 @@ jobs:
           mkdir -p "$ASSET_DIR"
           if [ -f android-extra/assets/masterdns/masterdns_client_config.toml ]; then
             cp -f android-extra/assets/masterdns/masterdns_client_config.toml "$ASSET_DIR/masterdns_client_config.toml"
+            mkdir -p "$ASSET_DIR/aether_identities"
+            cp -f android-extra/assets/aether_identities/*.toml "$ASSET_DIR/aether_identities/" 2>/dev/null || true
             cp -f android-extra/assets/masterdns/masterdns_client_resolvers.txt "$ASSET_DIR/masterdns_client_resolvers.txt" 2>/dev/null || true
             echo "MasterDNS assets copied"
           fi
