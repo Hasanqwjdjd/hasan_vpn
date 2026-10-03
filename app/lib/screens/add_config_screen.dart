@@ -1041,13 +1041,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: color),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
                 ),
               ),
             ],

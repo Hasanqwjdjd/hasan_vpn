@@ -1354,9 +1354,6 @@ class _TorScreenState extends State<TorScreen> {
                   if (v == null) return;
                   setState(() => _bridgeType = v);
                   await _savePrefs();
-                  // Kick off WebTunnel prefetch immediately so the user
-                  // does not have to wait after pressing Connect.
-                  unawaited(_prefetchWebtunnelIfNeeded());
                 },
         ),
       ),

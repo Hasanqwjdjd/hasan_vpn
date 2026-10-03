@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../services/anti_sanction_service.dart';
 import '../services/app_colors.dart';
-import '../services/v2ray_engine.dart';
 
 /// Anti-Sanction / Gemini screen.
 ///
@@ -73,40 +72,20 @@ class _AntiSanctionScreenState extends State<AntiSanctionScreen> {
   /// Reapply the current Xray config so the new toggles take effect
   /// without requiring a manual reconnect from the home screen.
   Future<void> _applyNow() async {
-    if (!V2RayEngine.isConnected) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_t(
-            'برای اعمال، اول به یک سرور وصل شوید',
-            'Connect to a server first, then apply',
-          )),
-        ),
-      );
-      return;
-    }
-    try {
-      await V2RayEngine.reloadConfig();
-      if (!mounted) return;
-      setState(() => _dirty = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_t(
-            'تنظیمات روی اتصال فعلی اعمال شد',
-            'Applied on the current connection',
-          )),
-          backgroundColor: const Color(0xFF2E7D32),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_t('اعمال ناموفق: $e', 'Apply failed: $e')),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-    }
+    // V2RayEngine does not expose a live reload method, so the config
+    // change only takes effect on the next connect. We tell the user
+    // instead of pretending to apply it.
+    if (!mounted) return;
+    setState(() => _dirty = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_t(
+          'برای اعمال، یک بار اتصال را قطع و وصل کنید',
+          'Reconnect once to apply',
+        )),
+        backgroundColor: const Color(0xFF2E7D32),
+      ),
+    );
   }
 
   @override

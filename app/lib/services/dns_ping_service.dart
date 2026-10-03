@@ -328,7 +328,7 @@ class DnsPingService {
   /// The whole call is wrapped in [_entryBudget] so a single bad entry
   /// cannot stall the whole batch.
   Future<PingResult> pingEntry(DnsEntry entry, {int samples = 5}) {
-    return _pingEntryInner(entry, samples).timeout(
+    return _pingEntryInner(entry, samples: samples).timeout(
       _entryBudget,
       onTimeout: () => _timeoutResult(entry, samples),
     );
