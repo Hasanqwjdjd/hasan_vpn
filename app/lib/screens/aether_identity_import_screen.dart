@@ -36,6 +36,8 @@ class _AetherIdentityImportScreenState
     'aether-masque.toml',
     'aether.toml',
     'aether-secondary.toml',
+    'aether-masque-lastconn.toml',
+    'aether-lastconn.toml',
   ];
 
   @override
@@ -94,6 +96,53 @@ class _AetherIdentityImportScreenState
       body: ListView(
         padding: const EdgeInsets.all(14),
         children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF7C4DFF).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: const Color(0xFF7C4DFF).withValues(alpha: 0.5)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.info_outline,
+                        color: Color(0xFF7C4DFF), size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      _t('۵ فایل باید یکی‌یکی وارد شوند',
+                          '5 files must be imported one by one'),
+                      style: TextStyle(
+                        color: fg,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _t(
+                    'هر ۵ فایل در Termux داخل پوشهٔ home قرار دارند. '
+                    'با دستور ls پیدا کنید و یکی‌یکی paste کنید. فقط یک‌بار '
+                    'لازم است — بعد از این، Aether بدون Termux کار می‌کند.',
+                    'All 5 files are in Termux home. Use ls to find them, '
+                    'paste each one. Only once — after this Aether works '
+                    'without Termux.',
+                  ),
+                  style: TextStyle(
+                    color: muted,
+                    fontSize: 11,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           Text(
             _t(
               'در Termux پس از یک بار اجرای موفق Aether، فایل‌های هویت '
@@ -114,9 +163,11 @@ class _AetherIdentityImportScreenState
             child: Directionality(
               textDirection: TextDirection.ltr,
               child: SelectableText(
-                '~/.config/aether/aether-masque.toml\n'
-                '~/.config/aether/aether.toml\n'
-                '~/.config/aether/aether-secondary.toml',
+                '~/aether-masque.toml\n'
+                '~/aether.toml\n'
+                '~/aether-secondary.toml\n'
+                '~/aether-masque-lastconn.toml\n'
+                '~/aether-lastconn.toml',
                 style: TextStyle(
                   color: fg,
                   fontSize: 11,
@@ -142,7 +193,7 @@ class _AetherIdentityImportScreenState
             child: Directionality(
               textDirection: TextDirection.ltr,
               child: SelectableText(
-                'cat ~/.config/aether/aether-masque.toml',
+                'cat ~/aether-masque.toml',
                 style: TextStyle(
                   color: fg,
                   fontSize: 12,

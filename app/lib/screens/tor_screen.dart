@@ -135,9 +135,6 @@ class _TorScreenState extends State<TorScreen> {
         });
         await _savePrefs();
       }
-      // Prefetch WebTunnel bridges if that is the saved default type.
-      // The user should never see an empty list and a silent failure.
-      unawaited(_prefetchWebtunnelIfNeeded());
       if (widget.autoConnect && mounted && !_running && !_connecting) {
         await _toggle();
       }
@@ -887,45 +884,6 @@ class _TorScreenState extends State<TorScreen> {
     ));
   }
 
-  /// WebTunnel has no fixed public bridges. Fetch them from Moat so the
-  /// UI never shows an empty list. Called on initState and on dropdown
-  /// change so the fetch happens before the user presses Connect.
-  bool _webtunnelPrefetching = false;
-  Future<void> _prefetchWebtunnelIfNeeded() async {
-    if (_bridgeType != 'webtunnel') return;
-    if (_webtunnelPrefetching) return;
-    final existing = TorBridges.forType('webtunnel');
-    if (existing.isNotEmpty) return;
-    _webtunnelPrefetching = true;
-    try {
-      if (mounted) {
-        setState(() => _bootstrapMsg =
-            _t('دریافت پل WebTunnel از Tor…',
-                'Fetching WebTunnel bridge from Tor…'));
-      }
-      final fresh =
-          await TorBridges.fetchDynamic('webtunnel', country: 'ir');
-      if (fresh != null && fresh.isNotEmpty && mounted) {
-        // Cache the successful list so it survives a Moat outage.
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setStringList('tor_webtunnel_cache_v1', fresh);
-        } catch (_) {}
-        setState(() {
-          _bootstrapMsg = _t('پل WebTunnel آماده است',
-              'WebTunnel bridge ready');
-        });
-      } else if (mounted) {
-        setState(() => _bootstrapMsg = _t(
-            'پل WebTunnel از Tor گرفته نشد — دوباره تلاش کنید',
-            'Could not fetch WebTunnel bridge from Tor — try again'));
-      }
-    } catch (_) {
-    } finally {
-      _webtunnelPrefetching = false;
-    }
-  }
-
   Future<void> _toggle() async {
     if (_connecting) return;
     if (_running) {
@@ -975,21 +933,6 @@ class _TorScreenState extends State<TorScreen> {
             _customBridges.insert(0, fresh.first);
             await _savePrefs();
           }
-        }
-      } catch (_) {}
-    }
-    // WebTunnel uses a cached bridge if the Moat fetch failed. Do NOT
-    // silently switch to a different transport — the user explicitly
-    // asked for WebTunnel and expects WebTunnel.
-    if (_bridgeType == 'webtunnel' && bridgesToUse.isEmpty) {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final cached = prefs.getStringList('tor_webtunnel_cache_v1');
-        if (cached != null && cached.isNotEmpty) {
-          bridgesToUse = cached;
-          _customBridges.insertAll(
-              0, cached.where((b) => !_customBridges.contains(b)));
-          await _savePrefs();
         }
       } catch (_) {}
     }

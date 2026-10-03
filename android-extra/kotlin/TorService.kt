@@ -385,22 +385,25 @@ object TorService {
                 }
             }
             "webtunnel" -> {
-                // WebTunnel needs at least one bridge. If none was
-                // supplied, do NOT emit UseBridges 1 — Tor would exit
-                // with "UseBridges without a Bridge".
+                // If the user (or the Moat cache) gave us a real bridge
+                // line, use it. Otherwise run as vanilla Tor — that is
+                // what "WebTunnel" meant in earlier builds of this app:
+                // vanilla Tor with the same UI slot, fast and no
+                // bridges required. Tor rejects UseBridges 1 with an
+                // empty bridge list ("Failed to parse/validate config").
                 if (obfs4Path != null && !customBridges.isNullOrEmpty()) {
                     sb.appendLine("UseBridges 1")
-                    if (!customBridges.isNullOrEmpty()) {
-                        customBridges.take(2).forEach { line ->
-                            val t = line.trim()
-                            if (t.startsWith("Bridge ", ignoreCase = true)) {
-                                sb.appendLine(t)
-                            } else {
-                                sb.appendLine("Bridge $t")
-                            }
+                    sb.appendLine("ClientTransportPlugin webtunnel exec ${obfs4Path}")
+                    customBridges.take(2).forEach { line ->
+                        val t = line.trim()
+                        if (t.startsWith("Bridge ", ignoreCase = true)) {
+                            sb.appendLine(t)
+                        } else {
+                            sb.appendLine("Bridge $t")
                         }
                     }
                 }
+                // else: no bridges → vanilla path, Tor boots without them.
             }
             "meek_lite" -> {
                 if (obfs4Path != null) {

@@ -274,11 +274,16 @@ class AetherService : Service() {
             content: String,
         ): Boolean {
             return try {
-                // Only allow the three known names, never arbitrary paths.
+                // Only allow the exact filenames Aether itself writes,
+                // never arbitrary paths. The 'lastconn' files cache the
+                // last working gateway so the binary can skip the WARP
+                // registration that is blocked on Iranian ISPs.
                 val allowed = setOf(
                     "aether.toml",
                     "aether-secondary.toml",
                     "aether-masque.toml",
+                    "aether-lastconn.toml",
+                    "aether-masque-lastconn.toml",
                 )
                 if (fileName !in allowed) return false
                 val dst = File(context.filesDir, fileName)
