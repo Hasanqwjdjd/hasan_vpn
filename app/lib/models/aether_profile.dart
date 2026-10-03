@@ -468,6 +468,15 @@ class AetherProfile {
         if (scan != 'ironclad') {
           attempts.add(_attempt(proto, h2, 'ironclad', forceNoize: 'balanced'));
         }
+        // Always add GOOL as the very last fallback, no matter which
+        // protocol the user picked. Live tests on Irancell show that
+        // MASQUE (H2 or H3) never finds a gateway; without this, a
+        // MASQUE-selected server would wait 5 * 30 s before giving up
+        // even though GOOL works in 15 s.
+        if (proto != 'gool') {
+          attempts.add(_attempt('gool', false, 'turbo',
+              forceNoize: 'balanced'));
+        }
       }
     }
 

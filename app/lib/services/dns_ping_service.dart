@@ -302,10 +302,39 @@ class DnsPingService {
 
   // ---------------------------------------------------------- Multi-sample
 
+  /// Hard cap on the wall-clock time one entry may consume during a
+  /// batch ping. Without this, an entry whose UDP + TCP + DoT + DoH all
+  /// time out costs ~8 s per sample, and with 3 samples that is 24 s
+  /// per broken entry — which made the progress counter stop at
+  /// 237/238 and never finish.
+  static const Duration _entryBudget = Duration(seconds: 6);
+
+  Future<PingResult> _timeoutResult(DnsEntry entry, int failures) {
+    return Future.value(PingResult(
+      entryId: entry.id,
+      minMs: null,
+      medianMs: null,
+      maxMs: null,
+      jitterMs: null,
+      successCount: 0,
+      failureCount: failures,
+      protocolUsed: DnsProtocol.udp,
+    ));
+  }
+
   /// Pings [entry] [samples] times (default 5, clamped 3..10) and
   /// returns min/median/max + jitter. Samples run sequentially with a
   /// small stagger so a burst doesn't look like one lucky round-trip.
-  Future<PingResult> pingEntry(DnsEntry entry, {int samples = 5}) async {
+  /// The whole call is wrapped in [_entryBudget] so a single bad entry
+  /// cannot stall the whole batch.
+  Future<PingResult> pingEntry(DnsEntry entry, {int samples = 5}) {
+    return _pingEntryInner(entry, samples).timeout(
+      _entryBudget,
+      onTimeout: () => _timeoutResult(entry, samples),
+    );
+  }
+
+  Future<PingResult> _pingEntryInner(DnsEntry entry, {int samples = 5}) async {
     final n = samples.clamp(3, 10);
     final results = <int>[];
     DnsProtocol lastProto = DnsProtocol.udp;
