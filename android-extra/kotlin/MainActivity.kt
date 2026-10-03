@@ -108,7 +108,6 @@ class MainActivity : FlutterActivity() {
                     "getBatteryOptStatus" -> result.success(mapOf("ignored" to false))
                     "requestBatteryOpt", "openBatterySettings" -> result.success(true)
                     "getInstalledApps" -> result.success(emptyList<Map<String, Any>>())
-                    }
                     "openApp" -> {
                         val pkg = call.argument<String>("package")
                         if (pkg.isNullOrBlank()) {
@@ -427,12 +426,8 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "raceDns" -> {
                         val hostname = call.argument<String>("hostname") ?: "pubgmobile.com"
-                        @Suppress("UNCHECKED_CAST")
-                        val extraIps = call.argument<List<String>>("extraIps") ?: emptyList()
                         Thread {
-                            val map = com.hasan.hasan_vpn.game.GameBoosterManager.raceDns(
-                                hostname, extraIps,
-                            )
+                            val map = com.hasan.hasan_vpn.game.GameBoosterManager.raceDns(hostname)
                             runOnUiThread { result.success(map) }
                         }.start()
                     }
@@ -604,3 +599,4 @@ class MainActivity : FlutterActivity() {
         Log.w("MainActivity", "isXrayVpnServiceRunning failed", e)
         false
     }
+}
