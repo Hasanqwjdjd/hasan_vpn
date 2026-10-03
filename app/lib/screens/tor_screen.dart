@@ -679,9 +679,9 @@ class _TorScreenState extends State<TorScreen> {
   /// زنجیرهٔ پل بعدی برای نوع فعلی.
   List<String> _fallbackFor(String current) {
     if (current == 'webtunnel') return ['snowflake', 'meek_lite', 'obfs4'];
-    if (current == 'snowflake') return ['meek_lite', 'webtunnel', 'obfs4'];
-    if (current == 'meek_lite') return ['snowflake', 'webtunnel', 'obfs4'];
-    if (current == 'obfs4') return ['webtunnel', 'snowflake', 'meek_lite'];
+    if (current == 'snowflake') return ['meek_lite', 'obfs4'];
+    if (current == 'meek_lite') return ['snowflake', 'obfs4'];
+    if (current == 'obfs4') return ['snowflake', 'meek_lite'];
     if (current == 'dnstt') return ['snowflake', 'meek_lite', 'obfs4'];
     return [];
   }
@@ -748,6 +748,11 @@ class _TorScreenState extends State<TorScreen> {
             bridgesToUse = fresh;
           }
         } catch (_) {}
+      }
+      // Skip webtunnel entirely in the chain when it has no bridges —
+      // it would just fail with the same config error.
+      if (bt == 'webtunnel' && bridgesToUse.isEmpty) {
+        continue;
       }
       if (bt == 'dnstt') {
         final line = _buildDnsttBridgeLine();
@@ -972,13 +977,29 @@ class _TorScreenState extends State<TorScreen> {
         final fresh = await TorBridges.fetchDynamic('webtunnel', country: 'ir');
         if (fresh != null && fresh.isNotEmpty) {
           bridgesToUse = fresh;
-          // Persist so subsequent connects are instant.
           if (!_customBridges.contains(fresh.first)) {
             _customBridges.insert(0, fresh.first);
             await _savePrefs();
           }
         }
       } catch (_) {}
+    }
+    // WebTunnel bridges almost never appear on Moat for Iranian users
+    // (they are scarce by design). If we are still empty here, Tor will
+    // reject the config with "UseBridges 1 without a Bridge" and exit
+    // immediately. Fall back to Snowflake BEFORE calling the native side.
+    if (_bridgeType == 'webtunnel' && bridgesToUse.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _bootstrapMsg = _t(
+            'پل WebTunnel موجود نیست — سوئیچ به Snowflake',
+            'WebTunnel bridge unavailable — switching to Snowflake',
+          );
+          _bridgeType = 'snowflake';
+        });
+        await _savePrefs();
+      }
+      bridgesToUse = _bridgesForConnect();
     }
     // dnstt inject
     if (_bridgeType == 'dnstt') {

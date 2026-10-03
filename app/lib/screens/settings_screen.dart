@@ -28,7 +28,6 @@ import 'xray_settings_screen.dart';
 import 'routing_screen.dart';
 import 'geo_assets_screen.dart';
 import 'per_app_proxy_screen.dart';
-import 'per_app_quality_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final String themeMode;
@@ -757,34 +756,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 MaterialPageRoute(
                   builder: (_) =>
                       PerAppProxyScreen(language: widget.language),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          _card(
-            context,
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.analytics_outlined,
-                  color: AppColors.accent, size: 20),
-              title: Text(
-                _t('کیفیت و مصرف برنامه‌ها', 'Per-app quality & usage'),
-                style: TextStyle(color: AppColors.fg(context), fontSize: 14),
-              ),
-              subtitle: Text(
-                _t('حجم مصرفی، پینگ و افت بستهٔ هر برنامه',
-                    'Data usage, RTT and packet loss per app'),
-                style: TextStyle(
-                    color: AppColors.muted2(context), fontSize: 11),
-              ),
-              trailing: Icon(Icons.chevron_left,
-                  color: AppColors.muted2(context), size: 20),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      PerAppQualityScreen(language: widget.language),
                 ),
               ),
             ),

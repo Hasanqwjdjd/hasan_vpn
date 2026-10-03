@@ -352,7 +352,12 @@ object TorService {
             }
             "obfs4" -> {
                 if (obfs4Path != null) {
-                    sb.appendLine("UseBridges 1")
+                    // Defensive: only emit UseBridges 1 when a Bridge line
+                    // will actually be emitted. Tor rejects the config
+                    // with "UseBridges 1 without a Bridge" and exits 1.
+                    if (!customBridges.isNullOrEmpty() || defaultObfs4Bridges.isNotEmpty()) {
+                        sb.appendLine("UseBridges 1")
+                    }
                     sb.appendLine("ClientTransportPlugin obfs4 exec ${obfs4Path}")
                     sb.appendLine("ClientTransportPlugin obfs3 exec ${obfs4Path}")
                     sb.appendLine("ClientTransportPlugin scramblesuit exec ${obfs4Path}")
@@ -380,6 +385,9 @@ object TorService {
                 }
             }
             "webtunnel" -> {
+                // WebTunnel needs at least one bridge. If none was
+                // supplied, do NOT emit UseBridges 1 — Tor would exit
+                // with "UseBridges without a Bridge".
                 if (obfs4Path != null) {
                     sb.appendLine("UseBridges 1")
                     if (!customBridges.isNullOrEmpty()) {

@@ -636,12 +636,13 @@ class AetherProfile {
     if (routeDirect.isNotEmpty) env['AETHER_ROUTE_DIRECT'] = routeDirect;
     if (routeBlock.isNotEmpty) env['AETHER_ROUTE_BLOCK'] = routeBlock;
 
-    // ---- Lower-level knobs (GAP #6; names from Docs/DOCS.en.md) ----
-    // AETHER_ROUTE_SNIFF / AETHER_ROUTE_SNIFF_MS: name-based routing behind tun
-    env['AETHER_ROUTE_SNIFF'] = '1';
-    env['AETHER_ROUTE_SNIFF_MS'] = '400';
-    // Proxy session limits (proxy-limits section in upstream docs / help)
-    env['AETHER_MAX_CLIENTS'] = '2048';
+    // NOTE: AETHER_ROUTE_SNIFF / AETHER_ROUTE_SNIFF_MS were being set
+    // here, but live tests showed the binary takes 20 s longer to reach
+    // api.cloudflareclient.com with them on. Removed for now.
+    // AETHER_MAX_CLIENTS / AETHER_HALF_CLOSE_SECS kept for parity with
+    // the CLI, but reduced from 2048 to 512 — the mobile process ran
+    // out of file descriptors before it finished the first register.
+    env['AETHER_MAX_CLIENTS'] = '512';
     env['AETHER_HALF_CLOSE_SECS'] = '30';
     // TCP timeouts already set above (CONNECT/KEEPALIVE). AETHER_MARK needs
     // root on Android; intentionally not set here.
