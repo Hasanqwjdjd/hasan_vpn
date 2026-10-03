@@ -62,6 +62,16 @@ class MainActivity : FlutterActivity() {
                     "status" -> result.success(AetherService.status())
                     "stop" -> { AetherService.stop(applicationContext); result.success(true) }
                     "resetIdentity" -> result.success(AetherService.resetIdentity(applicationContext))
+                    "importIdentity" -> {
+                        val fileName = call.argument<String>("fileName") ?: ""
+                        val content = call.argument<String>("content") ?: ""
+                        Thread {
+                            val ok = AetherService.importIdentity(
+                                applicationContext, fileName, content,
+                            )
+                            runOnUiThread { result.success(ok) }
+                        }.start()
+                    }
                     "testBinary" -> {
                         Thread {
                             val map = AetherService.testBinary(applicationContext)

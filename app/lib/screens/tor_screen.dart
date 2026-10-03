@@ -749,11 +749,7 @@ class _TorScreenState extends State<TorScreen> {
           }
         } catch (_) {}
       }
-      // Skip webtunnel entirely in the chain when it has no bridges —
-      // it would just fail with the same config error.
-      if (bt == 'webtunnel' && bridgesToUse.isEmpty) {
-        continue;
-      }
+
       if (bt == 'dnstt') {
         final line = _buildDnsttBridgeLine();
         if (line != null) {
@@ -910,21 +906,19 @@ class _TorScreenState extends State<TorScreen> {
       final fresh =
           await TorBridges.fetchDynamic('webtunnel', country: 'ir');
       if (fresh != null && fresh.isNotEmpty && mounted) {
+        // Cache the successful list so it survives a Moat outage.
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setStringList('tor_webtunnel_cache_v1', fresh);
+        } catch (_) {}
         setState(() {
           _bootstrapMsg = _t('پل WebTunnel آماده است',
               'WebTunnel bridge ready');
         });
       } else if (mounted) {
         setState(() => _bootstrapMsg = _t(
-            'پل WebTunnel از Tor موجود نیست — به Snowflake سوئیچ کنید',
-            'WebTunnel bridge not available from Tor — switch to Snowflake'));
-        // Auto-fallback to Snowflake since WebTunnel is unlikely to
-        // appear from Moat for Iranian users (its bridges are scarce
-        // and the Moat challenge protocol is not fully implemented).
-        if (_bridgeTypes.any((e) => e['id'] == 'snowflake')) {
-          setState(() => _bridgeType = 'snowflake');
-          await _savePrefs();
-        }
+            'پل WebTunnel از Tor گرفته نشد — دوباره تلاش کنید',
+            'Could not fetch WebTunnel bridge from Tor — try again'));
       }
     } catch (_) {
     } finally {
@@ -984,22 +978,20 @@ class _TorScreenState extends State<TorScreen> {
         }
       } catch (_) {}
     }
-    // WebTunnel bridges almost never appear on Moat for Iranian users
-    // (they are scarce by design). If we are still empty here, Tor will
-    // reject the config with "UseBridges 1 without a Bridge" and exit
-    // immediately. Fall back to Snowflake BEFORE calling the native side.
+    // WebTunnel uses a cached bridge if the Moat fetch failed. Do NOT
+    // silently switch to a different transport — the user explicitly
+    // asked for WebTunnel and expects WebTunnel.
     if (_bridgeType == 'webtunnel' && bridgesToUse.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _bootstrapMsg = _t(
-            'پل WebTunnel موجود نیست — سوئیچ به Snowflake',
-            'WebTunnel bridge unavailable — switching to Snowflake',
-          );
-          _bridgeType = 'snowflake';
-        });
-        await _savePrefs();
-      }
-      bridgesToUse = _bridgesForConnect();
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cached = prefs.getStringList('tor_webtunnel_cache_v1');
+        if (cached != null && cached.isNotEmpty) {
+          bridgesToUse = cached;
+          _customBridges.insertAll(
+              0, cached.where((b) => !_customBridges.contains(b)));
+          await _savePrefs();
+        }
+      } catch (_) {}
     }
     // dnstt inject
     if (_bridgeType == 'dnstt') {

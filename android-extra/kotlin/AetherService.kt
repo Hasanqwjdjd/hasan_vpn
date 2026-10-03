@@ -262,6 +262,36 @@ class AetherService : Service() {
          * برای دکمه‌ی «دریافت کلید WARP جدید». وقتی پردازه در حال اجراست کاری
          * نمی‌کند (باید اول قطع شود) تا فایل هویتِ در حالِ استفاده خراب نشود.
          */
+        /**
+         * Write a user-provided identity file (typically pasted from
+         * Termux) into the app's filesDir so Aether can load it and
+         * skip its WARP account registration — which is blocked on
+         * Iranian ISPs because api.cloudflareclient.com is filtered.
+         */
+        fun importIdentity(
+            context: Context,
+            fileName: String,
+            content: String,
+        ): Boolean {
+            return try {
+                // Only allow the three known names, never arbitrary paths.
+                val allowed = setOf(
+                    "aether.toml",
+                    "aether-secondary.toml",
+                    "aether-masque.toml",
+                )
+                if (fileName !in allowed) return false
+                val dst = File(context.filesDir, fileName)
+                dst.writeText(content, Charsets.UTF_8)
+                dst.setReadable(true, true)
+                SafeLog.i(TAG, "importIdentity: wrote ${dst.absolutePath} (${content.length} bytes)")
+                true
+            } catch (e: Exception) {
+                SafeLog.e(TAG, "importIdentity failed", e)
+                false
+            }
+        }
+
         fun resetIdentity(context: Context): Boolean {
             synchronized(lock) {
                 if (running) return false

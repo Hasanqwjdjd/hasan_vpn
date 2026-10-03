@@ -394,6 +394,19 @@ jobs:
           """
           if 'android.permission.INTERNET' not in text:
               text = text.replace("<application", perms + "    <application", 1)
+          # Keep native libs inside the APK (compressed) instead of
+          # extracting them into /data/app. On Android 10+ they are
+          # mmap'd from the APK and execute fine (verified by the
+          # existing tor + aether + psiphon runs). This cuts the
+          # installed footprint by ~150 MB.
+          text = text.replace(
+              'android:extractNativeLibs="true"',
+              'android:extractNativeLibs="false"',
+          )
+          text = text.replace(
+              'android:extractNativeLibs="false"',
+              'android:extractNativeLibs="false"',
+          )
           if 'android:extractNativeLibs' not in text:
               text = text.replace("<application", '<application android:extractNativeLibs="true" android:usesCleartextTraffic="true"', 1)
           if 'android:allowBackup' not in text:

@@ -21,6 +21,7 @@ import '../services/mdns_settings.dart';
 import '../services/tor_sni_presets.dart';
 import '../services/xray_json.dart';
 import 'free_config_screen.dart';
+import 'aether_identity_import_screen.dart';
 import 'qr_scan_screen.dart';
 
 class AddConfigScreen extends StatefulWidget {
@@ -1006,6 +1007,40 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   label: Text(_t('دریافت کلید جدید WARP', 'New WARP key'),
                       style: const TextStyle(color: color, fontSize: 11.5),
                       overflow: TextOverflow.ellipsis),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _aetherWorking
+                      ? null
+                      : () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AetherIdentityImportScreen(
+                                language: widget.language,
+                              ),
+                            ),
+                          ),
+                  icon: const Icon(Icons.upload_file,
+                      size: 16, color: color),
+                  label: Text(
+                    _t('ورود هویت از Termux',
+                        'Import identity from Termux'),
+                    style: const TextStyle(color: color, fontSize: 11),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: color),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: color),
                     padding: const EdgeInsets.symmetric(vertical: 10),
