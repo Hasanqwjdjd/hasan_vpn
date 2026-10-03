@@ -61,6 +61,10 @@ class AetherService : Service() {
             File(context.applicationInfo.nativeLibraryDir, BINARY_NAME)
 
         fun info(context: Context): Map<String, Any?> {
+            // Seed identity files from APK assets on first launch.
+            // Aether reads these and skips WARP registration, which
+            // is blocked on Iranian ISPs.
+            seedIdentitiesFromAssets(context)
             val binary = binaryFile(context)
             val abi = Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"
             val present = binary.isFile
