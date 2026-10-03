@@ -388,7 +388,7 @@ object TorService {
                 // WebTunnel needs at least one bridge. If none was
                 // supplied, do NOT emit UseBridges 1 — Tor would exit
                 // with "UseBridges without a Bridge".
-                if (obfs4Path != null) {
+                if (obfs4Path != null && !customBridges.isNullOrEmpty()) {
                     sb.appendLine("UseBridges 1")
                     if (!customBridges.isNullOrEmpty()) {
                         customBridges.take(2).forEach { line ->
@@ -445,7 +445,9 @@ object TorService {
                 }
             }
             "dnstt" -> {
-                if (dnsttPath != null) {
+                // Same rule: no bridges, no UseBridges line.
+                val hasDnsttBridges = !customBridges.isNullOrEmpty()
+                if (dnsttPath != null && hasDnsttBridges) {
                     // Slipnet-style DNSTT: -udp RESOLVER + Bridge dnstt DOMAIN
                     sb.appendLine("UseBridges 1")
                     val bridges = if (!customBridges.isNullOrEmpty()) {
