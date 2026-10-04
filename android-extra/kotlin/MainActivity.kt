@@ -15,7 +15,6 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
 
-    private val aetherChannel = "com.hasan.hasan_vpn/aether"
     private val psiphonChannel = "com.hasan.hasan_vpn/psiphon"
     private val deviceChannel = "com.hasan.hasan_vpn/device"
     private val torChannel = "com.hasan.hasan_vpn/tor"
@@ -45,42 +44,6 @@ class MainActivity : FlutterActivity() {
 
         SafeLog.enabled =
             (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
-
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, aetherChannel)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "info" -> result.success(AetherService.info(applicationContext))
-                    "start" -> {
-                        val env = call.argument<String>("env")
-                        val remark = call.argument<String>("remark") ?: "Aether"
-                        if (env.isNullOrEmpty()) {
-                            result.error("bad_args", "env is missing", null)
-                        } else {
-                            result.success(AetherService.start(applicationContext, env, remark))
-                        }
-                    }
-                    "status" -> result.success(AetherService.status())
-                    "stop" -> { AetherService.stop(applicationContext); result.success(true) }
-                    "resetIdentity" -> result.success(AetherService.resetIdentity(applicationContext))
-                    "importIdentity" -> {
-                        val fileName = call.argument<String>("fileName") ?: ""
-                        val content = call.argument<String>("content") ?: ""
-                        Thread {
-                            val ok = AetherService.importIdentity(
-                                applicationContext, fileName, content,
-                            )
-                            runOnUiThread { result.success(ok) }
-                        }.start()
-                    }
-                    "testBinary" -> {
-                        Thread {
-                            val map = AetherService.testBinary(applicationContext)
-                            runOnUiThread { result.success(map) }
-                        }.start()
-                    }
-                    else -> result.notImplemented()
-                }
-            }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, psiphonChannel)
             .setMethodCallHandler { call, result ->
