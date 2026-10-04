@@ -4862,16 +4862,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               color: AppColors.accent,
             ),
             _buildTypeCard(
-              title: 'Aether',
-              subtitle: _t(
-                'WARP + اسکن مسیر + MASQUE/WireGuard (ادغام‌شده)',
-                'WARP + route scan + MASQUE/WireGuard (merged)',
-              ),
-              icon: Icons.auto_awesome,
-              type: 'aether',
-              color: const Color(0xFF7C4DFF),
-            ),
-            _buildTypeCard(
               title: 'Siphon',
               subtitle: _t('هستهٔ واقعی Psiphon Labs',
                   'Real Psiphon Labs core'),
@@ -5113,10 +5103,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   ),
                 ),
               ),
-            ] else if (_selectedType == 'aether') ...[
-              _buildAetherForm(),
-              const SizedBox(height: 16),
-            ] else if (_selectedType == 'hysteria2') ...[
+                        ] else if (_selectedType == 'hysteria2') ...[
               _buildHysteria2Form(),
               const SizedBox(height: 16),
             ] else if (_selectedType == 'siphon') ...[
