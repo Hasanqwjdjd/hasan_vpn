@@ -1,6 +1,6 @@
 // app/lib/screens/game_hub_screen.dart
 //
-// Unified Game Hub: 4 tabs — DNS List · DNS Race · Games · Custom DNS.
+// Unified Game Hub: 3 tabs — DNS List · Games · Custom DNS.
 //
 // Replaces the old two-screen split (game_dns_screen.dart +
 // game_booster_screen.dart). The DNS List tab embeds the existing
@@ -41,7 +41,7 @@ class _GameHubScreenState extends State<GameHubScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 4, vsync: this);
+    _tabs = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -68,7 +68,6 @@ class _GameHubScreenState extends State<GameHubScreen>
           unselectedLabelColor: AppColors.muted(context),
           tabs: [
             Tab(text: _t('لیست DNS', 'DNS List')),
-            Tab(text: _t('رقابت DNS', 'DNS Race')),
             Tab(text: _t('بازی‌ها', 'Games')),
             Tab(text: _t('DNS سفارشی', 'Custom DNS')),
           ],
@@ -78,7 +77,6 @@ class _GameHubScreenState extends State<GameHubScreen>
         controller: _tabs,
         children: [
           GameDnsScreen(language: widget.language, embedded: true),
-          _DnsRaceTab(language: widget.language),
           _GamesTab(language: widget.language),
           _CustomDnsTab(language: widget.language),
         ],

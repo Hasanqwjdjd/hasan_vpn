@@ -229,9 +229,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // ─── مجوز اعلان + VPN در اولین اجرا ───
     // ignore: unawaited_futures
     _requestFirstLaunchPermissions();
-    // ─── دانلود خودکار Geo ایران در اولین اجرا ───
-    // ignore: unawaited_futures
-    _autoDownloadGeoIran();
+    // ─── دانلود خودکار Geo حذف شد ───
+    // Geo ip/site files (geoip.dat, geosite.dat) are only used by the
+    // smart-routing feature. They add 5-10 MB of local storage and a
+    // network hit on first launch for users who never use that feature.
+    // Loading them is now manual via Settings → Geo assets.
     // ─── listener برای قطع خودکار سرور وقتی Tor روت می‌کنه ───
     TorSessionService.instance.routingCount.addListener(_onTorRoutingChanged);
     TunnelSessionService.instance.routingCount

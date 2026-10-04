@@ -73,17 +73,10 @@ class SubscriptionService {
   /// اشتراک‌های پیش‌فرض. لینک‌ها اینجا نیستند: از جدول رمزشدهٔ
   /// [ProtectedDefaults] (ساخته‌شده در CI) فقط لحظهٔ دانلود خوانده می‌شوند.
   static List<Subscription> get defaultSubscriptions => [
-        // Hasan Built-in — the only bundled group besides Netra.
-        Subscription(
-          id: BuiltinConfigs.groupId,
-          name: BuiltinConfigs.groupName,
-          url: '',
-          isDefault: true,
-        ),
-        // Netra is the only protected default kept. Every other entry
-        // that used to come from the CI secret is dropped at this point
-        // — they were noise in the subscriptions list and the user asked
-        // to keep only Built-in and Netra.
+        // Netra is the ONLY protected default kept. Every other entry —
+        // including the old "Hasan Built-in" group — was removed at the
+        // user's request; the subscription tab strip now shows nothing
+        // but Netra.
         for (final e in ProtectedDefaults.entries)
           if (e[1].toLowerCase().contains('netra') ||
               e[0].toLowerCase().contains('netra'))
@@ -184,23 +177,6 @@ class SubscriptionService {
         if (!subscriptions.any((s) => s.id == defaultSub.id)) {
           subscriptions.add(defaultSub);
         }
-      }
-
-      // Built-in group: بار اول seed با کانفیگ‌های بسته‌بندی‌شده.
-      final bi = subscriptions.firstWhere(
-        (s) => s.id == BuiltinConfigs.groupId,
-        orElse: () => Subscription(
-          id: BuiltinConfigs.groupId,
-          name: BuiltinConfigs.groupName,
-          url: '',
-          isDefault: true,
-        ),
-      );
-      if (bi.cachedLinks.isEmpty) {
-        bi.cachedLinks = List<String>.from(BuiltinConfigs.rawConfigs);
-        bi.serverCount = bi.cachedLinks.length;
-        bi.lastUpdated = DateTime.now();
-        if (!subscriptions.contains(bi)) subscriptions.insert(0, bi);
       }
 
       await save(subscriptions);
