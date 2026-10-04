@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models/server.dart';
-import 'aether_service.dart';
+import 'socks_xray_builder.dart';
 import 'warp_masque_service.dart';
 import 'master_dns_service.dart';
 import 'psiphon_auto.dart';
@@ -318,7 +318,7 @@ class PsiphonService {
       _socksPort = port;
 
       onProgress?.call('Psiphon · VPN ($port)');
-      final xrayConfig = AetherService.buildXrayConfig(socksPort: port, blockQuic: true);
+      final xrayConfig = SocksXrayBuilder.buildXrayConfig(socksPort: port, blockQuic: true);
       debugPrint('PSIPHON_DIAG: socksPort=$port region=$lastRegion');
       debugPrint('PSIPHON_DIAG: proxy_outbound=socks://127.0.0.1:$port');
       debugPrint('PSIPHON_DIAG: config_head=${xrayConfig.substring(0, xrayConfig.length.clamp(0, 600))}');
