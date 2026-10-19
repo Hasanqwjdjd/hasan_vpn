@@ -4735,105 +4735,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// بخش ۳ — لمس طولانی روی سرور → منوی ویرایش/حذف و بقیه‌ی عملیات.
-  void _showServerActionsSheet(VpnServer server) {
-    debugPrint('[Home] long-press actions menu: ${server.displayName}');
-    final deletable = _customServers.any((s) => s.id == server.id);
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.surface(context),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        Widget item(IconData icon, String label, VoidCallback? onTap,
-            {Color? color}) {
-          return ListTile(
-            dense: true,
-            leading: Icon(icon, color: color ?? AppColors.accent, size: 20),
-            title: Text(label,
-                style: TextStyle(
-                    color: color ?? AppColors.fg(context), fontSize: 14)),
-            onTap: () {
-              Navigator.pop(ctx);
-              onTap?.call();
-            },
-          );
-        }
-
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border(context),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Text(server.flag,
-                        style: const TextStyle(fontSize: 18)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        server.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            color: AppColors.fg(context),
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 16),
-              item(Icons.speed, _t('پینگ / Ping', 'Ping'),
-                  () => _testOne(server)),
-              item(Icons.edit_outlined,
-                  _t('ویرایش / Rename', 'Rename'),
-                  () => _editServerName(server)),
-              if (server.isDeletable)
-                item(Icons.copy_all_outlined,
-                    _t('کپی / Copy', 'Copy'),
-                    () => _copyServerLink(server)),
-              if (server.isDeletable)
-                item(Icons.share_outlined,
-                    _t('اشتراک / Share', 'Share'),
-                    () => _shareServer(server)),
-              item(
-                  server.isPinned
-                      ? Icons.push_pin_outlined
-                      : Icons.push_pin,
-                  server.isPinned
-                      ? _t('برداشتن سنجاق / Unpin', 'Unpin')
-                      : _t('سنجاق / Pin', 'Pin'),
-                  () => _togglePin(server)),
-              item(Icons.widgets_outlined,
-                  _t('ویجت / Home widget', 'Home widget'),
-                  () => _pinServerToHome(server)),
-              if (deletable)
-                item(Icons.delete_outline,
-                    _t('حذف / Delete', 'Delete'),
-                    () => _deleteServer(server),
-                    color: AppColors.danger),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   Widget _buildServerTile(VpnServer server, {bool compact = false}) {
     final tileKey = _tileKeys.putIfAbsent(server.id, () => GlobalKey());
     // Live badge — از batch tester یا WARP scan progress
@@ -5066,8 +4967,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await SettingsService.setLastServer(server.id);
       },
       onDelete: server.isDeletable ? () => _deleteServer(server) : null,
-      // بخش ۳ — لمس طولانی روی سرور → منوی ویرایش/حذف (فاز بعدی حذف می‌شود)
-      onLongPress: () => _showServerActionsSheet(server),
+      // بخش ۲.۱ — منوی لمس طولانی حذف شد: لمس طولانی فقط برای درگِ
+      // جابجایی سرورها (ReorderableGridView) استفاده می‌شود.
       onPin: () => _togglePin(server),
       // کپی/اشتراک برای همه‌ی سرورهای کاربر (custom + سابسکریپشن)؛
       // فقط سرورهای داخلی محافظت‌شده (isDeletable=false) بدون این گزینه‌ها.

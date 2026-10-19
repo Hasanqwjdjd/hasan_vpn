@@ -21,7 +21,6 @@ class ServerTile extends StatelessWidget {
   final VoidCallback? onRescanWarp;
   /// متن زنده — مثلاً "Scanning · 3/5" در زمان اسکن فعال.
   final String? liveBadge;
-  final VoidCallback? onLongPress;
   /// حالت گرید دوستونی: آیکون‌ها و padding فشرده می‌شن تا همپوشانی نشه.
   final bool compact;
 
@@ -40,7 +39,6 @@ class ServerTile extends StatelessWidget {
     this.onHomeWidget,
     this.onRescanWarp,
     this.liveBadge,
-    this.onLongPress,
     this.compact = false,
   });
 
@@ -335,8 +333,9 @@ class ServerTile extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
+          // بخش ۲.۱ — onLongPress عمداً ثبت نمی‌شود تا لمس طولانی به
+          // LongPressDraggable گرید برسد و جابجایی سرور کار کند.
           onTap: onTap,
-          onLongPress: onLongPress,
           child: Padding(
             padding: EdgeInsets.fromLTRB(c ? 6 : 4, c ? 4 : 6, c ? 4 : 8,
                 c ? 4 : 6),
