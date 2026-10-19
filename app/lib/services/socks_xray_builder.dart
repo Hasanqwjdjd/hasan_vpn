@@ -36,6 +36,7 @@ class SocksXrayBuilder {
   static String buildXrayConfig({
     required int socksPort,
     bool blockQuic = true,
+    bool overXray = true,
   }) {
     // بخش ۴ — لاگ اجباری: بلاک UDP/443 (QUIC) برای مجبور کردن
     // Instagram/Telegram به افت‌باک TCP. بدون این، Psiphon وصل می‌شود
@@ -48,6 +49,14 @@ class SocksXrayBuilder {
     // اکنون مطابق NekoBox همه‌ی UDP (به‌جز 53) بلاک می‌شود.
     debugPrint('[Xray] Over Xray chain: TCP -> socks://127.0.0.1:$socksPort, '
         'UDP blocked except DNS(53)');
+    // بخش ۴.۱ — دو حالت مسیریابی:
+    //  overXray=true  (پیش‌فرض، مکانیزم NekoBox): TCP از داخل تونل،
+    //                 همه‌ی UDP به‌جز DNS(53) بلاک.
+    //  overXray=false (سازگاری): UDP/443 بلاک، بقیه UDP مستقیم.
+    if (!overXray) {
+      debugPrint('[Xray] Over Xray OFF — compatibility mode '
+          '(UDP direct except 443)');
+    }
     final rules = <Map<String, dynamic>>[
       <String, dynamic>{
         'type': 'field',
@@ -55,11 +64,25 @@ class SocksXrayBuilder {
         'network': 'udp',
         'outboundTag': 'dns-out',
       },
-      <String, dynamic>{
-        'type': 'field',
-        'network': 'udp',
-        'outboundTag': 'block',
-      },
+      if (overXray)
+        <String, dynamic>{
+          'type': 'field',
+          'network': 'udp',
+          'outboundTag': 'block',
+        }
+      else ...[
+        <String, dynamic>{
+          'type': 'field',
+          'port': '443',
+          'network': 'udp',
+          'outboundTag': 'block',
+        },
+        <String, dynamic>{
+          'type': 'field',
+          'network': 'udp',
+          'outboundTag': 'direct',
+        },
+      ],
       <String, dynamic>{
         'type': 'field',
         'ip': _privateRanges,

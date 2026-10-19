@@ -316,6 +316,19 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                 _textField('vpnDns6', 'DNS VPN (IPv6)', 'VPN DNS (IPv6)',
                     hint: '2606:4700:4700::1111'),
 
+                // ---- بخش ۴.۱ — Over Xray (مکانیزم NekoBox) ----
+                _sw('psiphonOverXray', 'سایفون Over Xray',
+                    'Psiphon over Xray',
+                    subFa:
+                        'TCP از داخل تونل به SOCKS سایفون، UDP همه بلاک به‌جز DNS',
+                    subEn:
+                        'TCP via tunnel to Psiphon SOCKS, UDP blocked except DNS'),
+                _sw('torOverXray', 'تور Over Xray', 'Tor over Xray',
+                    subFa:
+                        'TCP از داخل تونل به SOCKS تور، UDP همه بلاک به‌جز DNS',
+                    subEn:
+                        'TCP via tunnel to Tor SOCKS, UDP blocked except DNS'),
+
                 // ---- A2 Advanced ----
                 _section(_t('پیشرفته', 'Advanced'), icon: Icons.tune),
                 _numField('mtu', 'MTU', 'VPN MTU', min: 1280, max: 9000,

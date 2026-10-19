@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../models/server.dart';
 import 'socks_xray_builder.dart';
+import 'xray_settings.dart';
 import 'warp_masque_service.dart';
 import 'master_dns_service.dart';
 import 'psiphon_auto.dart';
@@ -318,7 +319,19 @@ class PsiphonService {
       _socksPort = port;
 
       onProgress?.call('Psiphon · VPN ($port)');
-      final xrayConfig = SocksXrayBuilder.buildXrayConfig(socksPort: port, blockQuic: true);
+      // بخش ۴.۱ — سوییچ Psiphon Over Xray از تنظیمات هسته.
+      bool overXray = true;
+      try {
+        final xs = await XraySettings.load();
+        overXray = xs['psiphonOverXray'] != false;
+      } catch (_) {}
+      debugPrint('[Psiphon] Over Xray = $overXray '
+          '(TCP via tunnel, UDP blocked except DNS)');
+      final xrayConfig = SocksXrayBuilder.buildXrayConfig(
+        socksPort: port,
+        blockQuic: true,
+        overXray: overXray,
+      );
       debugPrint('PSIPHON_DIAG: socksPort=$port region=$lastRegion');
       debugPrint('PSIPHON_DIAG: proxy_outbound=socks://127.0.0.1:$port');
       debugPrint('PSIPHON_DIAG: config_head=${xrayConfig.substring(0, xrayConfig.length.clamp(0, 600))}');

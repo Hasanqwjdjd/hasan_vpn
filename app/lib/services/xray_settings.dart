@@ -30,6 +30,12 @@ class XraySettings {
     'vpnDns': '1.1.1.1,8.8.8.8',
     'vpnDns6': '2606:4700:4700::1111,2001:4860:4860::8888',
 
+    // ---- بخش ۴.۱ — Over Xray (مکانیزم NekoBox) ----
+    // وقتی روشن است: ترافیک TCP از داخل تونل (Xray → SOCKS سایفون/تور)
+    // و همه‌ی UDP به‌جز DNS بلاک می‌شود.
+    'psiphonOverXray': true,
+    'torOverXray': true,
+
     // ---- Advanced (A2) ----
     'mtu': 1500,
     'sniffing': true,

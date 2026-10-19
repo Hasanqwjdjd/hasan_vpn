@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import 'xray_settings.dart';
 import '../models/server.dart';
 import 'tor_service.dart';
 import 'v2ray_engine.dart';
@@ -188,7 +189,15 @@ class TorSessionService {
     _routing = true;
     final id = _activeBridgeId;
     try {
-      final cfg = TorSessionService.buildTorXrayConfig(socksPort > 0 ? socksPort : 9050);
+      bool torOverXray = true;
+      try {
+        final xs = await XraySettings.load();
+        torOverXray = xs['torOverXray'] != false;
+      } catch (_) {}
+      final cfg = TorSessionService.buildTorXrayConfig(
+        socksPort > 0 ? socksPort : 9050,
+        overXray: torOverXray,
+      );
       final fakeServer = VpnServer(
         id: 'tor_fake_$id',
         name: 'Tor',
@@ -221,7 +230,7 @@ class TorSessionService {
 
   /// بخش ۵ — بیلدر مشترک کانفیگ Xray تور (هم tor_screen هم اینجا استفاده
   /// می‌کنند): DNS داخل تونل + queryStrategy=UseIPv4 + بلاک QUIC.
-  static String buildTorXrayConfig(int socksPort) {
+  static String buildTorXrayConfig(int socksPort, {bool overXray = true}) {
     // بخش ۵ — فیکس نشت DNS تور:
     //  ۱) DNS فقط داخل تونل حل می‌شود (DoH از مسیر tor-out)،
     //     queryStrategy=UseIPv4 (لاگ‌های قبلی نشت DNS به بیرون را نشان می‌داد).
@@ -231,6 +240,9 @@ class TorSessionService {
     //     می‌روند و Tor خودش ریموت resolve می‌کند (هیچ DNS لوکالی لازم نیست).
     debugPrint('[Tor] DNS resolved inside tunnel (DoH via Tor), queryStrategy=UseIPv4');
     debugPrint('[Xray] UDP 443 blocked to force TCP');
+    // بخش ۴.۱ — سوییچ Tor Over Xray (مکانیزم NekoBox).
+    debugPrint('[Tor] Over Xray = $overXray '
+        '(TCP via tunnel, UDP ${overXray ? "blocked except DNS" : "compat mode"})');
     final cfg = <String, dynamic>{
       'dns': <String, dynamic>{
         'servers': <dynamic>[
@@ -301,6 +313,37 @@ class TorSessionService {
             'port': '443',
             'network': 'udp',
             'outboundTag': 'block',
+          },
+          // بخش ۴.۱ — Over Xray: همه‌ی UDP بلاک به‌جز DNS؛
+          // حالت سازگاری: بقیه UDP مستقیم.
+          if (overXray)
+            <String, dynamic>{
+              'type': 'field',
+              'network': 'udp',
+              'outboundTag': 'block',
+            }
+          else
+            <String, dynamic>{
+              'type': 'field',
+              'network': 'udp',
+              'outboundTag': 'direct',
+            },
+          // رنج‌های خصوصی مستقیم (LAN)
+          <String, dynamic>{
+            'type': 'field',
+            'ip': <String>[
+              '10.0.0.0/8',
+              '172.16.0.0/12',
+              '192.168.0.0/16',
+              '127.0.0.0/8',
+            ],
+            'outboundTag': 'direct',
+          },
+          // catch-all TCP → تور (قانون صریح، نه تکیه بر اولین outbound)
+          <String, dynamic>{
+            'type': 'field',
+            'network': 'tcp',
+            'outboundTag': 'tor-out',
           },
         ],
       },
