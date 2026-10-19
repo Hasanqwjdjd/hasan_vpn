@@ -366,16 +366,13 @@ class SubscriptionService {
       }
     }
 
-    // بخش ۸ — چند کانفیگ کامل Xray JSON پشت‌سرهم (sub-generator workers:
+    // بخش ۱.۳ — چند کانفیگ کامل Xray JSON پشت‌سرهم (sub-generator workers:
     // ۲۱ آبجکت "{...}\n{...}") → هر آبجکت یک سرور.
     if (trimmed.startsWith('{')) {
       final multi = XrayJson.parseAll(trimmed, idPrefix: 'sub');
       if (multi.isNotEmpty) {
         debugPrint('[Subscription] content kind: multi xray-json '
-            '(${multi.length} configs) — marking not-deletable');
-        for (final s in multi) {
-          s.isDeletable = false;
-        }
+            '(${multi.length} configs) — user-owned (copyable)');
         return multi;
       }
     }
@@ -416,10 +413,7 @@ class SubscriptionService {
           .where((l) => !l.toLowerCase().startsWith('ssd://'))
           .toList();
       allServers.addAll(_build(rest, subscriptionId));
-      // اعمال override + عدم قابلیت حذف
-      for (final s in allServers) {
-        s.isDeletable = false;
-      }
+      // بخش ۱.۳ — سرورهای سابسکریپشن سرورِ کاربر هستند (کپی/ویرایش/حذف).
       return allServers;
     }
 
@@ -438,7 +432,7 @@ class SubscriptionService {
       if (!seen.add(id)) continue;
       final server = LinkParser.parse(effectiveLink, id: id);
       if (server != null) {
-        server.isDeletable = false;
+        // بخش ۱.۳ — سرور کاربر: قابل کپی/ویرایش/حذف.
         servers.add(server);
       }
     }
@@ -486,7 +480,7 @@ class SubscriptionService {
         final id = LinkParser.stableId('xray', jsonString);
         final server = XrayJson.parse(jsonString, id: id);
         if (server != null) {
-          server.isDeletable = false;
+          // بخش ۱.۳ — سرور کاربر: قابل کپی/ویرایش/حذف.
           servers.add(server);
         }
       }

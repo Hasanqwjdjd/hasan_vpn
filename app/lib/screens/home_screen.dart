@@ -12,6 +12,7 @@ import '../models/server.dart';
 import '../models/subscription.dart';
 import '../services/announcement_service.dart';
 import '../services/app_colors.dart';
+import '../services/server_overrides.dart';
 import '../services/server_tester.dart';
 import '../services/tor_session_service.dart';
 import '../services/connectivity_watcher.dart';
@@ -105,6 +106,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<VpnServer> _customServers = [];
   // tag سرورهای custom به سابسکریپشن‌ها: serverId → subscriptionId
   Map<String, String> _customSubTags = <String, String>{};
+  // بخش ۱.۳ — ویرایش‌های کامل سرورها (نام/SNI/TLS/DNS/backup) بر اساس id
+  Map<String, Map<String, dynamic>> _serverFullOverrides =
+      <String, Map<String, dynamic>>{};
   Set<String> _deletedIds = <String>{};
   Set<String> _pinnedIds = <String>{};
   bool _showAllTab = true;
@@ -479,6 +483,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         server.nameOverride = VpnServer.sanitizeServerName(ov);
       }
     }
+    // بخش ۱.۳ — ویرایش کامل (TLS/SNI/DNS/backup) + کش برای rebuild‌های بعدی.
+    _serverFullOverrides = await ServerOverrides.load();
+    for (final server in allServers) {
+      final ov = _serverFullOverrides[server.id];
+      if (ov != null) ServerOverrides.apply(server, ov);
+    }
   }
 
   Future<void> _editServerName(VpnServer server) async {
@@ -797,6 +807,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       // آپدیت sniOrHost (nullable final است؛ مستقیم ست می‌کنیم)
       updated.sniOrHost = newSni.isEmpty ? null : newSni;
+
+      // بخش ۱.۳ — ذخیره‌ی ویرایش کامل برای *هر دو* دسته سرور (custom و
+      // subscription/builtin) — قبلاً فقط نام ذخیره می‌شد و TLS/DNS بین
+      // ری‌استارت‌ها از دست می‌رفت.
+      final ovMap = ServerOverrides.of(updated);
+      _serverFullOverrides[server.id] = ovMap;
+      // ignore: unawaited_futures
+      ServerOverrides.save(server.id, ovMap);
 
       // ذخیره در custom servers یا name override
       final idx = _customServers.indexWhere((s) => s.id == server.id);
@@ -1531,6 +1549,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ..._customServers.where((server) => !_deletedIds.contains(server.id)),
       ...widget.extraServers.where((server) => !_deletedIds.contains(server.id)),
     ];
+
+    // بخش ۱.۳ — ویرایش‌های کامل (نام/SNI/TLS/DNS/backup) روی هر بازسازی
+    // دوباره اعمال می‌شوند تا بین ری‌استارت‌ها و refresh سابسکریپشن‌ها نپرند.
+    if (_serverFullOverrides.isNotEmpty) {
+      for (var i = 0; i < allServers.length; i++) {
+        final ov = _serverFullOverrides[allServers[i].id];
+        if (ov != null) allServers[i] = ServerOverrides.apply(allServers[i], ov);
+      }
+    }
 
     for (final server in allServers) {
       server.isPinned = _pinnedIds.contains(server.id);
@@ -2557,6 +2584,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _deletedIds.add(server.id);
     _customServers.removeWhere((item) => item.id == server.id);
     _customSubTags.remove(server.id);
+    // بخش ۱.۳ — ویرایش‌های ذخیره‌شده‌ی سرور حذف‌شده هم پاک شوند.
+    _serverFullOverrides.remove(server.id);
+    // ignore: unawaited_futures
+    ServerOverrides.remove(server.id);
     _saveCustomSubTags();
     if (_selected?.id == server.id) _selected = null;
     // ignore: unawaited_futures
@@ -3269,11 +3300,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _copyAll() async {
-    // فقط سرورهایی که خود کاربر اضافه کرده؛ لینک سرورهای اشتراک‌های پیش‌فرض
-    // (رایگان برنامه) هرگز کپی نمی‌شود.
-    final customIds = _customServers.map((s) => s.id).toSet();
+    // بخش ۱.۳ — همه‌ی سرورهای کاربر (custom + سابسکریپشن) کپی می‌شوند؛
+    // فقط سرورهای داخلی محافظت‌شده (isDeletable=false) حذف می‌شوند.
     final links = _servers
-        .where((server) => customIds.contains(server.id))
+        .where((server) => server.isDeletable)
         .map((server) => server.shareLink)
         .where((link) => link.trim().isNotEmpty)
         .join('\n');
@@ -5035,14 +5065,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         setState(() => _selected = server);
         await SettingsService.setLastServer(server.id);
       },
-      onDelete: _customServers.any((s) => s.id == server.id)
-          ? () => _deleteServer(server)
-          : null,
-      // بخش ۳ — لمس طولانی روی سرور → منوی ویرایش/حذف
+      onDelete: server.isDeletable ? () => _deleteServer(server) : null,
+      // بخش ۳ — لمس طولانی روی سرور → منوی ویرایش/حذف (فاز بعدی حذف می‌شود)
       onLongPress: () => _showServerActionsSheet(server),
       onPin: () => _togglePin(server),
-      // کپی/اشتراک فقط برای سرورهای خود کاربر (isDeletable=true):
-      // built-in و subscription این گزینه‌ها رو ندارن.
+      // کپی/اشتراک برای همه‌ی سرورهای کاربر (custom + سابسکریپشن)؛
+      // فقط سرورهای داخلی محافظت‌شده (isDeletable=false) بدون این گزینه‌ها.
       onCopy: server.isDeletable ? () => _copyServerLink(server) : null,
       onShare: server.isDeletable ? () => _shareServer(server) : null,
       onEdit: () => _editServerName(server),
@@ -5111,8 +5139,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final copyable = <VpnServer>[];
     var blockedCount = 0;
     for (final s in selected) {
-      final isCustom = _customServers.any((c) => c.id == s.id);
-      if (isCustom || s.isPsiphon) {
+      // بخش ۱.۳ — معیار مالکیت: isDeletable (سرور کاربر = قابل کپی).
+      if (s.isDeletable || s.isPsiphon) {
         copyable.add(s);
       } else {
         blockedCount++;
