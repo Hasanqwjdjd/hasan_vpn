@@ -58,7 +58,7 @@ class SpeedTestService {
     void Function(int bytes, double mbps)? onProgress,
   }) async {
     // FIX: چند تا پورت رو امتحان کن — چون ممکنه Tor فعال باشه (9050)
-    // یا Xray (10808) یا Aether (پورت داینامیک). اولین پورت زنده رو بگیر.
+    // یا Xray (10808). اولین پورت زنده رو بگیر.
     final candidates = <int>[
       if (socksPort != null && socksPort > 0) socksPort,
       V2RayEngine.localSocksPort,

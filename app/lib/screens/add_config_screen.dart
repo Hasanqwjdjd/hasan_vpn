@@ -135,47 +135,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _tunnelListenPortController =
       TextEditingController(text: '0');
 
-  // Aether UI جدید
-  final TextEditingController _aetherOuterController = TextEditingController();
-  final TextEditingController _aetherInnerController = TextEditingController();
-  final TextEditingController _aetherListenPortController =
-      TextEditingController(text: '10819');
-  String _aetherTargetStrategy = 'AsIs';
-  bool _aetherAdvancedMore = false;
-
-  // Zero Trust (Cloudflare Teams) — فقط وقتی تیم اسم دارد فعال می‌شود
-  final TextEditingController _aetherTeamController = TextEditingController();
-  final TextEditingController _aetherAccessEmailController =
-      TextEditingController();
-  final TextEditingController _aetherAccessIdController =
-      TextEditingController();
-  final TextEditingController _aetherAccessSecretController =
-      TextEditingController();
-  final TextEditingController _aetherAccessTokenController =
-      TextEditingController();
-  bool _aetherGateway = false;
-  String _aetherZtAuthMode = 'email'; // email | service | token
-
-  // Aether-native Psiphon chain (جدا از PsiphonService.kt)
-  String _aetherPsiphonMode = 'off'; // off | inside | reverse | only
-  final TextEditingController _aetherPsiphonRegionController =
-      TextEditingController();
-  String _aetherPsiphonFront = ''; // '' | cdn | direct
-
-  // Aether-native Tor chain (جدا از TorService.kt)
-  String _aetherTorMode = 'off'; // off | inside | reverse | only
-  final TextEditingController _aetherTorBridgeController =
-      TextEditingController();
-  bool _aetherTorRelays = false;
-
-  // Routing
-  final TextEditingController _aetherRouteDirectController =
-      TextEditingController();
-  final TextEditingController _aetherRouteBlockController =
-      TextEditingController();
-  bool _aetherAdvancedChain = false;
-
-  final TextEditingController _aetherDnsController = TextEditingController();
   final TextEditingController _psiphonSponsorController = TextEditingController();
   final TextEditingController _psiphonChannelController = TextEditingController();
   final TextEditingController _psiphonConfigController = TextEditingController();
@@ -578,7 +537,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     _showMsg(_t('سرور Psiphon اضافه شد', 'Psiphon server added'));
   }
   /// می‌کند، بدون این‌که VPN واقعی را بالا بیاورد یا وصل‌شده نگه دارد.  /// دریافت کلید WARP جدید: هویت WARP فعلی را پاک می‌کند تا اتصال بعدی یک
-  /// حساب رایگان تازه بسازد. فقط وقتی Aether وصل نیست کار می‌کند.  Widget _siphonLabel(String text) {
+  Widget _siphonLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(

@@ -4,7 +4,7 @@ import '../models/server.dart';
 import 'xray_json.dart';
 import 'warp_share_codec.dart';
 
-/// تجزیه‌ی لینک‌های اشتراک‌گذاری (vless / vmess / trojan / ss / hysteria2 / custom / aether / xrayjson)
+/// تجزیه‌ی لینک‌های اشتراک‌گذاری (vless / vmess / trojan / ss / hysteria2 / custom / xrayjson)
 /// و همچنین کانفیگ خام JSON هسته Xray به [VpnServer].
 class LinkParser {
   LinkParser._();
@@ -612,7 +612,6 @@ class LinkParser {
     );
   }
 
-  // ----------------------------------------------------------------- aether
   // ------------------------------------------------------------------ custom
 
   static VpnServer? _parseCustom(String link, String id) {

@@ -3,7 +3,7 @@
 // Xray config generator for the "app -> TUN -> Xray -> socks -> Psiphon
 // (or any local SOCKS) -> internet" chain.
 //
-// Extracted from AetherService when Aether was removed. PsiphonService
+// SOCKS -> Xray config builder used by PsiphonService
 // is the only remaining consumer.
 //
 // Critical constraints of Psiphon LocalSocksProxyPort:

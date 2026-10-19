@@ -34,7 +34,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
   String _t(String fa, String en) => _isFa ? fa : en;
 
   /// QR معتبر = حداقل یک لینک پشتیبانی‌شده (vless / vmess / trojan / ss /
-  /// hysteria2 / aether) داخل متن داشته باشد.
+  /// hysteria2) داخل متن داشته باشد.
   bool _looksValid(String raw) {
     final mode = widget.mode;
     if (mode == 'any') return raw.trim().isNotEmpty;
@@ -138,8 +138,8 @@ class _QrScanScreenState extends State<QrScanScreen> {
             right: 24,
             child: Text(
               _t(
-                'کد QR کانفیگ (VLESS / Trojan / VMess / Aether و ...) را داخل کادر بگیرید',
-                'Point the frame at a config QR code (VLESS / Trojan / VMess / Aether ...)',
+                'کد QR کانفیگ (VLESS / Trojan / VMess و ...) را داخل کادر بگیرید',
+                'Point the frame at a config QR code (VLESS / Trojan / VMess ...)',
               ),
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white70, fontSize: 13),

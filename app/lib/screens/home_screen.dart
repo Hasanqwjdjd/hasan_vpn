@@ -1837,7 +1837,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final candidates = _servers
         .where((s) =>
             s.id != cur.id &&
-            s.protocol != VpnProtocol.aether &&
             s.protocol != VpnProtocol.psiphon &&
             s.protocol != VpnProtocol.ssh &&
             s.protocol != VpnProtocol.tunnel &&
@@ -3022,10 +3021,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // immediately, instead of waiting for the timeout.
       final which = _connectingServer;
       if (which != null) {
-        if (which.isAether) {
-          // ignore: unawaited_futures
-          AetherService.disconnect();
-        } else if (which.isPsiphon) {
+        if (which.isPsiphon) {
           // ignore: unawaited_futures
           PsiphonService.stop(reason: 'user-cancel');
         }
@@ -3122,26 +3118,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       final bool connected;
       final String? error;
-      if (selected.isAether) {
-        connected = await AetherService.connect(
-          selected,
-          isCancelled: () => _cancelConnect,
-          onProgress: (message) {
-            if (!mounted || _cancelConnect) return;
-            final flat = message.replaceAll('\n', ' · ');
-            // Extract "Aether 1/3 · MASQUE/H2 · balanced" shape
-            final m = RegExp(r'Aether\s+(\d+/\d+)\s*·\s*([^·\n]+)').firstMatch(flat);
-            setState(() {
-              _status = flat;
-              if (m != null) {
-                _connectAttemptLabel = m.group(1);
-                _connectAttemptTarget = m.group(2)?.trim();
-              }
-            });
-          },
-        );
-        error = AetherService.lastError;
-      } else if (selected.isPsiphon) {
+      if (selected.isPsiphon) {
         if (mounted) {
           setState(() => _status =
               _t('Psiphon · آماده‌سازی...', 'Psiphon · preparing...'));

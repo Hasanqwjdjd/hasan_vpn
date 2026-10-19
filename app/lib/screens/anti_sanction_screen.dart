@@ -229,10 +229,10 @@ class _AntiSanctionScreenState extends State<AntiSanctionScreen> {
                 Text(
                   _t(
                     'توجه: این قابلیت‌ها فقط روی Xray اثر می‌گذارند '
-                    '(VLESS/VMess/Trojan/Hysteria2). روی Tor، Aether و '
+                    '(VLESS/VMess/Trojan/Hysteria2). روی Tor و '
                     'Psiphon تأثیری ندارند.',
                     'Note: these only affect Xray (VLESS/VMess/Trojan/'
-                    'Hysteria2). They have no effect on Tor, Aether, or '
+                    'Hysteria2). They have no effect on Tor, or '
                     'Psiphon.',
                   ),
                   textAlign: TextAlign.center,

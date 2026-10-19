@@ -167,8 +167,6 @@ class QualityInsights {
         return 'Psiphon';
       case VpnProtocol.tunnel:
         return 'Tunnel';
-      case VpnProtocol.aether:
-        return 'Aether';
       case VpnProtocol.xrayJson:
         return 'Xray JSON';
       case VpnProtocol.custom:
