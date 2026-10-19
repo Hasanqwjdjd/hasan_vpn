@@ -173,7 +173,7 @@ class V2RayEngine {
 
   static bool get isConnected => _connected;
 
-  /// FIX: آیا اتصال فعلی مربوط به یه session ابزاریه (Tor/Aether/Psiphon
+  /// FIX: آیا اتصال فعلی مربوط به یه session ابزاریه (Tor/Psiphon
   /// که Xray فقط برای routing استفاده می‌شه) نه یه سرور کاربر؟
   static bool get isUtilitySession {
     final c = _current;
@@ -183,7 +183,6 @@ class V2RayEngine {
         id.startsWith('siphon_') ||
         id.startsWith('oblivion_') ||
         c.name == 'Tor' ||
-        c.name == 'Aether';
   }
   static VpnServer? get current => _current;
 
@@ -209,7 +208,7 @@ class V2RayEngine {
 
   /// Query native side for whether XrayVPNService is actually running.
   /// Keeps `_connected` in sync after process death / UI rebuild.
-  /// Rate-limited to once per 2s. Skips utility sessions (Tor/Aether/...).
+  /// Rate-limited to once per 2s. Skips utility sessions (Tor/...).
   static Future<void> refreshOsConnectionState() async {
     final now = DateTime.now();
     if (_lastOsRefresh != null &&
@@ -1275,7 +1274,7 @@ class V2RayEngine {
           blockedAppsSupported = false;
           if (requireBlockedApps) {
             lastError = 'This flutter_vless version does not support '
-                'blockedApps, which Aether needs to avoid a routing loop.';
+                'blockedApps to avoid a routing loop.';
             return false;
           }
           await _engine.startVless(

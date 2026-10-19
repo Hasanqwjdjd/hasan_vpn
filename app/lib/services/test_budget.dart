@@ -70,8 +70,6 @@ class TestBudget {
   /// TCP pre-check pool (can be higher; cheap)
   int get tcpConcurrency => (realConcurrency * 2).clamp(2, 128).toInt();
 
-  /// Aether native process — keep low
-  int get aetherConcurrency => 2;
 
   int get worstCaseSec => timeoutSec * samples;
 

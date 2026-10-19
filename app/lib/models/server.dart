@@ -129,7 +129,6 @@ enum VpnProtocol {
   vless,
   vmess,
   hysteria2,
-  aether,
   shadowsocks,
   custom,
   /// کانفیگ کامل JSON هسته Xray (مثلاً Patterniha و مشابه)
@@ -252,8 +251,6 @@ class VpnServer {
     this.status = ServerStatus.idle,
   }) : name = sanitizeServerName(name);
 
-  /// true اگر این سرور از نوع Aether (سیستم دور زدن فیلترینگ با اسکن خودکار) باشد.
-  bool get isAether => protocol == VpnProtocol.aether;
   bool get isPsiphon => protocol == VpnProtocol.psiphon;
 
   /// پروتکل‌هایی که روی UDP/QUIC کار می‌کنند؛ TCP-connect روی آن‌ها بی‌معناست.

@@ -34,7 +34,6 @@ object NotificationHelper {
     /// اینا نباید تغییر کنن چون به startForeground گره خوردن.
     const val ID_TELEMETRY = 4240
     const val ID_TOR = 4241
-    const val ID_AETHER = 4242
     const val ID_TUNNEL = 4243
     const val ID_WIDGET = 4245
     const val ID_XRAY = 4244  // برای XrayVPNService (forked plugin)
@@ -195,7 +194,7 @@ object NotificationHelper {
             // share; cancel it so nothing is left after the activity goes.
             for (id in intArrayOf(
                 1,
-                ID_TELEMETRY, ID_TOR, ID_AETHER, ID_TUNNEL, ID_XRAY, ID_WIDGET,
+                ID_TELEMETRY, ID_TOR, ID_TUNNEL, ID_XRAY, ID_WIDGET,
             )) {
                 manager.cancel(id)
             }

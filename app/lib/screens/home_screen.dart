@@ -10,8 +10,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import '../models/subscription.dart';
-import '../models/aether_profile.dart';
-import '../services/aether_service.dart';
 import '../services/announcement_service.dart';
 import '../services/app_colors.dart';
 import '../services/server_tester.dart';
@@ -486,11 +484,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _editServerName(VpnServer server) async {
-    // Aether / Oblivion: فرم کامل تنظیمات
-    if (server.isAether) {
-      await _editAetherServer(server);
-      return;
-    }
     await _editServerFull(server);
   }
 
@@ -840,251 +833,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       sniPoolCtrl.dispose();
     }
   }
-
-  Future<void> _editAetherServer(VpnServer server) async {
-    final profile = AetherProfile.fromLink(server.shareLink);
-    var protocol = profile.protocol;
-    var scan = profile.scan;
-    var noize = profile.noize;
-    var ip = profile.ip;
-    final nameCtrl = TextEditingController(text: server.displayName);
-    final peerCtrl = TextEditingController(text: profile.peer);
-    try {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setLocal) {
-            return AlertDialog(
-              backgroundColor: AppColors.elevated(ctx),
-              title: Text('AETHER',
-                  style: TextStyle(color: AppColors.fg(ctx))),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: nameCtrl,
-                      style: TextStyle(color: AppColors.fg(ctx)),
-                      decoration: InputDecoration(
-                        labelText: _t('ملاحظات / نام', 'Remark / name'),
-                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: protocol,
-                      dropdownColor: AppColors.elevated(ctx),
-                      decoration: InputDecoration(
-                        labelText: _t('پروتکل', 'Protocol'),
-                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
-                      ),
-                      items: AetherProfile.protocols
-                          .map((p) => DropdownMenuItem(
-                                value: p,
-                                child: Text(p,
-                                    style: TextStyle(
-                                        color: AppColors.fg(ctx))),
-                              ))
-                          .toList(),
-                      onChanged: (v) {
-                        if (v != null) setLocal(() => protocol = v);
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: scan,
-                      dropdownColor: AppColors.elevated(ctx),
-                      decoration: InputDecoration(
-                        labelText: _t('حالت اسکن', 'Scan mode'),
-                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
-                      ),
-                      items: AetherProfile.scans
-                          .map((p) => DropdownMenuItem(
-                                value: p,
-                                child: Text(p,
-                                    style: TextStyle(
-                                        color: AppColors.fg(ctx))),
-                              ))
-                          .toList(),
-                      onChanged: (v) {
-                        if (v != null) setLocal(() => scan = v);
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: noize,
-                      dropdownColor: AppColors.elevated(ctx),
-                      decoration: InputDecoration(
-                        labelText: _t('مبهم‌سازی', 'Noize'),
-                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
-                      ),
-                      items: AetherProfile.noizes
-                          .map((p) => DropdownMenuItem(
-                                value: p,
-                                child: Text(p,
-                                    style: TextStyle(
-                                        color: AppColors.fg(ctx))),
-                              ))
-                          .toList(),
-                      onChanged: (v) {
-                        if (v != null) setLocal(() => noize = v);
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: ip,
-                      dropdownColor: AppColors.elevated(ctx),
-                      decoration: InputDecoration(
-                        labelText: _t('نسخه IP', 'IP version'),
-                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
-                      ),
-                      items: AetherProfile.ips
-                          .map((p) => DropdownMenuItem(
-                                value: p,
-                                child: Text(p,
-                                    style: TextStyle(
-                                        color: AppColors.fg(ctx))),
-                              ))
-                          .toList(),
-                      onChanged: (v) {
-                        if (v != null) setLocal(() => ip = v);
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: peerCtrl,
-                      style: TextStyle(color: AppColors.fg(ctx)),
-                      decoration: InputDecoration(
-                        labelText:
-                            _t('نشانی (اختیاری ip:port)', 'Peer (optional)'),
-                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () async {
-                    final r = await AetherService.testBinary();
-                    if (!ctx.mounted) return;
-                    final buf = StringBuffer();
-                    buf.writeln(r['ok'] == true ? 'OK' : 'FAIL');
-                    if (r['path'] != null) buf.writeln('path: ${r['path']}');
-                    if (r['cmd'] != null) buf.writeln('cmd: ${r['cmd']}');
-                    if (r['exitCode'] != null) {
-                      buf.writeln('exit: ${r['exitCode']}');
-                    }
-                    if (r['elf'] != null) buf.writeln('elf: ${r['elf']}');
-                    if (r['stdout'] != null &&
-                        r['stdout'].toString().isNotEmpty) {
-                      buf.writeln('--- stdout ---');
-                      buf.writeln(r['stdout']);
-                    }
-                    if (r['stderr'] != null &&
-                        r['stderr'].toString().isNotEmpty) {
-                      buf.writeln('--- stderr ---');
-                      buf.writeln(r['stderr']);
-                    }
-                    if (r['error'] != null) buf.writeln('error: ${r['error']}');
-                    await showDialog<void>(
-                      context: ctx,
-                      builder: (c2) => AlertDialog(
-                        backgroundColor: AppColors.elevated(c2),
-                        title: Text(
-                          _t('تست باینری Aether', 'Aether binary test'),
-                          style: TextStyle(color: AppColors.fg(c2)),
-                        ),
-                        content: SingleChildScrollView(
-                          child: SelectableText(
-                            buf.toString(),
-                            style: TextStyle(
-                              color: AppColors.fg(c2),
-                              fontFamily: 'monospace',
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(c2),
-                            child: Text('OK',
-                                style: const TextStyle(
-                                    color: AppColors.accent)),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  child: Text(_t('تست باینری', 'Test binary'),
-                      style: TextStyle(color: AppColors.muted(ctx))),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: Text(_t('لغو', 'Cancel'),
-                      style: TextStyle(color: AppColors.muted(ctx))),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: Text(_t('ذخیره', 'Save'),
-                      style: const TextStyle(color: AppColors.accent)),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-    if (ok != true || !mounted) return;
-    final updated = AetherProfile(
-      protocol: protocol,
-      scan: scan,
-      noize: noize,
-      ip: ip,
-      dns: profile.dns,
-      peer: peerCtrl.text.trim(),
-      upstream: profile.upstream,
-      quickReconnect: profile.quickReconnect,
-      blockQuic: profile.blockQuic,
-      perf: profile.perf,
-    );
-    final newLink = updated.toLink();
-    final newName = nameCtrl.text.trim();
-    final peerHost = updated.peer.isNotEmpty
-        ? updated.peer.split(':').first
-        : server.host;
-    final next = server.copyWith(
-      name: newName.isNotEmpty ? newName : null,
-      shareLink: newLink,
-      host: peerHost,
-      nameOverride: newName.isNotEmpty
-          ? VpnServer.sanitizeServerName(newName)
-          : null,
-    );
-    final idx = _customServers.indexWhere((s) => s.id == server.id);
-    if (idx >= 0) {
-      _customServers[idx] = next;
-      await _saveCustomServers();
-    } else if (newName.isNotEmpty) {
-      await SettingsService.setServerNameOverride(server.id, newName);
-    }
-    if (!mounted) return;
-    setState(() {
-      final si = _servers.indexWhere((s) => s.id == server.id);
-      if (si >= 0) _servers[si] = next;
-      if (_selected?.id == server.id) _selected = next;
-      if (_active?.id == server.id) _active = next;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_t('تنظیمات Aether ذخیره شد', 'Aether saved'))),
-    );
-    } finally {
-      nameCtrl.dispose();
-      peerCtrl.dispose();
-    }
-  }
-
   // ----------------------------------------------------- last server
 
   Future<void> _loadLastServer() async {
@@ -1522,7 +1270,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _syncRealConnectionState() async {
     if (!mounted || _connecting) return;
     try {
-      // Utility sessions (Tor / Aether / Psiphon / SSH / Tunnel / MasterDNS /
+      // Utility sessions (Tor / Psiphon / SSH / Tunnel / MasterDNS /
       // WarpMasque) each have their own liveness signal. V2Ray's flag alone
       // says nothing about them, so if ANY of them is routing we must leave
       // the UI state alone — otherwise returning from another app wipes the
@@ -1533,7 +1281,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           SshSessionService.instance.anyRouting ||
           MasterDnsSessionService.instance.anyRouting ||
           WarpMasqueSessionService.instance.anyRouting ||
-          AetherService.isConnected ||
           PsiphonService.isConnected ||
           V2RayEngine.isUtilitySession;
       if (anyUtility) {
@@ -2075,10 +1822,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // Auto-switch: on repeated low quality, try a better server.
     // Only for standard VLESS/VMess/Trojan servers — utility sessions
-    // (Aether, Psiphon, Tor, etc.) do not have a "next best" to hop to.
+    // (Psiphon, Tor, etc.) do not have a "next best" to hop to.
     final cur = _active;
     if (cur == null) return;
-    if (cur.isAether || cur.isPsiphon) return;
+    if (cur.isPsiphon) return;
     if (cur.protocol == VpnProtocol.ssh ||
         cur.protocol == VpnProtocol.tunnel ||
         cur.protocol == VpnProtocol.warpMasque ||
@@ -2645,12 +2392,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _testAll() async {
     if (_testing || _servers.isEmpty) return;
-    final targets = _servers.where((s) => !s.isAether).toList();
+    final targets = List<VpnServer>.from(_servers);
     if (targets.isEmpty) {
       _showMsg(_t('سروری برای تست نیست', 'Nothing to test'));
       return;
     }
-    if (_connected && _active?.isAether != true) {
+    if (_connected) {
       _showMsg(_t(
         'الان وصل هستی؛ پینگ‌ها از داخل تونل فعلی اندازه‌گیری می‌شوند.',
         'You are connected; pings are measured through the current tunnel.',
@@ -2724,18 +2471,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _testOne(VpnServer server) async {
     if (server.status == ServerStatus.testing) return;
-    if (server.isAether) {
-      if (_connected && _active?.id == server.id) {
-        await _measureLive(force: true);
-        _showMsg(_livePing != null
-            ? _t('پینگ زنده: $_livePing ms', 'Live ping: $_livePing ms')
-            : _t('پاسخی نیامد', 'No response'));
-      } else {
-        _showMsg(_t('Aether آدرس ثابت ندارد؛ اول وصل شو',
-            'Aether has no fixed address; connect first'));
-      }
-      return;
-    }
 
     setState(() => server.status = ServerStatus.testing);
     final session = TestSession();
@@ -2871,7 +2606,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _deleteInvalid() {
     final toDelete = _servers
         .where((s) =>
-            !s.isAether && s.ping == null && s.status == ServerStatus.offline)
+            s.ping == null && s.status == ServerStatus.offline)
         .toList();
     if (toDelete.isEmpty) {
       _showMsg(_t('سرور آفلاینی نیست', 'No offline servers'));
@@ -2897,7 +2632,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// این تضمین می‌کنه که هیچ‌وقت دو تونل همزمان فعال نباشن —
   /// مثلاً کاربر وسط Tor هست، روی یه vless می‌زنه: Tor باید بمیره.
   /// Tear down every other session before starting a new one so no two
-  /// tunnels are ever active at once (Tor -> VLESS -> Aether, etc.).
+  /// tunnels are ever active at once (Tor -> VLESS -> Psiphon, etc.).
   ///
   /// No timeout wrapper here. `Future.timeout()` does NOT cancel the
   /// underlying future in Dart — it only makes the caller stop waiting.
@@ -2941,9 +2676,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } catch (_) {}
     try {
-      await AetherService.disconnect();
-    } catch (_) {}
-    try {
       await PsiphonService.stop();
     } catch (_) {}
     try {
@@ -2961,9 +2693,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _disconnectAll() async {
-    try {
-      await AetherService.disconnect();
-    } catch (_) {}
     try {
       await PsiphonService.stop();
     } catch (_) {}
@@ -3021,7 +2750,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _polling = true;
     try {
       final active = _active;
-      // Utility sessions (Aether / Psiphon / Tor / SSH / Tunnel) do not
+      // Utility sessions (Psiphon / Tor / SSH / Tunnel) do not
       // have the same V2Ray "is alive" semantics, so skip the dead-strike
       // logic — but still take a quality sample so the history screen and
       // the notification badge are not empty while they run.
@@ -3030,7 +2759,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           SshSessionService.instance.anyRouting ||
           MasterDnsSessionService.instance.anyRouting ||
           WarpMasqueSessionService.instance.anyRouting ||
-          AetherService.isConnected ||
           PsiphonService.isConnected ||
           V2RayEngine.isUtilitySession) {
         _pollTick++;
@@ -3042,9 +2770,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return;
       }
       var alive = V2RayEngine.isConnected;
-      if (alive && active?.isAether == true) {
-        alive = await AetherService.syncStatus();
-      }
       // FIX2: before declaring the tunnel dead, verify with a real probe.
       // flutter_vless can transiently report 'idle'/'disconnecting' while
       // the tunnel is actually working. A real SOCKS probe avoids
@@ -3358,7 +3083,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _cancelConnect = false;
 
     // Show immediate feedback BEFORE tearing down the previous session —
-    // the teardown can take seconds (Tor/Aether/Psiphon), and until now
+    // the teardown can take seconds (Tor/Psiphon), and until now
     // that delay landed before this setState, so a press looked like
     // nothing had happened and users tapped again.
     if (mounted) {
@@ -3372,7 +3097,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     // FIX: قبل از اتصال جدید، *همه‌ی* session های در حال اجرا رو
-    // disconnect کن (Tor، Tunnel، SSH، Aether، Psiphon، Xray).
+    // disconnect کن (Tor، Tunnel، SSH، Psiphon، Xray).
     // هرگز نباید دو تونل همزمان فعال باشن.
     if (mounted) {
       setState(() => _status =
@@ -3429,7 +3154,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             final flat = message.replaceAll('\n', ' · ');
             // Shapes:
             //   "Psiphon · connecting (baseline·cdn) 1/45"
-            //   "Psiphon · connecting (aether·fronted-meek)"
+            //   "Psiphon · connecting (baseline·cdn) 1/45"
             final m = RegExp(r'\(([^)]+)\)\s*(\d+/\d+)?').firstMatch(flat);
             setState(() {
               _status = flat;
@@ -3492,7 +3217,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // Logging moved OUTSIDE setState: an async call inside setState
       // can be silently dropped if it throws, and Flutter prefers
       // setState to be a pure synchronous state update. Logging a
-      // Psiphon/Aether success here makes sure every connection type
+      // Psiphon success here makes sure every connection type
       // shows up in the history, not just VLESS/VMess.
       final loggedServer = selected;
       if (connected && loggedServer != null) {
@@ -6131,7 +5856,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             heroTag: 'connect_fab',
             // While connecting, keep the button tappable so the user can
             // cancel immediately. _toggleConnection sets _cancelConnect and
-            // actively stops the native Aether/Psiphon process.
+            // actively stops the native Psiphon process.
             onPressed: _toggleConnection,
             backgroundColor: _connecting
                 ? AppColors.danger.withValues(alpha: 0.85)

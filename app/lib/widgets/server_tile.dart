@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../models/aether_profile.dart';
 import '../models/server.dart';
 import '../services/app_colors.dart';
 import '../services/psiphon_service.dart';
@@ -55,23 +54,7 @@ class ServerTile extends StatelessWidget {
         return r.isEmpty ? 'PSIPHON · Auto' : 'PSIPHON · Auto · $r';
       }
       return 'PSIPHON · Manual';
-    }
-    if (server.isAether) {
-      final summary = AetherProfile.fromLink(server.shareLink).summary;
-      final id = server.id;
-      final n = server.name.toLowerCase();
-      if (id.startsWith('oblivion_') || n.contains('oblivion')) {
-        return 'OBLIVION · $summary';
-      }
-      if (id.startsWith('siphon_') || n.contains('siphon')) {
-        return 'SIPHON · $summary';
-      }
-      if (id.startsWith('tor_') || n.startsWith('tor ') || n.startsWith('tor·') || n.startsWith('tor ·')) {
-        return 'TOR · $summary';
-      }
-      return 'AETHER · $summary';
-    }
-    // سرورهای اشتراک (isDeletable=false) آدرس سرورشان نمایش داده نمی‌شود.
+    }    // سرورهای اشتراک (isDeletable=false) آدرس سرورشان نمایش داده نمی‌شود.
     final hideHost = !server.isDeletable;
     if (server.protocol == VpnProtocol.xrayJson) {
       final host = server.host.trim();

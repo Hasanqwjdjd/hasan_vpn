@@ -103,17 +103,6 @@ class PsiphonAuto {
       channelId: 'FFFFFFFFFFFFFFFF',
     ),
     PsiphonProfile(
-      id: 'aether',
-      sponsorId: '1111111111111111',
-      channelId: 'FFFFFFFFFFFFFFFF',
-      extra: <String, dynamic>{
-        'ServerEntrySignaturePublicKey':
-            'sHuUVTWaRyh5pZwy4UguSgkwmBe0EHtJJkoF5WrxmvA=',
-        'ExchangeObfuscationKey':
-            'DpXzloJk1Hw6aSzmKKky0xcahsEHubch81Mi6K0XMlU=',
-      },
-    ),
-    PsiphonProfile(
       id: 'alt1',
       sponsorId: '0000000000000001',
       channelId: '0000000000000001',

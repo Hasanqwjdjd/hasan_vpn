@@ -3,7 +3,6 @@ import 'dart:collection';
 import 'dart:io';
 
 import '../models/server.dart';
-import 'aether_service.dart';
 import 'test_budget.dart';
 import 'socks_probe.dart';
 import 'v2ray_engine.dart';
@@ -57,7 +56,7 @@ class _Semaphore {
 /// 3) realDelay: candidates DelayTest (gstatic → cloudflare → firefox)
 /// 4) median؛ warm-up فقط وقتی samples>=3؛ spacing 60ms؛ abandon بعد از ۲ fail متوالی
 /// 5) فیلتر <20ms ندارد
-/// 6) TCP-only تقریبی (online نمی‌شود)؛ Aether: measureDelay جدا
+/// 6) TCP-only تقریبی (online نمی‌شود).
 /// concurrency from TestBudget; live updates via onChanged.
 ///
 /// ایزولاسیون: MarbleNG برای Real delay هستهٔ throwaway / live SOCKS دارد؛
@@ -107,7 +106,7 @@ class ServerTester {
     if (twoPhase) {
       // ═══ Phase 1: TCP-only for everyone — ترتیبی (یکی پس از دیگری) ═══
       final tcpGate = _Semaphore(budget.tcpConcurrency);
-      for (final server in regular.where((s) => !s.isAether)) {
+      for (final server in regular) {
         if (session.cancelled) break;
         await _tcpOnlyPhase(
           server,
@@ -121,28 +120,23 @@ class ServerTester {
         return summary;
       }
 
-      // Rank candidates by TCP ping ascending; Aether always first
+      // Rank candidates by TCP ping ascending
       final ranked = regular
-          .where((s) => s.isAether || (s.ping != null && s.ping! > 0))
+          .where((s) => (s.ping != null && s.ping! > 0))
           .toList()
-        ..sort((a, b) {
-          if (a.isAether && !b.isAether) return -1;
-          if (!a.isAether && b.isAether) return 1;
-          return (a.ping ?? 999999).compareTo(b.ping ?? 999999);
-        });
+        ..sort((a, b) => (a.ping ?? 999999).compareTo(b.ping ?? 999999));
       final topIds =
           ranked.take(budget.realTestLimit).map((s) => s.id).toSet();
 
       // ═══ Phase 2: real HTTP for top N ═══
       final realGate = _Semaphore(budget.realConcurrency);
-      final aetherGate = _Semaphore(budget.aetherConcurrency);
       for (final server in regular) {
         if (session.cancelled) break;
         if (topIds.contains(server.id)) {
           await _realPhase(
             server,
             session: session,
-            gate: server.isAether ? aetherGate : realGate,
+            gate: realGate,
             budget: budget,
             summary: summary,
             notify: notify,
@@ -164,7 +158,6 @@ class ServerTester {
             ? budget.realConcurrency * 2
             : budget.tcpConcurrency,
       );
-      final aetherGate = _Semaphore(budget.aetherConcurrency);
 
       for (final server in regular) {
         if (session.cancelled) break;
@@ -172,7 +165,7 @@ class ServerTester {
           server,
           session: session,
           onlyTcp: effectiveOnlyTcp,
-          gate: server.isAether ? aetherGate : realGate,
+          gate: realGate,
           tcpGate: tcpGate,
           budget: budget,
           summary: summary,
@@ -234,28 +227,6 @@ class ServerTester {
       server.status = ServerStatus.testing;
       notify();
 
-      if (server.isAether) {
-        final ms = await AetherService.measureDelay(
-          server,
-          budget:
-              Duration(seconds: budget.timeoutSec.clamp(8, _realBudgetSec)),
-        );
-        if (session.cancelled) return;
-        if (ms > 0) {
-          server.ping = ms;
-          server.jitter = null;
-          server.pingKind = PingKind.real;
-          server.status = ServerStatus.online;
-          summary.online++;
-        } else {
-          server.ping = null;
-          server.jitter = null;
-          server.pingKind = PingKind.none;
-          server.status = ServerStatus.offline;
-          summary.offline++;
-        }
-        return;
-      }
 
       final (ms, jitter) = await _measureReal(server, budget, session);
       if (session.cancelled) return;
@@ -318,7 +289,7 @@ class ServerTester {
   }
 
   static bool _tcpPrecheckEligible(VpnServer server) {
-    if (server.isAether || server.isPsiphon) return false;
+    if (server.isPsiphon) return false;
     if (server.usesUdpTransport) return false;
     if (server.host.isEmpty || server.port <= 0) return false;
     if (server.host == 'serverless') return false;
@@ -415,27 +386,6 @@ class ServerTester {
       server.status = ServerStatus.testing;
       notify();
 
-      if (server.isAether) {
-        final ms = await AetherService.measureDelay(
-          server,
-          budget: Duration(seconds: budget.timeoutSec.clamp(8, _realBudgetSec)),
-        );
-        if (session.cancelled) return;
-        if (ms > 0) {
-          server.ping = ms;
-          server.jitter = null;
-          server.pingKind = PingKind.real;
-          server.status = ServerStatus.online;
-          summary.online++;
-        } else {
-          server.ping = null;
-          server.jitter = null;
-          server.pingKind = PingKind.none;
-          server.status = ServerStatus.offline;
-          summary.offline++;
-        }
-        return;
-      }
 
       if (onlyTcp) {
         await tcpGate.acquire();

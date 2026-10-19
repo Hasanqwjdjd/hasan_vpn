@@ -102,18 +102,6 @@ class CoreEngines {
       icon: Icons.settings_ethernet,
     ),
     CoreEngine(
-      id: 'aether',
-      name: 'Aether',
-      descriptionFa:
-          'تونل هوشمند با MASQUE/WireGuard/MIM. اسکن خودکار بهترین edge',
-      descriptionEn:
-          'Smart tunnel with MASQUE/WireGuard/MIM. Auto edge scan',
-      currentVersion: 'latest',
-      githubRepo: 'CluvexStudio/Aether',
-      githubUrl: 'https://github.com/CluvexStudio/Aether',
-      icon: Icons.auto_awesome,
-    ),
-    CoreEngine(
       id: 'dnstt',
       name: 'DNSTT',
       descriptionFa:

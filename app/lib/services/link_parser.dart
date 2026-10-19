@@ -16,7 +16,6 @@ class LinkParser {
     'ss',
     'hysteria2',
     'hy2',
-    'aether',
     'custom',
     'xrayjson',
     'ssd',
@@ -29,7 +28,7 @@ class LinkParser {
   ];
 
   static final RegExp linkRegex = RegExp(
-    r'(?:vless|vmess|trojan|ss|ssd|vpn|ssh|masterdns|mdns|warpmasque|wmq|hasan-warp|hysteria2|hy2|aether|custom|xrayjson)://[^\s"<>\\]+',
+    r'(?:vless|vmess|trojan|ss|ssd|vpn|ssh|masterdns|mdns|warpmasque|wmq|hasan-warp|hysteria2|hy2|custom|xrayjson)://[^\s"<>\\]+',
     caseSensitive: false,
   );
 
@@ -103,8 +102,6 @@ class LinkParser {
           return _parseVmess(link, id);
         case 'ss':
           return _parseShadowsocks(link, id);
-        case 'aether':
-          return _parseAether(link, id);
         case 'custom':
           return _parseCustom(link, id);
         case 'xrayjson':
@@ -616,25 +613,6 @@ class LinkParser {
   }
 
   // ----------------------------------------------------------------- aether
-
-  static VpnServer? _parseAether(String link, String id) {
-    final uri = Uri.tryParse(link);
-    final name = _cleanName(
-      uri == null ? '' : _decode(uri.fragment),
-      fallback: 'Aether',
-    );
-
-    return VpnServer(
-      id: id,
-      name: name,
-      flag: '🟣',
-      shareLink: link,
-      protocol: VpnProtocol.aether,
-      host: 'auto-discover',
-      port: 0,
-    );
-  }
-
   // ------------------------------------------------------------------ custom
 
   static VpnServer? _parseCustom(String link, String id) {

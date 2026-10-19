@@ -177,7 +177,7 @@ jobs:
         run: |
           python3 tools/gen_protected_defaults.py build_src/lib/services/protected_defaults.g.dart
 
-      - name: Install Aether native (Kotlin) sources
+      - name: Install Kotlin native sources
         run: |
           set -e
           KT_DIR="build_src/android/app/src/main/kotlin/com/hasan/hasan_vpn"
@@ -269,7 +269,7 @@ jobs:
             echo "No android-extra/assets/server_entries.txt - Psiphon will download its server list"
           fi
 
-      - name: Install Aether native binaries (jniLibs)
+      - name: Install native binaries (jniLibs)
         run: |
           set -e
           JNI_DIR="build_src/android/app/src/main/jniLibs"
@@ -388,7 +388,7 @@ jobs:
           # Keep native libs inside the APK (compressed) instead of
           # extracting them into /data/app. On Android 10+ they are
           # mmap'd from the APK and execute fine (verified by the
-          # existing tor + aether + psiphon runs). This cuts the
+          # existing tor + psiphon runs). This cuts the
           # installed footprint by ~150 MB.
           text = text.replace(
               'android:extractNativeLibs="true"',
