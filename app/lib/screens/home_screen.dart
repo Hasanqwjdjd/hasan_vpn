@@ -2417,12 +2417,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final session = TestSession();
     _session = session;
 
+    // بخش ۱.۱ — فقط سرورهای «تست‌پذیر» در شمارنده و reset شرکت می‌کنند؛
+    // سایفون/لوکال/UDP از قبل N/A هستند و نباید اسپینر بی‌پایان بگیرند.
+    final testable = targets
+        .where((s) => !s.isPsiphon && !s.isLocal && !s.usesUdpTransport)
+        .toList();
+    final skipped = targets.length - testable.length;
+    if (skipped > 0) {
+      debugPrint('[Home] Test All: skipping $skipped server(s) with N/A ping '
+          '(psiphon/local/udp)');
+    }
+
     setState(() {
       _testing = true;
       _tested = 0;
-      _total = targets.length;
+      _total = testable.length;
       _status = _t('در حال تست واقعی...', 'Real testing...');
-      for (final server in targets) {
+      for (final server in testable) {
         server.resetPing();
       }
     });
@@ -2481,6 +2492,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _testOne(VpnServer server) async {
     if (server.status == ServerStatus.testing) return;
+    // بخش ۱.۱ — تست خودکار سایفون ممنوع: سرورهای سایفون (و تونل/لوکال)
+    // پینگ TCP/Real معناداری ندارند. قبلاً status=testing ست می‌شد و بعد
+    // ServerTester آن‌ها را بی‌صدا skip می‌کرد → کارت برای همیشه «در حال
+    // تست» می‌ماند. حالا با پیام و لاگ صریح skip می‌شود.
+    if (server.isPsiphon || server.isLocal || server.usesUdpTransport) {
+      debugPrint('[ServerTester] skip ping for ${server.displayName} '
+          '(psiphon=${server.isPsiphon} local=${server.isLocal} '
+          'udp=${server.usesUdpTransport}) — ping N/A');
+      _showMsg(_t(
+        'برای این سرور تست پینگ معنا ندارد (N/A)',
+        'Ping test not applicable for this server (N/A)',
+      ));
+      return;
+    }
 
     setState(() => server.status = ServerStatus.testing);
     final session = TestSession();

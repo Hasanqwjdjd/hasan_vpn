@@ -1,16 +1,20 @@
 // app/lib/services/socks_xray_builder.dart
 //
 // Xray config generator for the "app -> TUN -> Xray -> socks -> Psiphon
-// (or any local SOCKS) -> internet" chain.
+// (or any local SOCKS) -> internet" chain — the "Over Xray" chain of
+// NekoBox Plus (qr243vbi/nekobox).
 //
-// SOCKS -> Xray config builder used by PsiphonService
-// is the only remaining consumer.
+// SOCKS -> Xray config builder used by PsiphonService (and Tor over Xray).
 //
-// Critical constraints of Psiphon LocalSocksProxyPort:
+// Critical constraints of the upstream local SOCKS (Psiphon / Tor / …):
 //   - TCP CONNECT only, no UDP ASSOCIATE
 //   - so UDP:53 must NOT go to the 'proxy' outbound
 //   - catch-all MUST send TCP to 'proxy'; without it Xray defaults to
 //     direct and the user sees "connected but nothing loads"
+//   - NekoBox "Over Xray" semantics: route TCP traffic from inside the
+//     tunnel and BLOCK all UDP except DNS (53). Any UDP that slips out
+//     as 'direct' is a leak (QUIC/H3 stalls apps like Instagram that
+//     would otherwise fall back to TCP).
 
 import 'dart:convert';
 
@@ -39,6 +43,11 @@ class SocksXrayBuilder {
     if (blockQuic) {
       debugPrint('[Xray] UDP 443 blocked to force TCP');
     }
+    // Over Xray (NekoBox semantics): TCP از داخل تونل، UDP همه بلاک به‌جز DNS.
+    // قبلاً بقیه‌ی UDP «direct» می‌شد که یعنی نشت ترافیک UDP بیرون از تونل —
+    // اکنون مطابق NekoBox همه‌ی UDP (به‌جز 53) بلاک می‌شود.
+    debugPrint('[Xray] Over Xray chain: TCP -> socks://127.0.0.1:$socksPort, '
+        'UDP blocked except DNS(53)');
     final rules = <Map<String, dynamic>>[
       <String, dynamic>{
         'type': 'field',
@@ -46,21 +55,14 @@ class SocksXrayBuilder {
         'network': 'udp',
         'outboundTag': 'dns-out',
       },
-      if (blockQuic)
-        <String, dynamic>{
-          'type': 'field',
-          'port': '443',
-          'network': 'udp',
-          'outboundTag': 'block',
-        },
-      <String, dynamic>{
-        'type': 'field',
-        'ip': _privateRanges,
-        'outboundTag': 'direct',
-      },
       <String, dynamic>{
         'type': 'field',
         'network': 'udp',
+        'outboundTag': 'block',
+      },
+      <String, dynamic>{
+        'type': 'field',
+        'ip': _privateRanges,
         'outboundTag': 'direct',
       },
       <String, dynamic>{
@@ -159,7 +161,12 @@ class SocksXrayBuilder {
         'disableCache': false,
       },
       'routing': <String, dynamic>{
-        'domainStrategy': 'IPIfNonMatch',
+        // AsIs (مثل حالت Over Xray در NekoBox): دامنه‌ها بدون resolve محلی
+        // به outbound پروکسی (SOCKS سایفون/تور) فرستاده می‌شوند تا «داخل
+        // تونل» resolve شوند. IPIfNonMatch قبلی برای هر دامنه یک کوئری DoH
+        // محلی می‌خواست که اگر DoH از داخل تونل کند/خراب بود نتیجه‌اش
+        // «وصل ولی هیچ‌چیز بالا نمی‌آید» بود.
+        'domainStrategy': 'AsIs',
         'domainMatcher': 'hybrid',
         'rules': rules,
       },
