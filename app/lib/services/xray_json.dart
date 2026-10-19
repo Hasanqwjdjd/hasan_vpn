@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../models/server.dart';
 import 'link_parser.dart';
 
@@ -27,6 +29,94 @@ class XrayJson {
     } catch (_) {
       return false;
     }
+  }
+
+  /// بخش ۸ — تفکیک چند آبجکت JSON پشت‌سرهم ("{...}\n{...}").
+  /// بعضی اشتراک‌ها (مثل sub-generator workers) ۲۰+ کانفیگ کامل را
+  /// بدون هیچ جداکننده‌ای پشت هم می‌فرستند؛ jsonDecode روی این متن خطا
+  /// می‌دهد (Extra data). این متد با شمارش عمق آکولاد (با درنظر گرفتن
+  /// رشته‌ها و escape ها) هر آبجکت top-level را جدا می‌کند.
+  static List<String> splitJsonObjects(String content) {
+    final out = <String>[];
+    final t = content.trim();
+    if (!t.startsWith('{')) return out;
+
+    final buf = StringBuffer();
+    var depth = 0;
+    var inString = false;
+    var escaped = false;
+    var started = false;
+
+    for (var i = 0; i < t.length; i++) {
+      final ch = t[i];
+      if (inString) {
+        buf.write(ch);
+        if (escaped) {
+          escaped = false;
+        } else if (ch == '\\') {
+          escaped = true;
+        } else if (ch == '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch == '"') {
+        inString = true;
+        buf.write(ch);
+        started = true;
+        continue;
+      }
+      if (ch == '{') {
+        depth++;
+        started = true;
+        buf.write(ch);
+        continue;
+      }
+      if (ch == '}') {
+        depth--;
+        buf.write(ch);
+        if (depth == 0 && started) {
+          final obj = buf.toString().trim();
+          if (obj.isNotEmpty) out.add(obj);
+          buf.clear();
+          started = false;
+        }
+        continue;
+      }
+      // whitespace/کاما بین آبجکت‌ها — فقط اگر داخل آبجکت باشیم می‌نویسیم
+      if (depth > 0 || started) buf.write(ch);
+    }
+    // آبجکت ناقص آخر — نادیده گرفته می‌شود
+    if (out.isEmpty && buf.toString().trim().isNotEmpty) return out;
+    return out;
+  }
+
+  /// بخش ۸ — پارس محتوایی که ممکن است یک یا چند کانفیگ کامل Xray
+  /// پشت‌سرهم باشد. هر آبجکت top-level یک سرور می‌شود.
+  /// خروجی: لیست سرورها (خالی اگر هیچ کانفیگ معتبری نبود).
+  static List<VpnServer> parseAll(String content, {required String idPrefix}) {
+    final servers = <VpnServer>[];
+    final trimmed = content.trim();
+    if (!trimmed.startsWith('{')) return servers;
+
+    final parts = splitJsonObjects(trimmed);
+    if (parts.isEmpty) return servers;
+
+    debugPrint('[XrayJson] content contains ${parts.length} JSON config(s)');
+
+    for (var i = 0; i < parts.length; i++) {
+      final part = parts[i];
+      final id = LinkParser.stableId(idPrefix, part);
+      final server = parse(part, id: id);
+      if (server != null) {
+        servers.add(server);
+        debugPrint('[XrayJson] config ${i + 1}/${parts.length} parsed: '
+            '"${server.name}" host=${server.host} port=${server.port}');
+      } else {
+        debugPrint('[XrayJson] config ${i + 1}/${parts.length} FAILED to parse — skipped');
+      }
+    }
+    return servers;
   }
 
   /// استخراج نام نمایشی از remarks / ps / نام اولین outbound

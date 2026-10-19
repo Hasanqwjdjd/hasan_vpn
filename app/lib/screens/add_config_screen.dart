@@ -370,19 +370,28 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             : _sniController.text.trim())
         : '';
 
-    // کانفیگ کامل JSON (Patterniha و مشابه)
-    if (XrayJson.looksLike(text)) {
-      final modified = sniOverride.isEmpty
-          ? text
-          : LinkParser.applySniOverride(text, sniOverride);
-      var server = XrayJson.parse(modified, id: 'custom_$stamp');
-      if (server != null) {
+    // کانفیگ کامل JSON — تک یا چند آبجکت پشت‌سرهم (بخش ۸)
+    // توجه: روی JSON خودکفا SNI override اعمال نمی‌کنیم — قوانین
+    // routing/fragment خودش باید دست‌نخورده بمونه.
+    final jsonServers = text.trim().startsWith('{')
+        ? XrayJson.parseAll(text, idPrefix: 'custom_$stamp')
+        : <VpnServer>[];
+    if (jsonServers.isNotEmpty) {
+      debugPrint('[AddConfig] adding ${jsonServers.length} xray-json server(s) from paste');
+      for (var i = 0; i < jsonServers.length; i++) {
+        var server = jsonServers[i];
         if (customName.isNotEmpty) {
-          server = server.copyWith(name: customName);
+          server = server.copyWith(
+            name: jsonServers.length == 1 ? customName : '$customName ${i + 1}',
+          );
         }
         widget.onServerAdded(server);
-        added = 1;
+        added++;
       }
+    } else if (XrayJson.looksLike(text)) {
+      // JSON بود ولی پارس نشد — پیام خطای دقیق‌تر
+      _showMsg(_t('JSON قابل خواندن نبود', 'Could not read the JSON'));
+      return;
     } else {
       // ممکن است چند لینک (هر کدام در یک خط) پیست شده باشد.
       final links = LinkParser.extractLinks(text);
@@ -424,8 +433,10 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   }
 
   String _firstLinkName(String text) {
-    if (XrayJson.looksLike(text)) {
-      return XrayJson.parse(text, id: 'preview')?.name ?? '';
+    if (XrayJson.looksLike(text) || text.trim().startsWith('{')) {
+      final all = XrayJson.parseAll(text, idPrefix: 'preview');
+      if (all.isNotEmpty) return all.first.name;
+      return '';
     }
     final links = LinkParser.extractLinks(text);
     if (links.length != 1) return '';

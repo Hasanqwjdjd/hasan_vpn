@@ -5306,18 +5306,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 return;
                               }
                               final links = LinkParser.extractLinks(text);
-                              if (links.isEmpty && !XrayJson.looksLike(text)) {
+                              int added = 0;
+                              final stamp = DateTime.now()
+                                  .millisecondsSinceEpoch;
+                              // بخش ۸ — JSON کامل تک یا چندتایی پشت‌سرهم
+                              // (sub-generator workers: ۲۱ آبجکت) پشتیبانی می‌شود.
+                              final jsonServers = text.trim().startsWith('{')
+                                  ? XrayJson.parseAll(text,
+                                      idPrefix: 'custom_${stamp}_grp')
+                                  : <VpnServer>[];
+                              if (links.isEmpty && jsonServers.isEmpty) {
                                 _showMsg(_t('لینک معتبری پیدا نشد',
                                     'No valid link found'));
                                 return;
                               }
-                              int added = 0;
-                              final stamp = DateTime.now()
-                                  .millisecondsSinceEpoch;
-                              if (XrayJson.looksLike(text)) {
-                                final srv = XrayJson.parse(text,
-                                    id: 'custom_${stamp}_grp');
-                                if (srv != null) {
+                              if (jsonServers.isNotEmpty) {
+                                debugPrint('[Home] group paste: '
+                                    'adding ${jsonServers.length} xray-json server(s)');
+                                for (final srv in jsonServers) {
                                   _customServers.insert(0, srv);
                                   editingIds.add(srv.id);
                                   added++;

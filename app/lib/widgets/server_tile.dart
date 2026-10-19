@@ -132,6 +132,14 @@ class ServerTile extends StatelessWidget {
   /// badge های کوچیک برای نشان دادن ویژگی‌های خاص سرور.
   List<String> get _badges {
     final out = <String>[];
+    // بخش ۸ — سرورهای لوکال (127.0.0.1) علامت «LOCAL» می‌خورن.
+    if (server.isLocal) {
+      out.add('LOCAL');
+    }
+    // بخش ۸ — کانفیگ‌های serverless (JSON کامل بدون پروکسی) علامت «SLS».
+    if (server.host == 'serverless') {
+      out.add('SLS');
+    }
     // MASQUE servers are always fronted by Cloudflare Anycast; the parallel
     // scanner always runs, so show "CF" and "SCAN·P" even without a mode.
     if (server.protocol == VpnProtocol.warpMasque) {
@@ -201,6 +209,29 @@ class ServerTile extends StatelessWidget {
 
   Widget _buildPing(BuildContext context) {
     final ping = server.ping;
+
+    // بخش ۸ — سرورهای لوکال (127.0.0.1) و serverless هرگز تست TCP نمی‌گیرند
+    // (تایم‌اوت می‌خورند) — پینگ‌شان N/A نمایش داده می‌شود.
+    if (server.isLocal || server.host == 'serverless') {
+      if (ping != null) {
+        return Text(
+          '$ping',
+          style: TextStyle(
+            color: _pingColor(context),
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+      }
+      return Text(
+        'N/A',
+        style: TextStyle(
+          color: AppColors.muted2(context),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      );
+    }
 
     if (ping != null) {
       final testing = server.status == ServerStatus.testing;

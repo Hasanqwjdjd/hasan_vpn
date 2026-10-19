@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -297,8 +298,6 @@ class SubscriptionService {
     // بدنه را خودمان UTF-8 رمزگشایی می‌کنیم؛ response.body بدون charset در هدر
     // به latin1 می‌رود و نام‌های فارسی/ایموجی خراب می‌شوند.
     var content = utf8.decode(response.bodyBytes, allowMalformed: true).trim();
-    content = _maybeDecodeBase64(content);
-
     final servers = parseContent(content, subscription.id);
     if (servers.isEmpty) {
       // پاسخ خراب یا خالی نباید کش قبلی را پاک کند — throw می‌کنیم قبل از
@@ -349,15 +348,36 @@ class SubscriptionService {
 
   // ---------------------------------------------------------------- parsing
 
-  static List<VpnServer> parseContent(String content, String subscriptionId) {
+  static List<VpnServer> parseContent(String rawContent, String subscriptionId) {
+    // بخش ۸ — اگر محتوا Base64 بود (استاندارد اشتراک‌ها) اول دیکود می‌کنیم.
+    // اینجا هم انجام می‌دهیم تا paste-مستقیم هم کار کند؛ روی متن دیکودشده
+    // دوباره اجرا شدنش no-op است.
+    final content = maybeDecodeBase64(rawContent);
     final trimmed = content.trim();
     var links = <String>[];
 
-    // کانفیگ کامل Xray JSON (مثل Patterniha) → یک سرور واحد
+    // کانفیگ کامل Xray JSON تک (مثل Patterniha) → یک سرور واحد
     if (XrayJson.looksLike(trimmed)) {
       final id = LinkParser.stableId('sub', trimmed);
       final server = XrayJson.parse(trimmed, id: id);
-      if (server != null) return <VpnServer>[server];
+      if (server != null) {
+        debugPrint('[Subscription] content kind: single xray-json config');
+        return <VpnServer>[server];
+      }
+    }
+
+    // بخش ۸ — چند کانفیگ کامل Xray JSON پشت‌سرهم (sub-generator workers:
+    // ۲۱ آبجکت "{...}\n{...}") → هر آبجکت یک سرور.
+    if (trimmed.startsWith('{')) {
+      final multi = XrayJson.parseAll(trimmed, idPrefix: 'sub');
+      if (multi.isNotEmpty) {
+        debugPrint('[Subscription] content kind: multi xray-json '
+            '(${multi.length} configs) — marking not-deletable');
+        for (final s in multi) {
+          s.isDeletable = false;
+        }
+        return multi;
+      }
     }
 
     // آرایه‌ای از کانفیگ‌های Xray JSON (مثل Patterniha Serverless)
@@ -371,6 +391,14 @@ class SubscriptionService {
     }
     if (links.isEmpty) {
       links = LinkParser.extractLinks(content);
+    }
+
+    if (links.isNotEmpty) {
+      debugPrint('[Subscription] content kind: links '
+          '(${links.length} link(s) extracted)');
+    } else {
+      debugPrint('[Subscription] content kind: UNRECOGNIZED '
+          '(len=${content.length}, head=${content.substring(0, content.length < 40 ? content.length : 40)})');
     }
 
     // FIX: ssd:// — چند سرور. این هم برای کل content و هم لینک‌های تک است.
@@ -467,7 +495,8 @@ class SubscriptionService {
   }
 
   /// اشتراک‌ها معمولاً Base64 هستند (استاندارد یا URL-safe، با یا بدون padding).
-  static String _maybeDecodeBase64(String content) {
+  /// public شد تا لایه‌های دیگر (مثل paste-مستقیم) هم بتوانند استفاده کنند.
+  static String maybeDecodeBase64(String content) {
     final compact = content.replaceAll(RegExp(r'\s+'), '');
 
     if (compact.length < 24) return content;
