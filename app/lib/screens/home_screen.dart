@@ -27,10 +27,8 @@ import '../services/warp_masque_service.dart';
 import '../services/warp_service.dart';
 import '../services/warp_endpoint_health_monitor.dart';
 import '../services/connection_quality.dart';
-import '../services/quality_history_service.dart';
 import '../services/telemetry_service.dart';
 import '../services/quality_alert.dart';
-import 'quality_history_screen.dart';
 import '../services/warp_batch_tester.dart';
 import '../services/warp_scout_scheduler.dart';
 import '../widgets/quality_badge.dart';
@@ -2928,17 +2926,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (latest != null) {
         QualityAlert.instance.evaluate(latest.score);
       }
-      if (latest != null) {
-        // ignore: unawaited_futures
-        QualityHistoryService.add(QualitySample(
-          at: DateTime.now(),
-          score: latest.score,
-          pingMs: latest.pingMs,
-          jitterMs: latest.jitterMs,
-          lossPct: latest.lossPct,
-          serverId: _active?.id ?? _selected?.id ?? '',
-        ));
-      }
     }
     await _savePings();
   }
@@ -3827,56 +3814,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// میانگین امتیاز کیفیت سرورهای یه گروه.
-  ///
-  /// برمی‌گردونه: null اگه نمونه‌ای نباشه، وگرنه int (0-100).
-  int? _avgQualityForServers(Iterable<VpnServer> servers) {
-    final ids = servers.map((s) => s.id).toSet();
-    if (ids.isEmpty) return null;
-    final samples = QualityHistoryService.cached;
-    var sum = 0;
-    var count = 0;
-    // آخرین نمونه هر سرور
-    final latestByServer = <String, int>{};
-    for (final sample in samples) {
-      if (!ids.contains(sample.serverId)) continue;
-      final prev = latestByServer[sample.serverId];
-      if (prev == null) {
-        latestByServer[sample.serverId] = sample.score;
-      } else {
-        // آخرین رو نگه دار (چون samples از قدیم به جدید sort شدن)
-        latestByServer[sample.serverId] = sample.score;
-      }
-    }
-    for (final score in latestByServer.values) {
-      sum += score;
-      count++;
-    }
-    if (count == 0) return null;
-    return (sum / count).round();
-  }
-
-  /// سرورهای یه subscription با id داده‌شده.
-  Iterable<VpnServer> _serversForSubscription(String subId) {
-    if (subId.startsWith('ugroup:')) {
-      final gname = subId.substring('ugroup:'.length);
-      final ids = _userGroups[gname] ?? const <String>[];
-      return _servers.where((s) => ids.contains(s.id));
-    }
-    // از لینک‌های subscription — serverها id دارن
-    return _servers.where((s) => s.id.startsWith(subId));
-  }
-
-  /// رنگ نقطه‌ی کیفیت.
-  Color _qualityDotColor(int? avgScore) {
-    if (avgScore == null) return AppColors.muted2(context);
-    if (avgScore >= 85) return AppColors.accent;
-    if (avgScore >= 70) return const Color(0xFF8BC34A);
-    if (avgScore >= 50) return AppColors.warn;
-    if (avgScore >= 30) return const Color(0xFFFF7043);
-    return AppColors.danger;
-  }
-
   Widget _buildSubTabs() {
     if (widget.subscriptions.isEmpty && _userGroups.isEmpty) {
       return const SizedBox.shrink();
@@ -3928,11 +3865,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _subTab(String? subId, String label, [int count = 0]) {
     final active = _selectedSubId == subId;
     final short = label.length > 14 ? '${label.substring(0, 13)}…' : label;
-    // quality dot (اگه نمونه داشتیم)
-    int? avgQ;
-    if (subId != null) {
-      avgQ = _avgQualityForServers(_serversForSubscription(subId));
-    }
     return GestureDetector(
       onTap: () => _selectSubscription(subId),
       child: Container(
@@ -3950,17 +3882,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (avgQ != null && !active) ...[
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: _qualityDotColor(avgQ),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 6),
-              ],
               Text(
                 count > 0 ? '$short ($count)' : short,
                 style: TextStyle(
@@ -4746,18 +4667,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// آخرین امتیاز کیفیت این سرور (از history).
-  int? _lastQualityFor(String serverId) {
-    if (serverId.isEmpty) return null;
-    final samples = QualityHistoryService.cached;
-    for (var i = samples.length - 1; i >= 0; i--) {
-      if (samples[i].serverId == serverId) {
-        return samples[i].score;
-      }
-    }
-    return null;
-  }
-
   Widget _buildServerTile(VpnServer server, {bool compact = false}) {
     final tileKey = _tileKeys.putIfAbsent(server.id, () => GlobalKey());
     // Live badge — از batch tester یا WARP scan progress
@@ -4778,9 +4687,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             live = r.ok ? '✓ ${r.latencyMs}ms' : '✕';
           }
         }
-        final quality = _lastQualityFor(server.id);
-        return _buildServerTileInner(
-            server, compact, tileKey, live, quality);
+        return _buildServerTileInner(server, compact, tileKey, live);
       },
     );
   }
@@ -4790,14 +4697,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     bool compact,
     GlobalKey tileKey,
     String? liveBadge,
-    int? qualityScore,
   ) {
     return ServerTile(
       key: tileKey,
       server: server,
       compact: compact,
       liveBadge: liveBadge,
-      qualityScore: qualityScore,
       selected: _selected?.id == server.id,
       active: _connected && _active?.id == server.id,
       onTap: () async {

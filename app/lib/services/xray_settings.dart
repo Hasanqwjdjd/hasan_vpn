@@ -31,10 +31,6 @@ class XraySettings {
 
     // ---- Advanced (A2) ----
     'mtu': 1500,
-    'useHevTun': false,
-    'hevLogLevel': 'warn',
-    'hevTcpRwTimeout': 60,
-    'hevUdpRwTimeout': 60,
     'sniffing': true,
     'sniffRouteOnly': false,
     'localProxyEnable': false,

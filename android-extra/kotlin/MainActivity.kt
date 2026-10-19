@@ -267,25 +267,6 @@ class MainActivity : FlutterActivity() {
                         VpnTuner.ensureAssetSymlinks(applicationContext)
                         result.success(true)
                     }
-                    "setHevParams" -> {
-                        val logLevel = call.argument<String>("logLevel")
-                        val tcp = call.argument<Int>("tcpTimeout")
-                        val udp = call.argument<Int>("udpTimeout")
-                        val mtu = call.argument<Int>("mtu")
-                        HevLauncher.update(logLevel, tcp, udp, mtu)
-                        result.success(true)
-                    }
-                    "startHev" -> {
-                        val cfg = call.argument<String>("configPath") ?: ""
-                        Thread {
-                            val ok = HevLauncher.start(applicationContext, cfg)
-                            runOnUiThread { result.success(ok) }
-                        }.start()
-                    }
-                    "stopHev" -> {
-                        HevLauncher.stop()
-                        result.success(true)
-                    }
                     else -> result.notImplemented()
                 }
             }

@@ -253,6 +253,14 @@ class VpnServer {
 
   bool get isPsiphon => protocol == VpnProtocol.psiphon;
 
+  /// بخش ۸ — سرورهای لوکال (آدرس 127.0.0.1 / localhost / ::1) که روی خود
+  /// دستگاه اجرا می‌شوند (مثلاً کانفیگ‌های زنجیره‌ای سابسکریپشن).
+  /// این سرورها TCP ping نمی‌گیرند (تایم‌اوت می‌دهند) و پینگ‌شان N/A است.
+  bool get isLocal {
+    final h = host.trim().toLowerCase();
+    return h == '127.0.0.1' || h == 'localhost' || h == '::1' || h == '[::1]';
+  }
+
   /// پروتکل‌هایی که روی UDP/QUIC کار می‌کنند؛ TCP-connect روی آن‌ها بی‌معناست.
   bool get usesUdpTransport => protocol == VpnProtocol.hysteria2;
 

@@ -32,13 +32,12 @@ class BackupService {
   /// کلیدهایی که به‌طور پیش‌فرض exclude می‌شن مگر includeLogs=true.
   static const List<String> _logKeys = <String>[
     'connection_log_v1',
-    'quality_history_v1',
   ];
 
   /// خروجی JSON از همه کلیدهای قابل backup.
   ///
-  /// [includeLogs] اگه true باشه، لاگ‌های بزرگ (connection log + quality
-  /// history) هم شامل می‌شن. پیش‌فرض false چون می‌تونه فایل رو بزرگ کنه.
+  /// [includeLogs] اگه true باشه، لاگ‌های بزرگ (connection log)
+  /// هم شامل می‌شن. پیش‌فرض false چون می‌تونه فایل رو بزرگ کنه.
   static Future<String> export({bool includeLogs = false}) async {
     final prefs = await SharedPreferences.getInstance();
     final map = <String, dynamic>{};

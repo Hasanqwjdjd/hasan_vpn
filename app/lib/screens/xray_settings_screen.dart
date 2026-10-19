@@ -336,25 +336,6 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                         '۰ یعنی auto: MTU منهای ۴۰. محدودهٔ معتبر ۵۲۴ تا ۱۴۶۰.',
                     subEn:
                         '0 means auto: MTU minus 40. Valid range is 524 to 1460.'),
-                _sw('useHevTun', 'استفاده از Hev TUN', 'Use Hev TUN',
-                    subFa: 'hev-socks5-tunnel به‌جای xray TUN',
-                    subEn: 'hev-socks5-tunnel instead of xray TUN'),
-                _dropdown('hevLogLevel', 'سطح لاگ Hev', 'Hev log level',
-                    ['debug', 'info', 'warn', 'error', 'none']),
-                _numField('hevTcpRwTimeout', 'تایم‌اوت TCP Hev (ثانیه)',
-                    'Hev TCP R/W timeout (s)',
-                    min: 1, max: 600,
-                    subFa:
-                        'هر چند ثانیه TCP idle رو ببنده. بیشتر → اتصال پایدارتر روی نت ضعیف؛ کمتر → مصرف کمتر.',
-                    subEn:
-                        'Idle TCP close timer. Higher = stabler on weak nets; lower = less battery.'),
-                _numField('hevUdpRwTimeout', 'تایم‌اوت UDP Hev (ثانیه)',
-                    'Hev UDP R/W timeout (s)',
-                    min: 1, max: 600,
-                    subFa:
-                        'همون تایم‌اوت برای UDP. برای بازی و ویدیو بیشتر بذار.',
-                    subEn:
-                        'Same timer for UDP. Increase for gaming/video.'),
                 _sw('sniffing', 'Sniffing', 'Sniffing',
                     subFa:
                         'خواندن دامنهٔ مقصد از ترافیک برای routing دقیق‌تر. برای تفکیک سایت‌های ایرانی لازمه.',

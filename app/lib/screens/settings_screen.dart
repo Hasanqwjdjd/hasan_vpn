@@ -10,8 +10,6 @@ import '../services/settings_service.dart';
 import 'security_test_screen.dart';
 import 'backup_screen.dart';
 import 'connection_log_screen.dart';
-import 'engines_screen.dart';
-import 'quality_history_screen.dart';
 import '../services/warp_scout_scheduler.dart';
 import '../services/quality_alert.dart';
 import '../services/server_batch_export.dart';
@@ -22,8 +20,6 @@ import 'announcements_screen.dart';
 import 'anti_sanction_screen.dart';
 import 'game_hub_screen.dart';
 import 'live_monitor_screen.dart';
-import 'test_settings_screen.dart';
-import 'hev_engine_screen.dart';
 import 'xray_settings_screen.dart';
 import 'routing_screen.dart';
 import 'geo_assets_screen.dart';
@@ -523,76 +519,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
 
-          // ------- هسته و تست -------
-          _sectionTitle(_t('هسته و تست', 'Core & Test')),
-          _card(
-            context,
-            InkWell(
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => EnginesScreen(language: _lang),
-                  ),
-                );
-                if (mounted) setState(() {});
-              },
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.memory,
-                    color: AppColors.accent),
-                title: Text(
-                  _t('هسته‌ها و موتورها', 'Engines & Cores'),
-                  style: TextStyle(color: AppColors.fg(context)),
-                ),
-                subtitle: Text(
-                  _t(
-                    'لیست هسته‌های native با نسخه و چک آپدیت خودکار',
-                    'Native cores list with version & auto update check',
-                  ),
-                  style: TextStyle(
-                      color: AppColors.muted2(context), fontSize: 11),
-                ),
-                trailing: Icon(Icons.chevron_left,
-                    color: AppColors.muted(context)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          _card(
-            context,
-            InkWell(
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        QualityHistoryScreen(language: _lang),
-                  ),
-                );
-              },
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.timeline,
-                    color: AppColors.accent),
-                title: Text(
-                  _t('تاریخچه کیفیت', 'Quality history'),
-                  style: TextStyle(color: AppColors.fg(context)),
-                ),
-                subtitle: Text(
-                  _t(
-                    'نمودار امتیاز اتصال، پینگ و نوسان در بازه‌های زمانی',
-                    'Chart of connection score, ping and jitter over time',
-                  ),
-                  style: TextStyle(
-                      color: AppColors.muted2(context), fontSize: 11),
-                ),
-                trailing: Icon(Icons.chevron_left,
-                    color: AppColors.muted(context)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
+          // ------- هسته -------
+          _sectionTitle(_t('هسته', 'Core')),
           _card(
             context,
             Column(
@@ -649,44 +577,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       MaterialPageRoute(
                         builder: (_) =>
                             GeoAssetsScreen(language: _lang),
-                      ),
-                    );
-                  },
-                ),
-                Divider(height: 1, color: AppColors.border(context)),
-                _navRow(
-                  context,
-                  icon: Icons.tune,
-                  title: _t('موتور HEV', 'HEV Engine'),
-                  subtitle: _t(
-                    'تونل، SOCKS5، mapdns، misc',
-                    'Tunnel, SOCKS5, mapdns, misc',
-                  ),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            HevEngineScreen(language: _lang),
-                      ),
-                    );
-                  },
-                ),
-                Divider(height: 1, color: AppColors.border(context)),
-                _navRow(
-                  context,
-                  icon: Icons.speed,
-                  title: _t('تنظیمات تست و رتبه‌بندی', 'Test & ranking'),
-                  subtitle: _t(
-                    'نمونه، هم‌زمانی، آدرس تست',
-                    'Samples, concurrency, delay URL',
-                  ),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            TestSettingsScreen(language: _lang),
                       ),
                     );
                   },

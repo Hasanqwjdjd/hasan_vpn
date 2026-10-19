@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import '../models/server.dart';
-import 'quality_history_service.dart';
 import 'warp_endpoint_health_monitor.dart';
 
 /// وضعیت سلامت یک سرور.
@@ -53,17 +52,13 @@ class ServerHealthCalculator {
 
   /// محاسبه tier بر اساس:
   ///   - آخرین ping (اگه > 2000ms = warning، > 5000 = critical)
-  ///   - آخرین quality score (< 40 = warning، < 20 = critical)
   ///   - consecutiveFails (>= 3 = critical)
   ///   - نبود داده = untested
+  /// (تاریخچه کیفیت حذف شده — tier فقط از ping/status/fails)
   static ServerHealth compute(VpnServer server) {
     final lastPing = server.ping;
     final pingKind = server.pingKind;
     final status = server.status;
-
-    // آخرین quality از history
-    final samples = QualityHistoryService.forServer(server.id);
-    final lastQuality = samples.isNotEmpty ? samples.last : null;
 
     // health monitor برای سرور فعلی
     final monitorState = WarpEndpointHealthMonitor.instance.state.value;
@@ -83,21 +78,12 @@ class ServerHealthCalculator {
       tier = HealthTier.critical;
       note = 'offline';
     } else if (lastPing != null && lastPing > 0) {
-      final q = lastQuality?.score;
-      if (lastPing > 5000 || (q != null && q < 20)) {
+      if (lastPing > 5000) {
         tier = HealthTier.critical;
         note = 'ping ${lastPing}ms';
-      } else if (lastPing > 2000 || (q != null && q < 40)) {
+      } else if (lastPing > 2000) {
         tier = HealthTier.warning;
         note = 'ping ${lastPing}ms';
-      } else {
-        tier = HealthTier.healthy;
-      }
-    } else if (lastQuality != null) {
-      if (lastQuality.score < 20) {
-        tier = HealthTier.critical;
-      } else if (lastQuality.score < 40) {
-        tier = HealthTier.warning;
       } else {
         tier = HealthTier.healthy;
       }
@@ -113,8 +99,6 @@ class ServerHealthCalculator {
       server: server,
       tier: tier,
       lastPingMs: lastPing,
-      lastQualityScore: lastQuality?.score,
-      lastTestAt: lastQuality?.at,
       consecutiveFails: consecutiveFails,
       note: note,
     );

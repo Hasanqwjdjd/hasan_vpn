@@ -98,22 +98,10 @@ class V2RayEngine {
   static bool blockedAppsSupported = true;
 
   static Future<void> loadDelayUrl() async {
-    try {
-      // اول xray_settings (تنظیمات هسته)
-      final xs = await XraySettings.load();
-      final xu = xs['delayTestUrl']?.toString();
-      if (xu != null && xu.isNotEmpty) {
-        delayUrl = xu;
-        return;
-      }
-      // سپس test_settings_v1 (تنظیمات تست)
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('test_settings_v1');
-      if (raw == null) return;
-      final m = jsonDecode(raw) as Map;
-      final u = m['delayUrl']?.toString();
-      if (u != null && u.isNotEmpty) delayUrl = u;
-    } catch (_) {}
+    // بخش ۷ — مقادیر تست هاردکد شدند: صفحه تنظیمات تست حذف شده و آدرس
+    // تست واقعی همیشه gstatic generate_204 است (تنظیمات کاربر نادیده گرفته
+    // می‌شود تا رتبه‌بندی سرورها همیشه قابل مقایسه باشد).
+    delayUrl = _defaultDelayUrl;
   }
 
   static String _stateOf(dynamic status) {
@@ -1667,23 +1655,6 @@ class V2RayEngine {
         'dns': dns,
         'dns6': dns6,
       });
-      // Also pass Hev CLI params when Hev TUN is selected.
-      if (s['useHevTun'] == true) {
-        await _deviceChannel.invokeMethod('setHevParams', <String, dynamic>{
-          'logLevel': s['hevLogLevel']?.toString() ?? 'warn',
-          'tcpTimeout': (s['hevTcpRwTimeout'] as num?)?.toInt() ?? 60,
-          'udpTimeout': (s['hevUdpRwTimeout'] as num?)?.toInt() ?? 60,
-          'mtu': mtu,
-        });
-        // Call site for HevLauncher.start (DEFECT 2): only succeeds if the
-        // hev-socks5-tunnel binary is present on device.
-        try {
-          final ok = await _deviceChannel.invokeMethod<bool>('startHev', '');
-          debugPrint('startHev result=$ok');
-        } catch (e) {
-          debugPrint('startHev failed: $e');
-        }
-      }
       // Geo asset dir for core
       final assetDir = await GeoAssetsService.pathFor('geoip.dat');
       final dir = assetDir.contains('/')
