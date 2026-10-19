@@ -166,6 +166,8 @@ class FlutterVlessPlugin : FlutterPlugin, ActivityAware, PluginRegistry.Activity
                 android.util.Log.d("FlutterVlessPlugin", "getServerDelay called")
                 val configJson = call.argument<String>("config")
                 val url = call.argument<String>("url") ?: "https://www.google.com"
+                // بخش ۳ — بودجه‌ی تایم‌اوت از Dart (ms)؛ پیش‌فرض ۵۰۰۰.
+                val timeoutMs = (call.argument<Number>("timeoutMs") ?: 5000).toLong()
                 
                 if (configJson == null) {
                     result.error("INVALID_CONFIG", "Config is null", null)
@@ -180,7 +182,7 @@ class FlutterVlessPlugin : FlutterPlugin, ActivityAware, PluginRegistry.Activity
                 
                 delayExecutor.execute {
                     val delay = try {
-                        XrayCoreManager.getServerDelay(currentActivity, configJson, url)
+                        XrayCoreManager.getServerDelay(currentActivity, configJson, url, timeoutMs)
                     } catch (e: Exception) {
                         android.util.Log.e("FlutterVlessPlugin", "getServerDelay failed", e)
                         -1L

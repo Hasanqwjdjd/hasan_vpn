@@ -558,8 +558,12 @@ object XrayCoreManager {
      * Measure delay for a server configuration (when not connected).
      * Temporarily starts Xray with the provided config, measures delay, then stops it.
      */
-    fun getServerDelay(context: Context, configJson: String, url: String): Long {
-        Log.d(TAG, "getServerDelay: Starting temporary Xray instance")
+    // بخش ۳ — تایم‌اوت از Dart پاس داده می‌شود تا بودجه‌ی Dart (پیش‌فرض ۴s)
+    // با تایم‌اوت داخلی Kotlin هم‌راستا شود؛ قبلاً sleep(1000) + connect/read
+    // ۵ ثانیه‌ای همیشه بعد از تایم‌اوت Dart تمام می‌شد و Real Delay هیچ‌وقت
+    // برنمی‌گشت (فقط ~TCP نمایش داده می‌شد).
+    fun getServerDelay(context: Context, configJson: String, url: String, timeoutMs: Long = 5000L): Long {
+        Log.d(TAG, "getServerDelay: Starting temporary Xray instance (timeoutMs=$timeoutMs)")
         
         var tempProcess: Process? = null
         try {
@@ -605,13 +609,13 @@ object XrayCoreManager {
             // Wait a bit for Xray to start
             Thread.sleep(1000)
             
-            // Measure delay
+            // Measure delay — connect/read از بودجه‌ی Dart پیروی می‌کنند.
             val delay = try {
                 val start = System.currentTimeMillis()
                 val proxy = java.net.Proxy(java.net.Proxy.Type.SOCKS, java.net.InetSocketAddress("127.0.0.1", socksPort))
                 val connection = java.net.URL(url).openConnection(proxy) as java.net.HttpURLConnection
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
+                connection.connectTimeout = timeoutMs.toInt().coerceAtLeast(1000)
+                connection.readTimeout = timeoutMs.toInt().coerceAtLeast(1000)
                 connection.requestMethod = "HEAD"
                 val responseCode = connection.responseCode
                 val end = System.currentTimeMillis()

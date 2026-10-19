@@ -32,6 +32,11 @@ class V2RayEngine {
   static const MethodChannel _deviceChannel =
       MethodChannel('com.hasan.hasan_vpn/device');
 
+  /// بخش ۳ — کانال کنترل flutter_vless برای فراخوانی مستقیم getServerDelay
+  /// (پشتیبانی timeoutMs که wrapper پکیج ندارد).
+  static const MethodChannel _vlessControlChannel =
+      MethodChannel('flutter_vless');
+
   /// لیست پکیج‌هایی که باید از تونل VPN مستثنی شوند، بر اساس حالت
   /// «پراکسی هر برنامه» که کاربر انتخاب کرده:
   ///   - all       → فقط خود اپ (جلوگیری از loop)
@@ -1506,6 +1511,12 @@ class V2RayEngine {
   ];
 
   /// Per-sample budget. MarbleNG AppSettings.pingTimeoutSec default = 5.
+  ///
+  /// بخش ۳ — تایم‌اوت Kotlin (HEAD از داخل Xray موقت) با بودجه‌ی Dart
+  /// هم‌راستا شده: Kotlin خودش connect/read را با timeoutMs محدود می‌کند و
+  /// Dart فقط حاشیه‌ی راه‌اندازی (sleep 1s + over-head) اضافه می‌گذارد.
+  /// قبل از این فیکس، Kotlin تا ۵ ثانیه صبر می‌کرد ولی Dart بعد از ۴ ثانیه
+  /// TimeoutException می‌داد → Real Delay هیچ‌وقت برنمی‌گشت.
   static Future<int> realDelay(
     VpnServer server, {
     Duration timeout = const Duration(seconds: 5),
@@ -1522,28 +1533,48 @@ class V2RayEngine {
 
     try {
       await init();
-      final dynamic engine = _engine;
       // اول URL تنظیم‌شده کاربر، بعد لیست پشتیبان
       final urls = <String>{
         if (delayUrl.isNotEmpty) delayUrl,
         ..._delayUrls,
       };
+      final timeoutMs = timeout.inMilliseconds;
+      // حاشیه: sleep(1000) بوت Xray + over-head پروسه.
+      final futureBudget =
+          Duration(milliseconds: timeoutMs + 2000);
       for (final url in urls) {
         try {
+          // بخش ۳ — فراخوانی مستقیم کانال flutter_vless (نه wrapper پکیج)
+          // تا timeoutMs واقعاً به Kotlin برسد و connect/read داخل هسته
+          // با بودجه‌ی Dart هم‌راستا شود.
           final dynamic raw = await Future<dynamic>.value(
-            engine.getServerDelay(config: config, url: url),
-          ).timeout(timeout);
+            _vlessControlChannel.invokeMethod<dynamic>(
+              'getServerDelay',
+              <String, dynamic>{
+                'config': config,
+                'url': url,
+                'timeoutMs': timeoutMs,
+              },
+            ),
+          ).timeout(futureBudget);
           final int? value = raw is int ? raw : int.tryParse(raw?.toString() ?? '');
           // بعضی پلاگین‌ها کد خطای منفی برمی‌گردانند — فقط مثبت قبول
           if (value != null && value > 0 && value < 120000) {
+            debugPrint('[RealDelay] ${server.displayName} $url → ${value}ms');
             return value;
           }
+          debugPrint('[RealDelay] ${server.displayName} $url → '
+              'invalid result: $value');
         } on TimeoutException {
+          debugPrint('[RealDelay] ${server.displayName} $url → dart timeout '
+              '(budget ${futureBudget.inMilliseconds}ms)');
           continue;
-        } catch (_) {
+        } catch (e) {
+          debugPrint('[RealDelay] ${server.displayName} $url → error: $e');
           continue;
         }
       }
+      debugPrint('[RealDelay] ${server.displayName} → all urls failed');
       return -1;
     } on NoSuchMethodError {
       return -2;
