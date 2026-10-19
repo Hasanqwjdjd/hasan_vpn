@@ -420,18 +420,22 @@ object TorService {
             "snowflake" -> {
                 if (snowflakePath != null) {
                     sb.appendLine("UseBridges 1")
-                    // snowflake به خودی خود کند است؛ front درست کمک می‌کند
-                    val front = if (!sni.isNullOrEmpty()) sni else "cdn.sstatic.net"
+                    // بخش ۵ — کانفیگ رسمی ۲۰۲۴+ تور: فرانت قدیمی Azure از کار
+                    // افتاد؛ Tor Project به بروکر cdn77 + فرانت docs.plesk.com
+                    // مهاجرت کرد (net4people/bbs#338 + support.torproject.org).
+                    // پل پیش‌فرض از همان اول جاسازی می‌شود؛ بدون نیاز به fetch.
                     sb.appendLine(
                         "ClientTransportPlugin snowflake exec ${snowflakePath}" +
-                            " -url https://snowflake-broker.torproject.net/" +
-                            " -front $front" +
-                            " -ice stun:stun.l.google.com:19302,stun:stun.antisip.com:3478"
+                            " -url https://1098762253.rsc.cdn77.org/" +
+                            " -front docs.plesk.com" +
+                            " -ice stun:stun.l.google.com:19302" +
+                            " utls-imitate=hellorandomizedalpn"
                     )
+                    android.util.Log.d("Hasan-Tor", "snowflake PT: cdn77 broker + docs.plesk.com front (2024 default)")
                     if (!customBridges.isNullOrEmpty()) {
                         customBridges.take(1).forEach { sb.appendLine("Bridge $it") }
                     } else {
-                        sb.appendLine("Bridge snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72")
+                        sb.appendLine("Bridge snowflake 192.0.2.3:80 2B280B23E1107BB62ABFC40DDCC8824814F80A72")
                     }
                 }
             }

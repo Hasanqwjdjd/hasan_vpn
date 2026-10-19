@@ -14,6 +14,8 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
 class SocksXrayBuilder {
   SocksXrayBuilder._();
 
@@ -31,6 +33,12 @@ class SocksXrayBuilder {
     required int socksPort,
     bool blockQuic = true,
   }) {
+    // بخش ۴ — لاگ اجباری: بلاک UDP/443 (QUIC) برای مجبور کردن
+    // Instagram/Telegram به افت‌باک TCP. بدون این، Psiphon وصل می‌شود
+    // ولی ترافیک رد می‌شود (QUIC از تونل SOCKS رد نمی‌شود).
+    if (blockQuic) {
+      debugPrint('[Xray] UDP 443 blocked to force TCP');
+    }
     final rules = <Map<String, dynamic>>[
       <String, dynamic>{
         'type': 'field',

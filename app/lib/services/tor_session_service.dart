@@ -188,7 +188,7 @@ class TorSessionService {
     _routing = true;
     final id = _activeBridgeId;
     try {
-      final cfg = _buildTorXrayConfig(socksPort > 0 ? socksPort : 9050);
+      final cfg = TorSessionService.buildTorXrayConfig(socksPort > 0 ? socksPort : 9050);
       final fakeServer = VpnServer(
         id: 'tor_fake_$id',
         name: 'Tor',
@@ -219,8 +219,33 @@ class TorSessionService {
     }
   }
 
-  String _buildTorXrayConfig(int socksPort) {
+  /// بخش ۵ — بیلدر مشترک کانفیگ Xray تور (هم tor_screen هم اینجا استفاده
+  /// می‌کنند): DNS داخل تونل + queryStrategy=UseIPv4 + بلاک QUIC.
+  static String buildTorXrayConfig(int socksPort) {
+    // بخش ۵ — فیکس نشت DNS تور:
+    //  ۱) DNS فقط داخل تونل حل می‌شود (DoH از مسیر tor-out)،
+    //     queryStrategy=UseIPv4 (لاگ‌های قبلی نشت DNS به بیرون را نشان می‌داد).
+    //  ۲) همه‌ی پرس‌وجوهای پورت ۵۳ (udp/tcp) به dns-out داخل تونل می‌روند.
+    //  ۳) QUIC (UDP/443) بلاک می‌شود تا همه‌چیز TCP از Tor برود.
+    //  ۴) sniffing فعال است — دامنه‌ها به‌صورت hostname به SOCKS تور
+    //     می‌روند و Tor خودش ریموت resolve می‌کند (هیچ DNS لوکالی لازم نیست).
+    debugPrint('[Tor] DNS resolved inside tunnel (DoH via Tor), queryStrategy=UseIPv4');
+    debugPrint('[Xray] UDP 443 blocked to force TCP');
     final cfg = <String, dynamic>{
+      'dns': <String, dynamic>{
+        'servers': <dynamic>[
+          <String, dynamic>{
+            'address': 'https://1.1.1.1/dns-query',
+            'skipFallback': false,
+          },
+          <String, dynamic>{
+            'address': 'https://8.8.8.8/dns-query',
+            'skipFallback': false,
+          },
+        ],
+        'queryStrategy': 'UseIPv4',
+        'disableCache': false,
+      },
       'inbounds': [
         {
           'tag': 'socks-in',
@@ -245,10 +270,39 @@ class TorSessionService {
           },
         },
         {'tag': 'direct', 'protocol': 'freedom'},
+        {
+          'tag': 'block',
+          'protocol': 'blackhole',
+          'settings': <String, dynamic>{
+            'response': <String, dynamic>{'type': 'http'},
+          },
+        },
+        {'tag': 'dns-out', 'protocol': 'dns'},
       ],
       'routing': {
         'domainStrategy': 'AsIs',
-        'rules': <Map<String, dynamic>>[],
+        'rules': <Map<String, dynamic>>[
+          // DNS همیشه داخل تونل — نشت نده
+          <String, dynamic>{
+            'type': 'field',
+            'port': '53',
+            'network': 'udp',
+            'outboundTag': 'dns-out',
+          },
+          <String, dynamic>{
+            'type': 'field',
+            'port': '53',
+            'network': 'tcp',
+            'outboundTag': 'dns-out',
+          },
+          // QUIC بلاک — force TCP
+          <String, dynamic>{
+            'type': 'field',
+            'port': '443',
+            'network': 'udp',
+            'outboundTag': 'block',
+          },
+        ],
       },
     };
     return jsonEncode(cfg);

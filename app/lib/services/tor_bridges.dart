@@ -29,10 +29,21 @@ class TorBridges {
   ];
 
   /// Snowflake — P2P، سخت برای فیلتر کامل.
+  /// بخش ۵ — پل پیش‌فرض از همان اول جاسازی شده (بدون نیاز به fetch):
+  /// خط رسمی Tor Project بعد از تغییر فرانت در ۲۰۲۴-۰۳-۰۱ (فرانت قدیمی
+  /// Azure از کار افتاد؛ Tor Project به cdn77 مهاجرت کرد):
+  ///   url=https://1098762253.rsc.cdn77.org/ fronts=docs.plesk.com,www.phpmyadmin.net
+  /// فینگرپرینت 2B280B23E1107BB62ABFC40DDCC8824814F80A72 پل built-in رسمی است
+  /// و 192.0.2.3 آدرس مجازی TEST-NET است (کلاینت snowflake خودش بروکر را
+  /// پیدا می‌کند؛ TCP-ping این آدرس معنا ندارد).
+  /// منبع: support.torproject.org/little-t-tor/circumvention/using-bridges
+  ///       + net4people/bbs#338
   static const List<String> snowflake = <String>[
-    'snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72',
-    'snowflake 192.0.2.4:1 8838024498816A039FCBBAB14E6F40A0843051FA',
-    'snowflake 192.0.2.5:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72 url=https://snowflake-broker.torproject.net/ fronts=cdn.sstatic.net,ajax.aspnetcdn.com ice=stun:stun.l.google.com:19302,stun:stun.antisip.com:3478',
+    'snowflake 192.0.2.3:80 2B280B23E1107BB62ABFC40DDCC8824814F80A72 '
+        'url=https://1098762253.rsc.cdn77.org/ '
+        'fronts=docs.plesk.com,www.phpmyadmin.net '
+        'ice=stun:stun.l.google.com:19302 '
+        'utls-imitate=hellorandomizedalpn',
   ];
 
   /// meek با جبهه Azure / CDNهای رایج (domain fronting).

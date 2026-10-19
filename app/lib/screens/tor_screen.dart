@@ -13,6 +13,7 @@ import '../services/socks_probe.dart';
 import '../services/tor_bridges.dart';
 import '../services/bridge_ping_info.dart';
 import '../services/tor_service.dart';
+import '../services/tor_session_service.dart';
 import '../services/tor_sni_presets.dart';
 import '../services/v2ray_engine.dart';
 import 'tor_bridge_screen.dart';
@@ -537,50 +538,11 @@ class _TorScreenState extends State<TorScreen> {
   }
 
   /// کانفیگ Xray برای روت ترافیک از طریق Tor.
-  /// inbound: SOCKS روی 10808 → outbound: SOCKS به 127.0.0.1:9050
+  /// بخش ۵ — از بیلدر مشترک TorSessionService استفاده می‌کنیم (DNS داخل
+  /// تونل + queryStrategy=UseIPv4 + بلاک QUIC) — نسخه‌ی قدیمی همین‌جا
+  /// بدون بلوک DNS بود و نشت DNS می‌داد.
   String _buildTorXrayConfig() {
-    final cfg = <String, dynamic>{
-      'inbounds': [
-        {
-          'tag': 'socks-in',
-          'port': 10808,
-          'listen': '127.0.0.1',
-          'protocol': 'socks',
-          'settings': {
-            'auth': 'noauth',
-            'udp': true,
-            'address': '127.0.0.1',
-          },
-          'sniffing': {
-            'enabled': true,
-            'destOverride': ['http', 'tls', 'quic'],
-          },
-        },
-      ],
-      'outbounds': [
-        {
-          'tag': 'tor-out',
-          'protocol': 'socks',
-          'settings': {
-            'servers': [
-              {
-                'address': '127.0.0.1',
-                'port': _socksPort > 0 ? _socksPort : 9050,
-              },
-            ],
-          },
-        },
-        {
-          'tag': 'direct',
-          'protocol': 'freedom',
-        },
-      ],
-      'routing': {
-        'domainStrategy': 'AsIs',
-        'rules': [],
-      },
-    };
-    return jsonEncode(cfg);
+    return TorSessionService.buildTorXrayConfig(_socksPort > 0 ? _socksPort : 9050);
   }
 
   /// بعد از Bootstrap کامل، Xray را با SOCKS Tor راه می‌اندازیم تا
