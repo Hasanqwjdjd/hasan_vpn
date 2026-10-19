@@ -182,7 +182,7 @@ class V2RayEngine {
     return id.startsWith('tor_fake_') ||
         id.startsWith('siphon_') ||
         id.startsWith('oblivion_') ||
-        c.name == 'Tor' ||
+        c.name == 'Tor';
   }
   static VpnServer? get current => _current;
 
