@@ -12,6 +12,7 @@
 //   • Per-game region dropdown built from GameDatabase servers.
 //   • Per-game "Boost this game" toggle persisted in prefs.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -21,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/app_colors.dart';
 import '../services/game_booster_service.dart';
+import '../services/game_booster_settings.dart';
 import '../services/dns_directory.dart';
 import 'game_dns_screen.dart';
 
@@ -319,6 +321,10 @@ class _GamesTabState extends State<_GamesTab>
   final Map<String, Uint8List> _iconCache = {}; // package → icon bytes
   final Set<String> _installed = {}; // installed packages
 
+  // بخش ۶ — پینگ زنده هر ۲ ثانیه برای بازی‌های بوست‌شده
+  Timer? _livePingTimer;
+  int _livePingTick = 0;
+
   bool get _isFa => widget.language == 'fa';
   String _t(String fa, String en) => _isFa ? fa : en;
 
@@ -326,6 +332,40 @@ class _GamesTabState extends State<_GamesTab>
   void initState() {
     super.initState();
     _load();
+    // بخش ۶ — تایمر پینگ زنده: هر ۲ ثانیه برای بازی‌های بوست‌شده
+    _livePingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _refreshLivePings();
+    });
+  }
+
+  @override
+  void dispose() {
+    _livePingTimer?.cancel();
+    super.dispose();
+  }
+
+  /// بخش ۶ — پینگ زنده‌ی بازی‌های بوست‌شده، هر ۲ ثانیه یک‌بار.
+  Future<void> _refreshLivePings() async {
+    if (!mounted || _loading) return;
+    final boostedIds = _games
+        .where((g) => _boosted[g['id']?.toString() ?? ''] == true)
+        .map((g) => g['id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+    if (boostedIds.isEmpty) return;
+    _livePingTick++;
+    for (final id in boostedIds) {
+      final region = _selectedRegion[id];
+      final r = await GameBoosterService.pingGame(id, region: region);
+      if (!mounted) return;
+      if (r['ok'] == true) {
+        setState(() => _pings[id] = r);
+      }
+    }
+    if (_livePingTick % 15 == 0) {
+      debugPrint('[GameHub] live ping tick #$_livePingTick '
+          '(${boostedIds.length} boosted game(s))');
+    }
   }
 
   Future<void> _load() async {
@@ -444,16 +484,34 @@ class _GamesTabState extends State<_GamesTab>
   Future<void> _toggleBoost(String id, bool v) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('game_boost_$id', v);
+    // بخش ۶ — روتینگ جداگانه: ترافیک بازی بوست‌شده از تونل رد می‌شود.
+    final game = _games.firstWhere(
+      (g) => g['id']?.toString() == id,
+      orElse: () => <String, dynamic>{},
+    );
+    final pkg = game['packageName']?.toString() ?? '';
+    if (pkg.isNotEmpty) {
+      await GameBoosterSettings.setRoutedPackage(pkg, v);
+    }
     if (!mounted) return;
     setState(() => _boosted[id] = v);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(v
-          ? _t('این بازی به حالت بوست اضافه شد',
-              'Game added to Boost mode')
+          ? _t('این بازی به حالت بوست اضافه شد و ترافیکش از تونل رد می‌شود',
+              'Game added to Boost mode — its traffic routes through the tunnel')
           : _t('این بازی از حالت بوست حذف شد',
               'Game removed from Boost mode')),
-      duration: const Duration(seconds: 1),
+      duration: const Duration(seconds: 2),
     ));
+    // شروع فوری پینگ زنده برای این بازی
+    if (v) {
+      final region = _selectedRegion[id];
+      // ignore: unawaited_futures
+      GameBoosterService.pingGame(id, region: region).then((r) {
+        if (!mounted) return;
+        if (r['ok'] == true) setState(() => _pings[id] = r);
+      });
+    }
   }
 
   Future<void> _setRegion(String id, String region) async {
@@ -481,83 +539,93 @@ class _GamesTabState extends State<_GamesTab>
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: _games.length,
-      itemBuilder: (_, i) {
-        final g = _games[i];
-        final id = g['id']?.toString() ?? '';
-        final pkg = g['packageName']?.toString() ?? '';
-        final installed = _installed.contains(pkg);
-        final iconBytes = _iconCache[pkg];
-        final emoji = g['iconEmoji']?.toString() ?? '🎮';
-        final category = g['category']?.toString() ?? '';
-        final boost = _boosted[id] == true;
-        final ping = _pings[id];
+    // بخش ۶ — نوار پینگ زنده در بالای صفحه (هر ۲ ثانیه آپدیت می‌شود)
+    final boostedGames = _games
+        .where((g) => _boosted[g['id']?.toString() ?? ''] == true)
+        .toList();
 
-        final regions = (g['regions'] is List)
-            ? (g['regions'] as List)
-                .map((e) => Map<String, dynamic>.from(e as Map))
-                .toList()
-            : <Map<String, dynamic>>[];
-        final regionIds = regions
-            .map((r) => r['region']?.toString() ?? '')
-            .where((s) => s.isNotEmpty)
-            .toList();
-        final selectedRegion = _selectedRegion[id]?.isNotEmpty == true
-            ? _selectedRegion[id]!
-            : (regionIds.isNotEmpty ? regionIds.first : '');
+    return Column(
+      children: [
+        if (boostedGames.isNotEmpty)
+          _buildLivePingBar(boostedGames, surface, muted),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: _games.length,
+            itemBuilder: (_, i) {
+              final g = _games[i];
+              final id = g['id']?.toString() ?? '';
+              final pkg = g['packageName']?.toString() ?? '';
+              final installed = _installed.contains(pkg);
+              final iconBytes = _iconCache[pkg];
+              final emoji = g['iconEmoji']?.toString() ?? '🎮';
+              final category = g['category']?.toString() ?? '';
+              final boost = _boosted[id] == true;
+              final ping = _pings[id];
 
-        String pingLabel = '';
-        Color pingColor = muted;
-        if (ping != null) {
-          if (ping['status'] == 'testing') {
-            pingLabel = '...';
-          } else if (ping['ok'] == true) {
-            final ms = ping['pingMs'];
-            pingLabel = '$ms ms';
-            if (ms is int) {
-              pingColor = ms < 80
-                  ? const Color(0xFF3DCF9A)
-                  : (ms < 200
-                      ? const Color(0xFFFFB74D)
-                      : const Color(0xFFE07070));
-            }
-          } else {
-            pingLabel = 'fail';
-            pingColor = AppColors.danger;
-          }
-        }
+              final regions = (g['regions'] is List)
+                  ? (g['regions'] as List)
+                      .map((e) => Map<String, dynamic>.from(e as Map))
+                      .toList()
+                  : <Map<String, dynamic>>[];
+              final regionIds = regions
+                  .map((r) => r['region']?.toString() ?? '')
+                  .where((s) => s.isNotEmpty)
+                  .toList();
+              final selectedRegion = _selectedRegion[id]?.isNotEmpty == true
+                  ? _selectedRegion[id]!
+                  : (regionIds.isNotEmpty ? regionIds.first : '');
 
-        return Card(
-          color: surface,
-          margin: const EdgeInsets.only(bottom: 8),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: SizedBox(
-                        width: 40,
-                        height: 40,
-                        child: iconBytes != null
-                            ? Image.memory(iconBytes,
-                                fit: BoxFit.cover,
-                                gaplessPlayback: true)
-                            : Container(
-                                color: accent.withValues(alpha: 0.15),
-                                alignment: Alignment.center,
-                                child: Text(emoji,
-                                    style: const TextStyle(fontSize: 20)),
-                              ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
+              String pingLabel = '';
+              Color pingColor = muted;
+              if (ping != null) {
+                if (ping['status'] == 'testing') {
+                  pingLabel = '...';
+                } else if (ping['ok'] == true) {
+                  final ms = ping['pingMs'];
+                  pingLabel = '$ms ms';
+                  if (ms is int) {
+                    pingColor = ms < 80
+                        ? const Color(0xFF3DCF9A)
+                        : (ms < 200
+                            ? const Color(0xFFFFB74D)
+                            : const Color(0xFFE07070));
+                  }
+                } else {
+                  pingLabel = 'fail';
+                  pingColor = AppColors.danger;
+                }
+              }
+
+              return Card(
+                color: surface,
+                margin: const EdgeInsets.only(bottom: 8),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: SizedBox(
+                              width: 40,
+                              height: 40,
+                              child: iconBytes != null
+                                  ? Image.memory(iconBytes,
+                                      fit: BoxFit.cover,
+                                      gaplessPlayback: true)
+                                  : Container(
+                                      color: accent.withValues(alpha: 0.15),
+                                      alignment: Alignment.center,
+                                      child: Text(emoji,
+                                          style: const TextStyle(fontSize: 20)),
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -707,7 +775,74 @@ class _GamesTabState extends State<_GamesTab>
             ),
           ),
         );
-      },
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// بخش ۶ — نوار پینگ زنده در بالای تب بازی‌ها؛ هر ۲ ثانیه با
+  /// _refreshLivePings آپدیت می‌شود.
+  Widget _buildLivePingBar(
+      List<Map<String, dynamic>> boostedGames, Color surface, Color muted) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border(context)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.monitor_heart,
+              color: AppColors.accent, size: 18),
+          const SizedBox(width: 8),
+          Text(_t('پینگ زنده', 'Live ping'),
+              style: TextStyle(
+                  color: AppColors.fg(context),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 4,
+              children: boostedGames.map((g) {
+                final id = g['id']?.toString() ?? '';
+                final emoji = g['iconEmoji']?.toString() ?? '🎮';
+                final name = g['name']?.toString() ?? id;
+                final ping = _pings[id];
+                String label;
+                Color color;
+                if (ping == null || ping['status'] == 'testing') {
+                  label = '...';
+                  color = muted;
+                } else if (ping['ok'] == true) {
+                  final ms = ping['pingMs'];
+                  label = '$ms ms';
+                  color = (ms is int && ms < 80)
+                      ? AppColors.good
+                      : (ms is int && ms < 200
+                          ? AppColors.warn
+                          : AppColors.danger);
+                } else {
+                  label = _t('قطع', 'fail');
+                  color = AppColors.danger;
+                }
+                return Text(
+                  '$emoji $name: $label',
+                  style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

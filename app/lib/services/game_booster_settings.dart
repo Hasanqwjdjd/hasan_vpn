@@ -57,6 +57,36 @@ class GameBoosterSettings {
     debugPrint('[GameBooster] setting saved: $key=$value');
   }
 
+  // ─── بخش ۶ — روتینگ جداگانه‌ی بازی‌ها از تونل ───
+  // بسته‌هایی که با تاگل «بوست» در Game Hub انتخاب می‌شوند؛ ترافیک همین
+  // اپ‌ها جداگانه از تونل رد می‌شود (در resolveBlockedApps معاف می‌شوند).
+  static const String _routedKey = 'game_routed_packages_v1';
+
+  static Future<Set<String>> routedPackages() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_routedKey) ?? const <String>[];
+      return list.toSet();
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  static Future<void> setRoutedPackage(String packageName, bool routed) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final set = await routedPackages();
+      if (routed) {
+        set.add(packageName);
+      } else {
+        set.remove(packageName);
+      }
+      await prefs.setStringList(_routedKey, set.toList());
+      debugPrint('[GameBooster] routed through tunnel: $packageName -> $routed '
+          '(total ${set.length})');
+    } catch (_) {}
+  }
+
   static Future<bool> isEnabled() async {
     final s = await load();
     return s['enabled'] == true;

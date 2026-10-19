@@ -37,6 +37,9 @@ class V2RayEngine {
   ///   - all       → فقط خود اپ (جلوگیری از loop)
   ///   - blacklist → خود اپ + اپ‌های انتخاب‌شده
   ///   - whitelist → خود اپ + (همه‌ی اپ‌های نصب‌شده منهای اپ‌های انتخاب‌شده)
+  ///
+  /// بخش ۶ — بازی‌های بوست‌شده (Game Hub) همیشه از لیست «بلاک‌شده» خارج
+  /// می‌شوند تا ترافیک‌شان جداگانه از تونل رد شود.
   static Future<List<String>> resolveBlockedApps() async {
     const appPackage = 'com.hasan.hasan_vpn';
     final base = <String>{appPackage};
@@ -52,6 +55,19 @@ class V2RayEngine {
 
     if (mode == 'all') {
       return base.toList();
+    }
+
+    // بازی‌های بوست‌شده — در هیچ حالتی نباید بلاک شوند (از تونل رد شوند)
+    Set<String> routedGames;
+    try {
+      routedGames = await GameBoosterSettings.routedPackages();
+    } catch (_) {
+      routedGames = <String>{};
+    }
+    if (routedGames.isNotEmpty) {
+      selected = selected.difference(routedGames);
+      debugPrint('[GameBooster] routing ${routedGames.length} game(s) '
+          'through tunnel: ${routedGames.join(", ")}');
     }
 
     if (mode == 'blacklist') {
@@ -72,7 +88,7 @@ class V2RayEngine {
             }
           }
         }
-        final blocked = all.difference(selected);
+        final blocked = all.difference(selected).difference(routedGames);
         base.addAll(blocked);
         return base.toList();
       } catch (_) {

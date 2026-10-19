@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'anti_sanction_service.dart';
@@ -422,6 +423,7 @@ class XraySettings {
       // ─── AntiSanction: Cloudflare + Gemini DoH injection ───
       // Domain-scoped DoH servers go first so they win over the default.
       _pendingUsGeminiExit = false;
+      var antiSanctionDoh = false;
       try {
         final san = await AntiSanctionService.status();
         if (san['filterBypass'] == true) {
@@ -434,6 +436,7 @@ class XraySettings {
               'domain:cfargotunnel.com',
             ],
           });
+          antiSanctionDoh = true;
         }
         if (san['geminiFix'] == true) {
           servers.insert(0, <String, dynamic>{
@@ -450,8 +453,14 @@ class XraySettings {
               'domain:pro.x.com',
             ],
           });
+          antiSanctionDoh = true;
         }
         _pendingUsGeminiExit = san['geminiUsExit'] == true;
+        // بخش ۶ — لاگ اجباری
+        if (antiSanctionDoh) {
+          debugPrint('[AntiSanction] DoH applied '
+              '(filterBypass=${san["filterBypass"]}, geminiFix=${san["geminiFix"]})');
+        }
       } catch (_) {}
 
       dns['servers'] = servers;
@@ -686,6 +695,27 @@ class XraySettings {
           stream['sockopt'] = sockopt;
           ob['streamSettings'] = stream;
         });
+      }
+
+      // بخش ۶ — Anti-Sanction فعال ⇒ TLS Fragment اجباری روی outboundها،
+      // حتی اگر کاربر سوییچ سراسری Fragment را روشن نکرده باشد.
+      if (settings['fragmentEnable'] != true && antiSanctionDoh) {
+        const frag = <String, dynamic>{
+          'packets': 'tlshello',
+          'length': '100-200',
+          'interval': '10-20',
+        };
+        _applyToOutbounds(map, (ob) {
+          final stream = Map<String, dynamic>.from(
+              ob['streamSettings'] as Map? ?? {});
+          final sockopt =
+              Map<String, dynamic>.from(stream['sockopt'] as Map? ?? {});
+          sockopt['fragment'] = frag;
+          stream['sockopt'] = sockopt;
+          ob['streamSettings'] = stream;
+        });
+        debugPrint('[AntiSanction] Fragment injected '
+            '(tlshello, 100-200, 10-20) — anti-sanction is active');
       }
 
       if (settings['observatoryEnable'] == true) {

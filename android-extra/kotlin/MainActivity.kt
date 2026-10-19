@@ -70,7 +70,51 @@ class MainActivity : FlutterActivity() {
                         result.success(isXrayVpnServiceRunning())
                     "getBatteryOptStatus" -> result.success(mapOf("ignored" to false))
                     "requestBatteryOpt", "openBatterySettings" -> result.success(true)
-                    "getInstalledApps" -> result.success(emptyList<Map<String, Any>>())
+                    // بخش ۶ — پیاده‌سازی واقعی (قبلاً استاب خالی بود — نقض
+                    // قانون طلایی ۱). همان enumeration ی listApps، فیلترشده
+                    // به اپ‌های اجراشدنی.
+                    "getInstalledApps" -> {
+                        Thread {
+                            try {
+                                val pm = applicationContext.packageManager
+                                val myPkg = applicationContext.packageName
+                                val packages = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                    pm.getInstalledPackages(android.content.pm.PackageManager.PackageInfoFlags.of(0L))
+                                } else {
+                                    @Suppress("DEPRECATION")
+                                    pm.getInstalledPackages(0)
+                                }
+                                val out = ArrayList<Map<String, Any?>>()
+                                val seen = HashSet<String>()
+                                for (pi in packages) {
+                                    val pkg = pi.packageName ?: continue
+                                    if (pkg == myPkg) continue
+                                    if (seen.contains(pkg)) continue
+                                    // فقط اپ‌هایی که آیکون لانچر دارند (اجرا شدنی)
+                                    if (pm.getLaunchIntentForPackage(pkg) == null) continue
+                                    seen.add(pkg)
+                                    val appInfo = pi.applicationInfo ?: continue
+                                    val label = try {
+                                        pm.getApplicationLabel(appInfo).toString()
+                                    } catch (_: Exception) {
+                                        pkg
+                                    }
+                                    val isSystem = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                                    out.add(mapOf(
+                                        "package" to pkg,
+                                        "label" to label,
+                                        "isSystem" to isSystem,
+                                        "icon" to null,
+                                    ))
+                                }
+                                out.sortBy { (it["label"] as? String)?.lowercase() ?: "" }
+                                android.util.Log.d("Hasan-GameHub", "getInstalledApps: ${out.size} launchable app(s)")
+                                runOnUiThread { result.success(out) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("getInstalledApps", e.message, null) }
+                            }
+                        }.start()
+                    }
                     "openApp" -> {
                         val pkg = call.argument<String>("package")
                         if (pkg.isNullOrBlank()) {
