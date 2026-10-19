@@ -1,8 +1,6 @@
 package com.hasan.hasan_vpn
 
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -40,7 +38,7 @@ class PsiphonRuntimeService : Service() {
 
     companion object {
         const val TAG = "Hasan-PsiphonRuntime"
-        const val CHANNEL_ID = "hasan_psiphon_runtime"
+        // (Section 9) کانال واحد اپ — NotificationHelper.CHANNEL_ID = "vpn_status"
         const val NOTIFICATION_ID = 7301
         const val RUNTIME_DEX_ASSET = "pingng_psiphon_runtime.dex"
         const val RUNTIME_DEX_FILE = "pingng_psiphon_runtime_ro_v3.dex"
@@ -95,7 +93,9 @@ class PsiphonRuntimeService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        // (Section 9) کانال واحد vpn_status از NotificationHelper — بدون کانال جدا برای Psiphon.
+        NotificationHelper.ensureChannel(this)
+        Log.d(TAG, "[Psiphon] foreground service created, channel=${NotificationHelper.CHANNEL_ID}")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -534,21 +534,14 @@ class PsiphonRuntimeService : Service() {
         )
     }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            getSystemService(NotificationManager::class.java)?.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Psiphon", NotificationManager.IMPORTANCE_LOW),
-            )
-        }
-    }
-
-    private fun buildNotification(): Notification = NotificationCompat.Builder(this, CHANNEL_ID)
+    private fun buildNotification(): Notification = NotificationCompat.Builder(this, NotificationHelper.CHANNEL_ID)
         .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
         .setContentTitle("Hasan VPN")
         .setContentText("Psiphon")
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
         .setPriority(NotificationCompat.PRIORITY_LOW)
         .setOngoing(true)
+        .setOnlyAlertOnce(true)
         .build()
 
     private fun defaultValue(method: Method): Any? = when (method.returnType) {

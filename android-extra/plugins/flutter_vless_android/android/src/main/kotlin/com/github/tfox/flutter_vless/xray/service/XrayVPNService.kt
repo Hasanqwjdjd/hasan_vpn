@@ -381,20 +381,32 @@ for (pkg in config.BLOCKED_APPS) {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channelId = "vpn_service_channel"
-            val channelName = "VPN Service"
+            // (Section 9) کانال واحد کل اپ: vpn_status با IMPORTANCE_LOW.
+            // این فایل داخل پلاگینه و به NotificationHelper اپ دسترسی نداره،
+            // پس ID رو hardcode می‌کنیم (باید با helper یکی باشه).
+            val channelId = "vpn_status"
+            val channelName = "Hasan VPN"
             val channel = android.app.NotificationChannel(
                 channelId,
                 channelName,
                 android.app.NotificationManager.IMPORTANCE_LOW
             )
+            channel.setShowBadge(false)
+            channel.setSound(null, null)
+            channel.enableVibration(false)
             val manager = getSystemService(android.app.NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
+            // کانال قدیمی رو حذف کن تا توی تنظیمات فقط vpn_status بمونه.
+            try {
+                manager?.deleteNotificationChannel("vpn_service_channel")
+                Log.d("XrayVPNService", "legacy channel vpn_service_channel deleted")
+            } catch (_: Exception) {}
+            Log.d("XrayVPNService", "notification channel ready: $channelId (IMPORTANCE_LOW, silent)")
         }
     }
 
     private fun createNotification(content: String): android.app.Notification {
-        val channelId = "vpn_service_channel"
+        val channelId = "vpn_status"
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             android.app.Notification.Builder(this, channelId)
         } else {

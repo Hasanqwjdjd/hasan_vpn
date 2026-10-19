@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 
 /**
  * Notification helper — کانال و استایل واحد برای همه‌ی سرویس‌های Hasan VPN.
@@ -22,9 +23,19 @@ import android.os.Build
  */
 object NotificationHelper {
     /// کانال اصلی — همه‌ی سرویس‌ها از این استفاده می‌کنن.
-    const val CHANNEL_ID = "hasan_vpn_main"
+    /// (Section 9) فقط یک کانال در کل اپ: vpn_status با IMPORTANCE_LOW
+    const val CHANNEL_ID = "vpn_status"
     private const val CHANNEL_NAME = "Hasan VPN"
     private const val CHANNEL_DESC = "اتصال VPN و وضعیت تونل"
+
+    /// کانال‌های قدیمی که باید حذف بشن تا تنظیمات اندروید فقط
+    /// یک گروه «Hasan VPN» نشون بده (Section 9).
+    private val LEGACY_CHANNEL_IDS = listOf(
+        "hasan_vpn_main",       // نام قدیمی کانال اصلی
+        "hasan_psiphon_runtime", // کانال قدیمی سرویس Psiphon
+        "XRAY_SERVICE_CHANNEL",  // کانال قدیمی XrayCoreManager (IMPORTANCE_DEFAULT)
+        "vpn_service_channel",   // کانال قدیمی XrayVPNService
+    )
 
     /// All notifications share this group key so Android stacks them under
     /// one header in the shade instead of showing several separate rows.
@@ -38,7 +49,7 @@ object NotificationHelper {
     const val ID_WIDGET = 4245
     const val ID_XRAY = 4244  // برای XrayVPNService (forked plugin)
 
-    /// ساخت/به‌روزرسانی کانال. idempotent.
+    /// ساخت/به‌روزرسانی کانال + پاک کردن کانال‌های قدیمی. idempotent.
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         try {
@@ -56,6 +67,14 @@ object NotificationHelper {
                 setLockscreenVisibility(Notification.VISIBILITY_PRIVATE)
             }
             manager.createNotificationChannel(channel)
+            // (Section 9) حذف همه‌ی کانال‌های قدیمی — فقط vpn_status باید بمونه.
+            for (legacy in LEGACY_CHANNEL_IDS) {
+                try {
+                    manager.deleteNotificationChannel(legacy)
+                    Log.d("Hasan-Notify", "legacy notification channel deleted: $legacy")
+                } catch (_: Exception) {}
+            }
+            Log.d("Hasan-Notify", "notification channel ready: $CHANNEL_ID (IMPORTANCE_LOW, silent)")
         } catch (_: Exception) {}
     }
 

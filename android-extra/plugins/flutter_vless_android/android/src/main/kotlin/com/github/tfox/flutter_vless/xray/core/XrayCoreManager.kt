@@ -8,7 +8,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.os.Build
 import android.os.CountDownTimer
 import android.util.Log
@@ -640,13 +639,25 @@ object XrayCoreManager {
 
     private fun createNotificationChannel(context: Context, appName: String): String {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channelId = "XRAY_SERVICE_CHANNEL"
-            val channelName = "$appName Background Service"
-            val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_DEFAULT)
-            channel.lightColor = Color.BLUE
+            // (Section 9) کانال واحد کل اپ: vpn_status با IMPORTANCE_LOW
+            // (فقط آیکون در استاتوس‌بار — بدون صدا، بدون پاپ‌آپ).
+            // این فایل داخل پلاگینه و به NotificationHelper اپ دسترسی نداره،
+            // پس ID رو اینجا hardcode می‌کنیم (باید با helper یکی باشه).
+            val channelId = "vpn_status"
+            val channelName = "Hasan VPN"
+            val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW)
             channel.lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+            channel.setShowBadge(false)
+            channel.setSound(null, null)
+            channel.enableVibration(false)
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
+            // کانال قدیمی با IMPORTANCE_DEFAULT رو حذف کن تا توی تنظیمات دیده نشه.
+            try {
+                manager.deleteNotificationChannel("XRAY_SERVICE_CHANNEL")
+                Log.d("XrayCoreManager", "legacy channel XRAY_SERVICE_CHANNEL deleted")
+            } catch (_: Exception) {}
+            Log.d("XrayCoreManager", "notification channel ready: $channelId (IMPORTANCE_LOW, silent)")
             return channelId
         }
         return ""
