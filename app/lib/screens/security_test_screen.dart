@@ -1,13 +1,23 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../services/app_colors.dart';
 import '../services/exit_ip_service.dart';
 import '../services/speed_test_service.dart';
-import '../services/v2ray_engine.dart';
+import '../services/tools_tunnel_service.dart';
 
 /// صفحه «تست و امنیت»: IP خروجی، تست سرعت، تست نشت DNS.
+///
+/// بخش ۱.۲ — هر سه ابزار حالا خودشان تونل را آماده می‌کنند:
+///   • اگر VPN روشن باشد از تونل فعال استفاده می‌شود.
+///   • اگر خاموش باشد یک تونل proxy-only موقت از سرور انتخابی/آخر بالا
+///     می‌آید (بدون مجوز VPN) و بعد از بستن صفحه پایین کشیده می‌شود.
+///   • همه‌ی نتایج برچسب «از داخل تونل / مستقیم» دارند و هر قدم لاگ [Tools]
+///     تولید می‌کند.
 class SecurityTestScreen extends StatefulWidget {
   final String language;
   const SecurityTestScreen({super.key, required this.language});
@@ -29,12 +39,32 @@ class _SecurityTestScreenState extends State<SecurityTestScreen> {
   int _speedLiveBytes = 0;
 
   bool _dnsLoading = false;
+
+  /// نتیجه‌ی تست نشت DNS — رزولور دیده‌شده از داخل تونل و مستقیم.
+  String? _dnsTunnelResolver;
+  String? _dnsDirectResolver;
   String? _dnsResult;
+  bool _dnsLeak = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkIp());
+  }
+
+  @override
+  void dispose() {
+    // تونل موقتی که فقط برای ابزارها بالا آمده را ببند.
+    ToolsTunnelService.releaseOwned();
+    super.dispose();
+  }
+
+  Future<ToolsProxy?> _ensureTunnel(String why) async {
+    final proxy = await ToolsTunnelService.ensure();
+    if (proxy == null) {
+      debugPrint('[Tools] tunnel unavailable for $why');
+    }
+    return proxy;
   }
 
   Future<void> _checkIp() async {
@@ -43,6 +73,7 @@ class _SecurityTestScreenState extends State<SecurityTestScreen> {
       _ipInfo = null;
     });
     try {
+      await _ensureTunnel('exit-ip');
       final info = await ExitIpService.fetch();
       if (!mounted) return;
       setState(() {
@@ -50,6 +81,7 @@ class _SecurityTestScreenState extends State<SecurityTestScreen> {
         _ipLoading = false;
       });
     } catch (e) {
+      debugPrint('[Tools] exit-ip failed: $e');
       if (!mounted) return;
       setState(() => _ipLoading = false);
     }
@@ -63,7 +95,10 @@ class _SecurityTestScreenState extends State<SecurityTestScreen> {
       _speedLiveBytes = 0;
     });
     try {
+      final proxy = await _ensureTunnel('speed-test');
       final r = await SpeedTestService.run(
+        socksPort: proxy?.socksPort,
+        httpPort: proxy?.httpPort,
         onProgress: (bytes, mbps) {
           if (!mounted) return;
           setState(() {
@@ -78,8 +113,152 @@ class _SecurityTestScreenState extends State<SecurityTestScreen> {
         _speedLoading = false;
       });
     } catch (e) {
+      debugPrint('[Tools] speed test failed: $e');
       if (!mounted) return;
-      setState(() => _speedLoading = false);
+      setState(() {
+        _speedResult = SpeedTestResult(error: e.toString());
+        _speedLoading = false;
+      });
+    }
+  }
+
+  /// IP رزولور DNS دیده‌شده — از مسیر [viaTunnel] یا مستقیم.
+  /// منبع: whoami.akamai.net (plain HTTP) که IP رزولور را برمی‌گرداند.
+  Future<String?> _resolverIp({
+    int? httpProxyPort,
+    int? socksPort,
+    required bool viaTunnel,
+  }) async {
+    const host = 'whoami.akamai.net';
+
+    // ── مسیر HTTP proxy (CONNECT — ترجیحی) ──
+    if (viaTunnel && (httpProxyPort ?? 0) > 0) {
+      try {
+        final client = HttpClient();
+        client.findProxy = (uri) => 'PROXY 127.0.0.1:$httpProxyPort';
+        client.connectionTimeout = const Duration(seconds: 6);
+        final req = await client
+            .getUrl(Uri.parse('http://$host/'))
+            .timeout(const Duration(seconds: 8));
+        final res = await req.close().timeout(const Duration(seconds: 8));
+        final body = await res.transform(utf8DecoderSafe).join();
+        client.close(force: true);
+        final ip = _extractIp(body);
+        debugPrint('[DnsLeak] tunnel resolver (http-proxy): $ip');
+        return ip;
+      } catch (e) {
+        debugPrint('[DnsLeak] http-proxy probe failed: $e');
+      }
+    }
+
+    // ── مسیر SOCKS خام ──
+    if (viaTunnel && (socksPort ?? 0) > 0) {
+      try {
+        final body = await _httpGetViaSocks(
+            host, 80, '/', socksPort!, const Duration(seconds: 8));
+        final ip = _extractIp(body);
+        debugPrint('[DnsLeak] tunnel resolver (socks): $ip');
+        return ip;
+      } catch (e) {
+        debugPrint('[DnsLeak] socks probe failed: $e');
+      }
+    }
+
+    // ── مسیر مستقیم (baseline) ──
+    if (!viaTunnel) {
+      try {
+        final client = HttpClient();
+        client.connectionTimeout = const Duration(seconds: 6);
+        final req = await client
+            .getUrl(Uri.parse('http://$host/'))
+            .timeout(const Duration(seconds: 8));
+        final res = await req.close().timeout(const Duration(seconds: 8));
+        final body = await res.transform(utf8DecoderSafe).join();
+        client.close(force: true);
+        final ip = _extractIp(body);
+        debugPrint('[DnsLeak] direct resolver: $ip');
+        return ip;
+      } catch (e) {
+        debugPrint('[DnsLeak] direct probe failed: $e');
+      }
+    }
+    return null;
+  }
+
+  static const utf8DecoderSafe = Utf8Decoder(allowMalformed: true);
+
+  String? _extractIp(String body) {
+    final m =
+        RegExp(r'\b(\d{1,3}(?:\.\d{1,3}){3})\b').firstMatch(body.trim());
+    return m?.group(1);
+  }
+
+  /// GET ساده از داخل SOCKS5 (پلاین HTTP — بدون TLS).
+  Future<String> _httpGetViaSocks(
+    String host,
+    int port,
+    String path,
+    int socksPort,
+    Duration timeout,
+  ) async {
+    final socket = await Socket.connect(
+      InternetAddress.loopbackIPv4,
+      socksPort,
+      timeout: const Duration(seconds: 5),
+    );
+    final reader = StreamIterator<Uint8List>(socket);
+    try {
+      Future<List<int>> readAtLeast(int n) async {
+        final buf = <int>[];
+        while (buf.length < n) {
+          if (!await reader.moveNext().timeout(timeout)) {
+            throw const SocketException('connection closed by peer');
+          }
+          buf.addAll(reader.current);
+        }
+        return buf;
+      }
+
+      socket.add(const <int>[0x05, 0x01, 0x00]);
+      final greeting = await readAtLeast(2);
+      if (greeting.length < 2 || greeting[0] != 0x05 || greeting[1] != 0x00) {
+        throw const SocketException('socks5 greeting rejected');
+      }
+      final hostBytes = ascii.encode(host);
+      socket.add(<int>[
+        0x05, 0x01, 0x00, 0x03, hostBytes.length, ...hostBytes,
+        (port >> 8) & 0xff, port & 0xff,
+      ]);
+      final reply = await readAtLeast(4);
+      if (reply[1] != 0x00) {
+        throw SocketException('socks5 connect failed (${reply[1]})');
+      }
+      final int atype = reply[3];
+      if (atype == 0x01) {
+        await readAtLeast(6);
+      } else if (atype == 0x04) {
+        await readAtLeast(18);
+      } else {
+        final l = (await readAtLeast(1))[0];
+        await readAtLeast(l + 2);
+      }
+      socket.add(ascii.encode(
+        'GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n',
+      ));
+      await socket.flush();
+      final body = <int>[];
+      while (body.length <= 8192) {
+        if (!await reader.moveNext().timeout(timeout)) break;
+        body.addAll(reader.current);
+      }
+      return String.fromCharCodes(body);
+    } finally {
+      try {
+        await reader.cancel();
+      } catch (_) {}
+      try {
+        socket.destroy();
+      } catch (_) {}
     }
   }
 
@@ -87,68 +266,87 @@ class _SecurityTestScreenState extends State<SecurityTestScreen> {
     setState(() {
       _dnsLoading = true;
       _dnsResult = null;
+      _dnsTunnelResolver = null;
+      _dnsDirectResolver = null;
+      _dnsLeak = false;
     });
     try {
-      // DNS leak = مقایسه‌ی DNS resolver فعلی (که Xray انتخاب کرده) با ISP.
-      // روی موبایل دسترسی مستقیم به /etc/resolv.conf نداریم، ولی می‌تونیم
-      // از طریق SOCKS یه DNS query به یه سرور مخصوص بزنیم که IP resolver
-      // خروجی رو برگردونه.
-      final port = V2RayEngine.localSocksPort;
-      if (port <= 0) {
+      final proxy = await _ensureTunnel('dns-leak');
+      if (proxy == null) {
         if (!mounted) return;
         setState(() {
           _dnsResult = _t(
-            'اتصال VPN فعال نیست — اول وصل شو',
-            'VPN not active — connect first',
+            'هیچ تونلی در دسترس نیست — اول یک سرور اضافه/انتخاب کن',
+            'No tunnel available — add/select a server first',
           );
           _dnsLoading = false;
         });
         return;
       }
-      // استفاده از یک DNS resolver آنلاین که IP خروجی رو نشون می‌ده
-      final direct = await ExitIpService.fetch();
+
+      // baseline مستقیم (رزولور ISP)
+      final direct = await _resolverIp(viaTunnel: false);
       if (!mounted) return;
-      final ip = direct?.ip ?? '';
-      if (ip.isEmpty) {
-        setState(() {
-          _dnsResult = _t(
-            'نمی‌توان IP را خواند',
-            'Could not read IP',
-          );
-          _dnsLoading = false;
-        });
-        return;
-      }
-      // اگه IP ایران باشه، نشت داریم
-      final looksIran = ip.startsWith('2.144.') ||
-          ip.startsWith('5.160.') ||
-          ip.startsWith('31.') ||
-          ip.startsWith('37.') ||
-          ip.startsWith('78.') ||
-          ip.startsWith('80.191.') ||
-          ip.startsWith('91.') ||
-          ip.startsWith('151.') ||
-          ip.startsWith('185.') ||
-          ip.startsWith('217.');
-      setState(() {
-        _dnsResult = looksIran
+      setState(() => _dnsDirectResolver = direct);
+
+      // رزولور دیده‌شده از داخل تونل
+      final tunnel = await _resolverIp(
+        httpProxyPort: proxy.httpPort,
+        socksPort: proxy.socksPort,
+        viaTunnel: true,
+      );
+      if (!mounted) return;
+      setState(() => _dnsTunnelResolver = tunnel);
+
+      String verdict;
+      bool leak = false;
+      if (tunnel == null) {
+        verdict = _t(
+          'رزولور DNS تونل خوانده نشد — تونل پاسخگو نبود',
+          'Could not read the tunnel DNS resolver — tunnel not answering',
+        );
+        leak = true;
+      } else if (direct == null) {
+        verdict = _t(
+          'رزولور تونل: $tunnel — baseline مستقیم خوانده نشد؛ مقایسه ممکن نیست',
+          'Tunnel resolver: $tunnel — direct baseline unavailable; comparison skipped',
+        );
+      } else {
+        final same = tunnel == direct || _sameSlash24(tunnel, direct);
+        leak = same;
+        verdict = same
             ? _t(
-                'IP خروجی ایران است — ممکن است نشت داشته باشید',
-                'Exit IP looks Iranian — possible leak',
+                'نشت DNS: رزولور تونل و مستقیم یکسان است ($tunnel)',
+                'DNS leak: tunnel and direct resolvers are identical ($tunnel)',
               )
             : _t(
-                'IP خروجی خارجی است — بدون نشت آشکار',
-                'Exit IP is foreign — no obvious leak',
+                'بدون نشت آشکار — DNS از داخل تونل resolve می‌شود '
+                '($tunnel ≠ $direct)',
+                'No obvious leak — DNS resolves inside the tunnel '
+                '($tunnel ≠ $direct)',
               );
+      }
+      debugPrint('[DnsLeak] verdict=$verdict leak=$leak');
+      setState(() {
+        _dnsResult = verdict;
+        _dnsLeak = leak;
         _dnsLoading = false;
       });
     } catch (e) {
+      debugPrint('[DnsLeak] failed: $e');
       if (!mounted) return;
       setState(() {
         _dnsResult = e.toString();
         _dnsLoading = false;
       });
     }
+  }
+
+  bool _sameSlash24(String a, String b) {
+    final pa = a.split('.');
+    final pb = b.split('.');
+    if (pa.length != 4 || pb.length != 4) return false;
+    return pa[0] == pb[0] && pa[1] == pb[1] && pa[2] == pb[2];
   }
 
   @override
@@ -188,6 +386,8 @@ class _SecurityTestScreenState extends State<SecurityTestScreen> {
                       _kv(_t('شهر', 'City'), _ipInfo!.city!),
                     if (_ipInfo!.org != null)
                       _kv(_t('سازمان', 'Org'), _ipInfo!.org!),
+                    const SizedBox(height: 6),
+                    _tunnelBadge(_ipInfo!.viaTunnel),
                   ] else
                     Text(
                       _t('خطا در خواندن IP', 'Failed to read IP'),
@@ -247,7 +447,8 @@ class _SecurityTestScreenState extends State<SecurityTestScreen> {
                         ),
                       ),
                       Text(
-                        '${(_speedResult!.bytes / 1024 / 1024).toStringAsFixed(1)} MB · ${_speedResult!.elapsed.inSeconds}s',
+                        '${(_speedResult!.bytes / 1024 / 1024).toStringAsFixed(1)} MB · '
+                            '${_speedResult!.elapsed.inSeconds}s · ${_speedResult!.via}',
                         style: TextStyle(
                           color: AppColors.muted(context),
                           fontSize: 12,
@@ -286,21 +487,26 @@ class _SecurityTestScreenState extends State<SecurityTestScreen> {
                         child: CircularProgressIndicator(),
                       ),
                     )
-                  else if (_dnsResult != null)
+                  else if (_dnsResult != null) ...[
+                    if (_dnsTunnelResolver != null)
+                      _kv(_t('رزولور تونل', 'Tunnel resolver'),
+                          _dnsTunnelResolver!),
+                    if (_dnsDirectResolver != null)
+                      _kv(_t('رزولور مستقیم', 'Direct resolver'),
+                          _dnsDirectResolver!),
+                    const SizedBox(height: 6),
                     Text(
                       _dnsResult!,
                       style: TextStyle(
-                        color: _dnsResult!.contains('نشت') ||
-                                _dnsResult!.contains('leak')
-                            ? AppColors.danger
-                            : AppColors.fg(context),
+                        color: _dnsLeak ? AppColors.danger : AppColors.good,
                         fontSize: 13,
                       ),
-                    )
-                  else
+                    ),
+                  ] else
                     Text(
-                      _t('بررسی اینکه DNS از تونل رد می‌شود',
-                          'Checks whether DNS goes through tunnel'),
+                      _t(
+                          'مقایسه‌ی واقعی رزولور DNS از داخل تونل و مستقیم',
+                          'Real resolver comparison: tunnel vs direct'),
                       style: TextStyle(color: AppColors.muted(context)),
                     ),
                   const SizedBox(height: 10),
@@ -317,6 +523,25 @@ class _SecurityTestScreenState extends State<SecurityTestScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// برچسب مسیر نتیجه‌ی IP: داخل تونل یا مستقیم.
+  Widget _tunnelBadge(bool viaTunnel) {
+    final fa = viaTunnel ? 'از داخل تونل' : 'مستقیم — بدون تونل';
+    final en = viaTunnel ? 'via tunnel' : 'direct — no tunnel';
+    final color = viaTunnel ? AppColors.good : AppColors.warn;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        _t(fa, en),
+        style: TextStyle(color: color, fontSize: 11),
       ),
     );
   }
@@ -348,7 +573,7 @@ class _SecurityTestScreenState extends State<SecurityTestScreen> {
         child: Row(
           children: [
             SizedBox(
-              width: 80,
+              width: 110,
               child: Text(
                 k,
                 style: TextStyle(

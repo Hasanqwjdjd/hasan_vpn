@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import 'socks_probe.dart';
-import 'v2ray_engine.dart';
+import 'tools_tunnel_service.dart';
 import 'xray_settings.dart';
 
 /// اطلاعات IP خروجی از داخل تونل (الهام از ZedSecure).
@@ -16,12 +16,16 @@ class ExitIpInfo {
   final String? org;
   final int? latencyMs;
 
+  /// بخش ۱.۲ — true = از داخل تونل خوانده شده؛ false = مستقیم بدون تونل.
+  final bool viaTunnel;
+
   const ExitIpInfo({
     required this.ip,
     this.country,
     this.city,
     this.org,
     this.latencyMs,
+    this.viaTunnel = false,
   });
 
   String get summary {
@@ -39,31 +43,49 @@ class ExitIpService {
   static ExitIpInfo? last;
 
   /// از داخل تونل فعلی (SOCKS محلی) IP خروجی را می‌گیرد.
+  /// پورت SOCKS واقعی با handshake واقعی پیدا می‌شود (10807/10808/…).
   static Future<ExitIpInfo?> fetch({
     int? socksPort,
     Duration timeout = const Duration(seconds: 10),
+    bool allowDirect = true,
   }) async {
-    final port = socksPort ?? V2RayEngine.localSocksPort;
-    try {
-      // اول از طریق SOCKS اگر تونل بالا باشد
-      final viaSocks = await _viaSocks(port, timeout);
-      if (viaSocks != null) {
-        last = viaSocks;
-        return viaSocks;
+    int port = socksPort ?? 0;
+    // پورت پاس‌داده‌شده ممکن است کهنه باشد (مثلاً 10808 در حالی که SOCKS
+    // واقعی روی 10807 است) — با greeting واقعی تأیید می‌شود.
+    if (port > 0 && !(await ToolsTunnelService.verifySocks(port))) {
+      debugPrint('[ExitIp] provided socksPort $port is dead — scanning');
+      port = 0;
+    }
+    if (port <= 0) {
+      port = await ToolsTunnelService.findSocksPort();
+    }
+    if (port > 0) {
+      try {
+        final viaSocks = await _viaSocks(port, timeout);
+        if (viaSocks != null) {
+          debugPrint('[ExitIp] via tunnel SOCKS 127.0.0.1:$port → ${viaSocks.ip}');
+          last = viaSocks;
+          return viaSocks;
+        }
+      } catch (e) {
+        debugPrint('ExitIp via SOCKS: $e');
       }
-    } catch (e) {
-      debugPrint('ExitIp via SOCKS: $e');
     }
 
-    // اگر SOCKS جواب نداد، مستقیم (بدون تونل) — فقط برای تشخیص
-    try {
-      final direct = await _direct(timeout);
-      if (direct != null) {
-        last = direct;
-        return direct;
+    // اگر SOCKS جواب نداد، مستقیم (بدون تونل) — فقط برای تشخیص؛
+    // نتیجه با viaTunnel=false علامت‌گذاری می‌شود تا کاربر بداند این
+    // IP واقعی اینترنت خودش است، نه تونل.
+    if (allowDirect) {
+      try {
+        final direct = await _direct(timeout);
+        if (direct != null) {
+          debugPrint('[ExitIp] direct (no tunnel) → ${direct.ip}');
+          last = direct;
+          return direct;
+        }
+      } catch (e) {
+        debugPrint('ExitIp direct: $e');
       }
-    } catch (e) {
-      debugPrint('ExitIp direct: $e');
     }
     return null;
   }
@@ -156,6 +178,7 @@ class ExitIpService {
         city: city,
         org: org,
         latencyMs: probe.ms,
+        viaTunnel: true,
       );
     } finally {
       try {

@@ -570,6 +570,113 @@ class V2RayEngine {
     }
   }
 
+  /// بخش ۱.۲ — ساخت کانفیگ کامل یک سرور با *دقیقاً همان مسیر* connect
+  /// (شامل XraySettings، TLS سرور، DNS سرور، قوانین روتینگ، geo و GameDNS).
+  /// مصرف‌کننده: تونل موقت ابزارها (ToolsTunnelService) برای IP/سرعت/DNS-leak
+  /// بدون وصل‌شدن VPN کامل. خروجی: (config, remark) یا null با lastError.
+  static Future<(String, String)?> buildConfigFor(VpnServer server) async {
+    String config;
+    String remark = server.name;
+
+    if (server.protocol == VpnProtocol.xrayJson) {
+      final raw = XrayJson.extractJson(server.shareLink);
+      if (raw == null || raw.trim().isEmpty) {
+        lastError = 'invalid xray json config';
+        return null;
+      }
+      config = _ensureLocalInbound(raw);
+    } else if (server.protocol == VpnProtocol.chain) {
+      config = _buildChainConfig(server);
+      if (config.isEmpty) {
+        lastError = 'invalid chain config';
+        return null;
+      }
+    } else if (server.protocol == VpnProtocol.socks5) {
+      config = _buildSocks5Config(server);
+      if (config.isEmpty) {
+        lastError = 'invalid socks5 config';
+        return null;
+      }
+    } else if (server.protocol == VpnProtocol.amneziaWg) {
+      // FIX: AmneziaWG → WireGuard outbound Xray (v1.8+).
+      // نکته: obfuscation (Jc/Jmin/Jmax/S1/S2/H1..H4) توسط Xray
+      // پشتیبانی نمی‌شه؛ فقط WireGuard استاندارد کار می‌کنه.
+      config = _buildAmneziaWgConfig(server);
+      if (config.isEmpty) {
+        lastError = 'invalid amneziawg config';
+        return null;
+      }
+    } else {
+      try {
+        final FlutterVlessURL parser = FlutterVless.parse(server.shareLink);
+        config = parser.getFullConfiguration();
+        if (parser.remark.isNotEmpty) remark = parser.remark;
+      } catch (e) {
+        lastError = 'این کانفیگ از پروتکل '
+            '${server.protocol.name} پشتیبانی نمی‌شود (${e.toString().split(':').first})';
+        return null;
+      }
+    }
+
+    if (config.trim().isEmpty) {
+      lastError = 'empty config';
+      return null;
+    }
+
+    // A full Xray JSON profile (xrayjson://, or a raw JSON config pasted
+    // into the manual field) is self-contained: it brings its own
+    // inbounds, outbounds, DNS block and routing rules, and the whole
+    // point of a config like Serverless-v51 is that those rules carry
+    // the DPI evasion (finalmask on direct outbounds). Overwriting the
+    // DNS block or the routing rules here would strip exactly the parts
+    // that make the config work, which is why the server connected but
+    // carried no traffic.
+    //
+    // For that protocol we only:
+    //   - set the log level (harmless)
+    //   - make sure a local SOCKS/HTTP inbound exists for the TUN to
+    //     dial (XrayJson configs may bind 10808 themselves)
+    //   - point the core at the extracted geo assets
+    // Nothing else is touched.
+    final isSelfContainedJson =
+        server.protocol == VpnProtocol.xrayJson ||
+        XrayJson.looksLike(server.shareLink);
+
+    if (isSelfContainedJson) {
+      // Leave the config's own inbounds exactly as written: configs like
+      // Serverless-v51 already declare a mixed-in at 10808 with its own
+      // sockopt tuning. Adding a second inbound collides with it and
+      // breaks routing. We only adjust the log level and asset paths.
+      config = _applyJsonLogLevelOnly(config);
+      config = await _applyGeoAssetPaths(config);
+    } else {
+      // BLOCKER 1: every setting must land in the runtime config for ALL
+      // protocols, including full Xray JSON profiles.
+      config = await XraySettings.applyToConfig(config);
+
+      // FIX: اعمال تنظیمات TLS مخصوص همون سرور (fingerprint, ALPN,
+      // cipherSuites, finalMask, ...) روی کانفیگ نهایی.
+      if (!server.tls.isEmpty) {
+        config = XraySettings.applyServerTls(
+          config,
+          server.tls.toJson(),
+          sniOverride: server.sniOrHost,
+        );
+      }
+      // FIX: اعمال DNS مخصوص سرور (اگه تنظیم شده باشه).
+      if (server.dns != null && server.dns!.isNotEmpty) {
+        config = XraySettings.applyServerDns(config, server.dns);
+      }
+      config = await _applyRoutingRules(config);
+      config = await _applyGeoAssetPaths(config);
+
+      config = await _applyGameDns(config);
+      config = await _applyGameBooster(config);
+    }
+
+    return (config, remark);
+  }
+
   static Future<bool> connect(VpnServer server) async {
     lastError = null;
     try {
@@ -578,106 +685,11 @@ class V2RayEngine {
       // Multi-address failover (BackPack-derived).
       server = await _applyFailover(server);
 
-      String config;
       String remark = server.name;
-
-      if (server.protocol == VpnProtocol.xrayJson) {
-        final raw = XrayJson.extractJson(server.shareLink);
-        if (raw == null || raw.trim().isEmpty) {
-          lastError = 'invalid xray json config';
-          return false;
-        }
-        config = _ensureLocalInbound(raw);
-      } else if (server.protocol == VpnProtocol.chain) {
-        config = _buildChainConfig(server);
-        if (config.isEmpty) {
-          lastError = 'invalid chain config';
-          return false;
-        }
-      } else if (server.protocol == VpnProtocol.socks5) {
-        config = _buildSocks5Config(server);
-        if (config.isEmpty) {
-          lastError = 'invalid socks5 config';
-          return false;
-        }
-      } else if (server.protocol == VpnProtocol.amneziaWg) {
-        // FIX: AmneziaWG → WireGuard outbound Xray (v1.8+).
-        // نکته: obfuscation (Jc/Jmin/Jmax/S1/S2/H1..H4) توسط Xray
-        // پشتیبانی نمی‌شه؛ فقط WireGuard استاندارد کار می‌کنه.
-        config = _buildAmneziaWgConfig(server);
-        if (config.isEmpty) {
-          lastError = 'invalid amneziawg config';
-          return false;
-        }
-      } else {
-        try {
-          final FlutterVlessURL parser = FlutterVless.parse(server.shareLink);
-          config = parser.getFullConfiguration();
-          if (parser.remark.isNotEmpty) remark = parser.remark;
-        } catch (e) {
-          lastError = 'این کانفیگ از پروتکل '
-              '${server.protocol.name} پشتیبانی نمی‌شود (${e.toString().split(':').first})';
-          return false;
-        }
-      }
-
-      if (config.trim().isEmpty) {
-        lastError = 'empty config';
-        return false;
-      }
-
-      // A full Xray JSON profile (xrayjson://, or a raw JSON config pasted
-      // into the manual field) is self-contained: it brings its own
-      // inbounds, outbounds, DNS block and routing rules, and the whole
-      // point of a config like Serverless-v51 is that those rules carry
-      // the DPI evasion (finalmask on direct outbounds). Overwriting the
-      // DNS block or the routing rules here would strip exactly the parts
-      // that make the config work, which is why the server connected but
-      // carried no traffic.
-      //
-      // For that protocol we only:
-      //   - set the log level (harmless)
-      //   - make sure a local SOCKS/HTTP inbound exists for the TUN to
-      //     dial (XrayJson configs may bind 10808 themselves)
-      //   - point the core at the extracted geo assets
-      // Nothing else is touched.
-      final isSelfContainedJson =
-          server.protocol == VpnProtocol.xrayJson ||
-          XrayJson.looksLike(server.shareLink);
-
-      if (isSelfContainedJson) {
-        // Leave the config's own inbounds exactly as written: configs like
-        // Serverless-v51 already declare a mixed-in at 10808 with its own
-        // sockopt tuning. Adding a second inbound collides with it and
-        // breaks routing. We only adjust the log level and asset paths.
-        config = _applyJsonLogLevelOnly(config);
-        config = await _applyGeoAssetPaths(config);
-      } else {
-        // BLOCKER 1: every setting must land in the runtime config for ALL
-        // protocols, including full Xray JSON profiles.
-        config = await XraySettings.applyToConfig(config);
-
-        // FIX: اعمال تنظیمات TLS مخصوص همون سرور (fingerprint, ALPN,
-        // cipherSuites, finalMask, ...) روی کانفیگ نهایی.
-        if (!server.tls.isEmpty) {
-          config = XraySettings.applyServerTls(
-            config,
-            server.tls.toJson(),
-            sniOverride: server.sniOrHost,
-          );
-        }
-        // FIX: اعمال DNS مخصوص سرور (اگه تنظیم شده باشه).
-        if (server.dns != null && server.dns!.isNotEmpty) {
-          config = XraySettings.applyServerDns(config, server.dns);
-        }
-        config = await _applyRoutingRules(config);
-        config = await _applyGeoAssetPaths(config);
-
-        config = await _applyGameDns(config);
-        config = await _applyGameBooster(config);
-
-        // BLOCKER 2: push MTU / IPv6 / DNS to native VpnTuner before start.
-      }
+      final built = await buildConfigFor(server);
+      if (built == null) return false;
+      final config = built.$1;
+      remark = built.$2;
 
       await _pushVpnTunParams();
 
