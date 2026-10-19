@@ -154,6 +154,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() {
         _smartResumeEnabled = prefs.getBool('smart_resume_v1') ?? true;
       });
+      debugPrint('[Settings] smart_resume_v1 loaded: $_smartResumeEnabled');
     } catch (_) {}
   }
 
@@ -161,6 +162,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('smart_resume_v1', v);
+      debugPrint('[Settings] smart_resume_v1 saved: $v');
     } catch (_) {}
   }
 
@@ -183,6 +185,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _batchAutoEnabled = prefs.getBool('batch_auto_v1') ?? false;
         _batchParallelism = prefs.getInt('batch_parallelism_v1') ?? 2;
       });
+      debugPrint('[Settings] batch prefs loaded: auto=$_batchAutoEnabled, '
+          'parallelism=$_batchParallelism');
     } catch (_) {}
   }
 

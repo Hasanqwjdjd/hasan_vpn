@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// حالت بازی: ترکیب DNS انتخابی + قوانین فایروال سبک روی هسته Xray
@@ -51,6 +53,8 @@ class GameBoosterSettings {
     final s = await load();
     s[key] = value;
     await save(s);
+    // قانون طلایی ۲ — لاگ ذخیره‌سازی تا پایداری تنظیمات قابل اثبات باشد
+    debugPrint('[GameBooster] setting saved: $key=$value');
   }
 
   static Future<bool> isEnabled() async {

@@ -524,18 +524,25 @@ class _HasanAppState extends State<HasanApp> {
     }
   }
 
+  // بخش ۳ — Material 3 + رنگ اصلی #6C5CE7 + پس‌زمینه #0F1115 (تمام اپ)
   ThemeData _darkTheme() => ThemeData(
+        useMaterial3: true,
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF08090C),
+        scaffoldBackgroundColor: const Color(0xFF0F1115),
         colorScheme: const ColorScheme.dark(
-            primary: Color(0xFF3DCF9A), surface: Color(0xFF12141A)),
+            primary: Color(0xFF6C5CE7),
+            secondary: Color(0xFF6C5CE7),
+            surface: Color(0xFF171A21)),
       );
 
   ThemeData _lightTheme() => ThemeData(
+        useMaterial3: true,
         brightness: Brightness.light,
         scaffoldBackgroundColor: const Color(0xFFF5F6F8),
         colorScheme: const ColorScheme.light(
-            primary: Color(0xFF3DCF9A), surface: Colors.white),
+            primary: Color(0xFF6C5CE7),
+            secondary: Color(0xFF6C5CE7),
+            surface: Colors.white),
       );
 
   @override

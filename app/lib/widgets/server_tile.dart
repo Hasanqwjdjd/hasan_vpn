@@ -115,17 +115,14 @@ class ServerTile extends StatelessWidget {
   }
 
   /// Side-strip color: ping-tier at a glance, matching PingNG.
-  /// green = good (<700ms), amber = ok (<1400ms), red = poor, grey = unknown.
+  /// بخش ۳ — آستانه‌های مشخصاتی: <150 سبز، <300 زرد، >300 قرمز، خاکستری=بدون پینگ.
   Color _sideStripColor(BuildContext context) {
     final p = server.ping;
     final status = server.status;
     if (status == ServerStatus.offline) return AppColors.danger;
     if (p == null || p <= 0) return AppColors.muted2(context);
-    if (server.pingKind == PingKind.tcp) {
-      return p < 700 ? AppColors.accent : AppColors.warn;
-    }
-    if (p < 700) return AppColors.accent;
-    if (p < 1400) return AppColors.warn;
+    if (p < 150) return AppColors.good;
+    if (p < 300) return AppColors.warn;
     return AppColors.danger;
   }
 
@@ -185,15 +182,12 @@ class ServerTile extends StatelessWidget {
     return out;
   }
 
-  /// پینگ واقعی (HTTP از داخل تونل).
-  /// good = زیر ۷۰۰ms، fair = زیر ۱۴۰۰ms، بدتر = قرمز.
+  /// پینگ — بخش ۳: <150 سبز، <300 زرد، >=300 قرمز (TCP و real یکسان).
   Color _pingColor(BuildContext context) {
     final ping = server.ping;
     if (ping == null) return AppColors.muted2(context);
-
-    if (server.pingKind == PingKind.tcp) return AppColors.muted2(context);
-    if (ping < 700) return AppColors.accent;
-    if (ping < 1400) return AppColors.warn;
+    if (ping < 150) return AppColors.good;
+    if (ping < 300) return AppColors.warn;
     return AppColors.danger;
   }
 
@@ -320,7 +314,8 @@ class ServerTile extends StatelessWidget {
         color: selected
             ? AppColors.elevated(context)
             : AppColors.surface(context),
-        borderRadius: BorderRadius.circular(12),
+        // بخش ۳ — کارت‌های گوشه‌گرد 16dp
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: selected ? AppColors.accent : AppColors.border(context),
           width: selected ? 1.5 : 1,
@@ -330,7 +325,7 @@ class ServerTile extends StatelessWidget {
       // border on a foreground layer so the widget tree is untouched —
       // previous attempts to wrap in a Row broke the closing brackets.
       foregroundDecoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         border: Border(
           left: BorderSide(color: stripColor, width: 4),
         ),
@@ -339,7 +334,7 @@ class ServerTile extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           onTap: onTap,
           onLongPress: onLongPress,
           child: Padding(
@@ -486,6 +481,25 @@ class ServerTile extends StatelessWidget {
                     child: _buildPing(context),
                   ),
                 ),
+
+                SizedBox(width: c ? 0 : 2),
+
+                // بخش ۳ — دکمه اتصال سمت راست کارت (tap = همان منطق اتصال کارت)
+                if (!c)
+                  InkWell(
+                    onTap: onTap,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        active
+                            ? Icons.check_circle
+                            : Icons.play_circle_fill,
+                        color: active ? AppColors.good : AppColors.accent,
+                        size: 22,
+                      ),
+                    ),
+                  ),
 
                 SizedBox(width: c ? 0 : 2),
 

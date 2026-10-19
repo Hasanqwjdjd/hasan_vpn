@@ -2388,12 +2388,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _testAll() async {
-    if (_testing || _servers.isEmpty) return;
-    final targets = List<VpnServer>.from(_servers);
+    if (_testing) return;
+    // بخش ۳ — باگ لمسی: دکمه «تست همه» قبلاً وقتی تب فعلی خالی بود بی‌صدا
+    // برمی‌گشت و هیچ اتفاقی نمی‌افتاد. حالا اگر لیستِ تب خالی بود، کل
+    // سرورها (custom + اشتراک‌ها) تست می‌شوند و هرگز بی‌صدا نیست.
+    var targets = List<VpnServer>.from(_servers);
     if (targets.isEmpty) {
+      targets = [
+        ..._customServers.where((s) => !_deletedIds.contains(s.id)),
+        ...widget.extraServers.where((s) => !_deletedIds.contains(s.id)),
+      ];
+      debugPrint('[Home] Test All: visible tab empty — falling back to all '
+          'servers (${targets.length})');
+    }
+    if (targets.isEmpty) {
+      debugPrint('[Home] Test All: nothing to test at all');
       _showMsg(_t('سروری برای تست نیست', 'Nothing to test'));
       return;
     }
+    debugPrint('[Home] Test All: starting for ${targets.length} server(s)');
     if (_connected) {
       _showMsg(_t(
         'الان وصل هستی؛ پینگ‌ها از داخل تونل فعلی اندازه‌گیری می‌شوند.',
@@ -4667,6 +4680,105 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// بخش ۳ — لمس طولانی روی سرور → منوی ویرایش/حذف و بقیه‌ی عملیات.
+  void _showServerActionsSheet(VpnServer server) {
+    debugPrint('[Home] long-press actions menu: ${server.displayName}');
+    final deletable = _customServers.any((s) => s.id == server.id);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        Widget item(IconData icon, String label, VoidCallback? onTap,
+            {Color? color}) {
+          return ListTile(
+            dense: true,
+            leading: Icon(icon, color: color ?? AppColors.accent, size: 20),
+            title: Text(label,
+                style: TextStyle(
+                    color: color ?? AppColors.fg(context), fontSize: 14)),
+            onTap: () {
+              Navigator.pop(ctx);
+              onTap?.call();
+            },
+          );
+        }
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border(context),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Text(server.flag,
+                        style: const TextStyle(fontSize: 18)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        server.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: AppColors.fg(context),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 16),
+              item(Icons.speed, _t('پینگ / Ping', 'Ping'),
+                  () => _testOne(server)),
+              item(Icons.edit_outlined,
+                  _t('ویرایش / Rename', 'Rename'),
+                  () => _editServerName(server)),
+              if (server.isDeletable)
+                item(Icons.copy_all_outlined,
+                    _t('کپی / Copy', 'Copy'),
+                    () => _copyServerLink(server)),
+              if (server.isDeletable)
+                item(Icons.share_outlined,
+                    _t('اشتراک / Share', 'Share'),
+                    () => _shareServer(server)),
+              item(
+                  server.isPinned
+                      ? Icons.push_pin_outlined
+                      : Icons.push_pin,
+                  server.isPinned
+                      ? _t('برداشتن سنجاق / Unpin', 'Unpin')
+                      : _t('سنجاق / Pin', 'Pin'),
+                  () => _togglePin(server)),
+              item(Icons.widgets_outlined,
+                  _t('ویجت / Home widget', 'Home widget'),
+                  () => _pinServerToHome(server)),
+              if (deletable)
+                item(Icons.delete_outline,
+                    _t('حذف / Delete', 'Delete'),
+                    () => _deleteServer(server),
+                    color: AppColors.danger),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildServerTile(VpnServer server, {bool compact = false}) {
     final tileKey = _tileKeys.putIfAbsent(server.id, () => GlobalKey());
     // Live badge — از batch tester یا WARP scan progress
@@ -4901,6 +5013,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onDelete: _customServers.any((s) => s.id == server.id)
           ? () => _deleteServer(server)
           : null,
+      // بخش ۳ — لمس طولانی روی سرور → منوی ویرایش/حذف
+      onLongPress: () => _showServerActionsSheet(server),
       onPin: () => _togglePin(server),
       // کپی/اشتراک فقط برای سرورهای خود کاربر (isDeletable=true):
       // built-in و subscription این گزینه‌ها رو ندارن.
