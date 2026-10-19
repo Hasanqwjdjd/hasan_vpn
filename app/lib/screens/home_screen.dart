@@ -5068,7 +5068,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     var blockedCount = 0;
     for (final s in selected) {
       final isCustom = _customServers.any((c) => c.id == s.id);
-      if (isCustom || s.isAether || s.isPsiphon) {
+      if (isCustom || s.isPsiphon) {
         copyable.add(s);
       } else {
         blockedCount++;
