@@ -511,6 +511,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         TextEditingController(text: server.tls.dialMode ?? '');
     final targetStratCtrl =
         TextEditingController(text: server.tls.targetStrategy ?? '');
+    // بخش ۴.۲ — فیلدهای پیشرفتهٔ PattNG
+    final realityPubCtrl =
+        TextEditingController(text: server.tls.publicKey ?? '');
+    final realityShortCtrl =
+        TextEditingController(text: server.tls.shortId ?? '');
+    final realitySpiderCtrl =
+        TextEditingController(text: server.tls.spiderX ?? '');
+    final mldsa65Ctrl =
+        TextEditingController(text: server.tls.mldsa65Verify ?? '');
+    final echOutboundCtrl =
+        TextEditingController(text: server.tls.echOutbound ?? '');
+    final seedCtrl = TextEditingController(text: server.tls.seed ?? '');
     final dnsCtrl = TextEditingController(text: server.dns ?? '');
     final sniPoolCtrl =
         TextEditingController(text: server.tls.sniPool.join(', '));
@@ -518,7 +530,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         TextEditingController(text: server.backupAddresses.join(', '));
 
 
-    String fp = server.tls.fingerprint ?? 'none';
+    // بخش ۴.۲ — پیش‌فرض fingerprint مثل PattNG: chrome
+    String fp = server.tls.fingerprint ?? 'chrome';
     bool insecure = server.tls.allowInsecure;
     bool browserDialer = server.tls.browserDialer;
 
@@ -715,8 +728,55 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    field('dialMode', dialModeCtrl),
-                    field('targetStrategy', targetStratCtrl, hint: 'AsIs'),
+                    field('dialMode', dialModeCtrl,
+                        hint: 'sockopt.dialMode (مثل PattNG)'),
+                    // بخش ۴.۲ — پرست‌های FinalMask (Fragment) مثل PattNG
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          setLocal(() {
+                            finalMaskCtrl.text =
+                                '{"tcp": [{"type": "fragment", "settings": '
+                                '{"packets": "tlshello", "lengths": ["100-400"], '
+                                '"delays": ["10-40"]}}]}';
+                          });
+                        },
+                        icon: const Icon(Icons.call_split, size: 16),
+                        label: Text(
+                          _t('پرست Fragment (tlshello 100-400)',
+                              'Fragment preset (tlshello 100-400)'),
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.accent,
+                          side: const BorderSide(color: AppColors.accent),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                      ),
+                    ),
+                    field('finalmask (JSON)', finalMaskCtrl, maxLines: 4,
+                        hint: '{"tcp": [{"type": "fragment", ...}]}'),
+                    field('targetStrategy',
+                        targetStratCtrl, hint: 'AsIs / UseIP / UseIPv4'),
+                    const SizedBox(height: 6),
+                    Text(_t('REALITY / ECH / mKCP', 'REALITY / ECH / mKCP'),
+                        style: TextStyle(
+                            color: AppColors.accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 6),
+                    field(_t('کلید عمومی REALITY (publicKey)',
+                            'REALITY public key'), realityPubCtrl),
+                    field('shortId', realityShortCtrl),
+                    field('spiderX', realitySpiderCtrl,
+                        hint: 'https://example.com/'),
+                    field('mldsa65Verify (post-quantum)', mldsa65Ctrl,
+                        maxLines: 2),
+                    field('echOutbound', echOutboundCtrl,
+                        hint: 'dns.example.com'),
+                    field(_t('mKCP seed (obfuscation)', 'mKCP seed'),
+                        seedCtrl),
 
 
                   ],
@@ -744,6 +804,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   'dialMode': dialModeCtrl.text.trim(),
                   'browserDialer': browserDialer,
                   'targetStrategy': targetStratCtrl.text.trim(),
+                  'publicKey': realityPubCtrl.text.trim(),
+                  'shortId': realityShortCtrl.text.trim(),
+                  'spiderX': realitySpiderCtrl.text.trim(),
+                  'mldsa65Verify': mldsa65Ctrl.text.trim(),
+                  'echOutbound': echOutboundCtrl.text.trim(),
+                  'seed': seedCtrl.text.trim(),
                   'backupAddresses': backupCtrl.text.trim(),
                   'dns': dnsCtrl.text.trim(),
                 }),
@@ -784,6 +850,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         dialMode: nz(result['dialMode']),
         browserDialer: result['browserDialer'] == true,
         targetStrategy: nz(result['targetStrategy']),
+        publicKey: nz(result['publicKey']),
+        shortId: nz(result['shortId']),
+        spiderX: nz(result['spiderX']),
+        mldsa65Verify: nz(result['mldsa65Verify']),
+        echOutbound: nz(result['echOutbound']),
+        seed: nz(result['seed']),
         sniPool: sniPoolList,
       );
 
@@ -846,6 +918,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       targetStratCtrl.dispose();
       dnsCtrl.dispose();
       sniPoolCtrl.dispose();
+      realityPubCtrl.dispose();
+      realityShortCtrl.dispose();
+      realitySpiderCtrl.dispose();
+      mldsa65Ctrl.dispose();
+      echOutboundCtrl.dispose();
+      seedCtrl.dispose();
     }
   }
   // ----------------------------------------------------- last server

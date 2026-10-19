@@ -11,6 +11,17 @@ class TlsOptions {
   final bool browserDialer;
   final String? targetStrategy;
 
+  /// بخش ۴.۲ — فیلدهای پیشرفتهٔ PattNG:
+  /// REALITY: publicKey / shortId / spiderX / mldsa65Verify (post-quantum)
+  /// ECH: echOutbound (خروجی کوئری ECH)
+  /// mKCP: seed (obfuscation)
+  final String? publicKey;
+  final String? shortId;
+  final String? spiderX;
+  final String? mldsa65Verify;
+  final String? echOutbound;
+  final String? seed;
+
   /// FIX (PingNG-style): چند دامنه SNI — هر اتصال یکی به‌صورت
   /// تصادفی انتخاب می‌شه. برای عبور از فیلترینگ SNI-based.
   /// اگه خالی باشه، از server.sniOrHost استفاده می‌شه.
@@ -28,6 +39,12 @@ class TlsOptions {
     this.dialMode,
     this.browserDialer = false,
     this.targetStrategy,
+    this.publicKey,
+    this.shortId,
+    this.spiderX,
+    this.mldsa65Verify,
+    this.echOutbound,
+    this.seed,
     this.sniPool = const <String>[],
   });
 
@@ -45,6 +62,12 @@ class TlsOptions {
       (dialMode == null || dialMode!.isEmpty) &&
       !browserDialer &&
       (targetStrategy == null || targetStrategy!.isEmpty) &&
+      (publicKey == null || publicKey!.isEmpty) &&
+      (shortId == null || shortId!.isEmpty) &&
+      (spiderX == null || spiderX!.isEmpty) &&
+      (mldsa65Verify == null || mldsa65Verify!.isEmpty) &&
+      (echOutbound == null || echOutbound!.isEmpty) &&
+      (seed == null || seed!.isEmpty) &&
       sniPool.isEmpty;
 
   /// انتخاب تصادفی یه SNI از pool. null اگه pool خالیه.
@@ -66,6 +89,12 @@ class TlsOptions {
     String? dialMode,
     bool? browserDialer,
     String? targetStrategy,
+    String? publicKey,
+    String? shortId,
+    String? spiderX,
+    String? mldsa65Verify,
+    String? echOutbound,
+    String? seed,
     List<String>? sniPool,
   }) =>
       TlsOptions(
@@ -80,6 +109,12 @@ class TlsOptions {
         dialMode: dialMode ?? this.dialMode,
         browserDialer: browserDialer ?? this.browserDialer,
         targetStrategy: targetStrategy ?? this.targetStrategy,
+        publicKey: publicKey ?? this.publicKey,
+        shortId: shortId ?? this.shortId,
+        spiderX: spiderX ?? this.spiderX,
+        mldsa65Verify: mldsa65Verify ?? this.mldsa65Verify,
+        echOutbound: echOutbound ?? this.echOutbound,
+        seed: seed ?? this.seed,
         sniPool: sniPool ?? this.sniPool,
       );
 
@@ -101,6 +136,14 @@ class TlsOptions {
         if (browserDialer) 'browserDialer': browserDialer,
         if (targetStrategy != null && targetStrategy!.isNotEmpty)
           'targetStrategy': targetStrategy,
+        if (publicKey != null && publicKey!.isNotEmpty) 'publicKey': publicKey,
+        if (shortId != null && shortId!.isNotEmpty) 'shortId': shortId,
+        if (spiderX != null && spiderX!.isNotEmpty) 'spiderX': spiderX,
+        if (mldsa65Verify != null && mldsa65Verify!.isNotEmpty)
+          'mldsa65Verify': mldsa65Verify,
+        if (echOutbound != null && echOutbound!.isNotEmpty)
+          'echOutbound': echOutbound,
+        if (seed != null && seed!.isNotEmpty) 'seed': seed,
         if (sniPool.isNotEmpty) 'sniPool': sniPool,
       };
 
@@ -116,6 +159,12 @@ class TlsOptions {
         dialMode: j['dialMode']?.toString(),
         browserDialer: j['browserDialer'] == true,
         targetStrategy: j['targetStrategy']?.toString(),
+        publicKey: j['publicKey']?.toString(),
+        shortId: j['shortId']?.toString(),
+        spiderX: j['spiderX']?.toString(),
+        mldsa65Verify: j['mldsa65Verify']?.toString(),
+        echOutbound: j['echOutbound']?.toString(),
+        seed: j['seed']?.toString(),
         sniPool: (j['sniPool'] as List?)
                 ?.map((e) => e.toString())
                 .where((e) => e.isNotEmpty)

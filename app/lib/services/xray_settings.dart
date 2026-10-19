@@ -226,6 +226,13 @@ class XraySettings {
       final dialMode = tls['dialMode']?.toString() ?? '';
       final browserDialer = tls['browserDialer'] == true;
       final targetStrategy = tls['targetStrategy']?.toString() ?? '';
+      // بخش ۴.۲ — فیلدهای پیشرفتهٔ PattNG
+      final realityPub = tls['publicKey']?.toString() ?? '';
+      final realityShort = tls['shortId']?.toString() ?? '';
+      final realitySpider = tls['spiderX']?.toString() ?? '';
+      final mldsa65 = tls['mldsa65Verify']?.toString() ?? '';
+      final echOutbound = tls['echOutbound']?.toString() ?? '';
+      final kcpSeed = tls['seed']?.toString() ?? '';
 
       // FIX (PingNG-style): اگه sniPool پر بود، یه دامنه تصادفی انتخاب کن
       final sniPoolRaw = tls['sniPool'];
@@ -250,9 +257,11 @@ class XraySettings {
           return;
         }
 
-        // tlsSettings
+        // ---- TLS settings (و REALITY با همان فیلدها) ----
+        final isReality = security == 'reality';
         final ts = Map<String, dynamic>.from(
-            stream['tlsSettings'] as Map? ?? {});
+            stream[isReality ? 'realitySettings' : 'tlsSettings'] as Map? ??
+                {});
         if (fp.isNotEmpty) ts['fingerprint'] = fp;
         if (insecure) ts['allowInsecure'] = true;
         if (alpnStr.isNotEmpty) {
@@ -265,31 +274,62 @@ class XraySettings {
         if (ech.isNotEmpty) ts['echConfigList'] = ech;
         if (verifyName.isNotEmpty) ts['verifyPeerCertByName'] = verifyName;
         if (pinSha.isNotEmpty) ts['pinnedPeerCertSha256'] = pinSha;
+        // بخش ۴.۲ — ECH outbound + REALITY (publicKey/shortId/spiderX/mldsa65)
+        if (echOutbound.isNotEmpty) ts['echOutbound'] = echOutbound;
+        if (realityPub.isNotEmpty) ts['publicKey'] = realityPub;
+        if (realityShort.isNotEmpty) ts['shortId'] = realityShort;
+        if (realitySpider.isNotEmpty) ts['spiderX'] = realitySpider;
+        if (mldsa65.isNotEmpty) ts['mldsa65Verify'] = mldsa65;
         // اولویت: sniPool (تصادفی) > sniOverride
         if (randomSni != null && randomSni.isNotEmpty) {
           ts['serverName'] = randomSni;
         } else if (sniOverride != null && sniOverride.isNotEmpty) {
           ts['serverName'] = sniOverride;
         }
-        if (ts.isNotEmpty) stream['tlsSettings'] = ts;
+        if (ts.isNotEmpty) {
+          if (isReality) {
+            stream['realitySettings'] = ts;
+          } else {
+            stream['tlsSettings'] = ts;
+          }
+        }
 
-        // sockopt.dialMode + finalMask
+        // sockopt.dialMode (جای‌گذاری PattNG)
         final sockopt = Map<String, dynamic>.from(
             stream['sockopt'] as Map? ?? {});
         if (dialMode.isNotEmpty) sockopt['dialMode'] = dialMode;
-        if (finalMask.isNotEmpty) {
-          try {
-            final fm = jsonDecode(finalMask);
-            sockopt['finalMask'] = fm;
-          } catch (_) {
-            sockopt['finalMask'] = finalMask;
-          }
+        if (kcpSeed.isNotEmpty && (stream['kcpSettings'] is Map)) {
+          // بخش ۴.۲ — mKCP seed (obfuscation)
+          final kcp = Map<String, dynamic>.from(
+              stream['kcpSettings'] as Map);
+          kcp['seed'] = kcpSeed;
+          stream['kcpSettings'] = kcp;
         }
         if (sockopt.isNotEmpty) stream['sockopt'] = sockopt;
 
-        // targetStrategy + browserDialer
+        // بخش ۴.۲ — FinalMask: جای رسمی Xray «streamSettings.finalmask» است
+        // (FinalMaskObject با tcp[]/udp[]/quicParams). قبلاً اشتباهاً در
+        // sockopt.finalMask نوشته می‌شد و هسته آن را نمی‌خواند.
+        if (finalMask.isNotEmpty) {
+          try {
+            final fm = jsonDecode(finalMask);
+            if (fm is Map) {
+              stream['finalmask'] = fm;
+              debugPrint('[FinalMask] applied to streamSettings.finalmask '
+                  '(tcp masks: ${(fm['tcp'] as List?)?.length ?? 0}, '
+                  'udp masks: ${(fm['udp'] as List?)?.length ?? 0})');
+            } else {
+              debugPrint('[FinalMask] invalid JSON object — skipped');
+            }
+          } catch (_) {
+            debugPrint('[FinalMask] JSON parse failed — skipped');
+          }
+        }
+
+        // بخش ۴.۲ — targetStrategy سطح outbound است (AsIs/UseIP/UseIPv4/…)
+        // نه سطح streamSettings (رفتار PattNG).
         if (targetStrategy.isNotEmpty) {
-          stream['targetStrategy'] = targetStrategy;
+          ob['targetStrategy'] = targetStrategy;
         }
         if (browserDialer) {
           stream['browserDialer'] = true;
