@@ -356,6 +356,15 @@ jobs:
                       shrinkResources = false
                   }
               }
+
+              // بخش ۹ — libs بدون extract داخل APK (mmap از APK، بدون کپی
+              // به /data/app) → نصب ~90MB سبک‌تر. جفتِ این با
+              // android:extractNativeLibs="false" در مانیفست.
+              packagingOptions {
+                  jniLibs {
+                      useLegacyPackaging = false
+                  }
+              }
           }
 
           flutter {
@@ -384,11 +393,12 @@ jobs:
           """
           if 'android.permission.INTERNET' not in text:
               text = text.replace("<application", perms + "    <application", 1)
-          # Keep native libs inside the APK (compressed) instead of
-          # extracting them into /data/app. On Android 10+ they are
-          # mmap'd from the APK and execute fine (verified by the
-          # existing tor + psiphon runs). This cuts the
-          # installed footprint by ~150 MB.
+          # Keep native libs inside the APK (compressed? no — UNCOMPRESSED
+          # and page-aligned) instead of extracting them into /data/app.
+          # بخش ۹ — extractNativeLibs=false: libs از داخل APK mmap می‌شوند
+          # و اجرا می‌شوند (Android 6+/API 23+ با zipalign درست AGP).
+          # اگر روی دستگاهی UnsatisfiedLinkError دیدی، این مقدار را به
+          # "true" برگردان (fallback دستی در گزارش نهایی آمده است).
           text = text.replace(
               'android:extractNativeLibs="true"',
               'android:extractNativeLibs="false"',
@@ -398,7 +408,9 @@ jobs:
               'android:extractNativeLibs="false"',
           )
           if 'android:extractNativeLibs' not in text:
-              text = text.replace("<application", '<application android:extractNativeLibs="true" android:usesCleartextTraffic="true"', 1)
+              # FIX بخش ۹ — قبلاً fallback به اشتباه "true" می‌گذاشت!
+              text = text.replace("<application", '<application android:extractNativeLibs="false" android:usesCleartextTraffic="true"', 1)
+              print('extractNativeLibs=false injected (section 9 fix)')
           if 'android:allowBackup' not in text:
               text = text.replace("<application", '<application android:allowBackup="false"', 1)
           queries = """    <queries>
