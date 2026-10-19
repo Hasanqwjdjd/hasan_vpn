@@ -357,12 +357,12 @@ jobs:
                   }
               }
 
-              // بخش ۹ — libs بدون extract داخل APK (mmap از APK، بدون کپی
-              // به /data/app) → نصب ~90MB سبک‌تر. جفتِ این با
-              // android:extractNativeLibs="false" در مانیفست.
+              // بخش ۹ — extract در نصب (libs فشرده داخل APK → APK کوچک‌تر).
+              // تست v2.7.9 نشان داد false حجم APK را دوبرابر می‌کند؛ طبق
+              // fallback مشخصات، true نهایی شد + حذف .so بلااستفاده.
               packagingOptions {
                   jniLibs {
-                      useLegacyPackaging = false
+                      useLegacyPackaging = true
                   }
               }
           }
@@ -393,24 +393,17 @@ jobs:
           """
           if 'android.permission.INTERNET' not in text:
               text = text.replace("<application", perms + "    <application", 1)
-          # Keep native libs inside the APK (compressed? no — UNCOMPRESSED
-          # and page-aligned) instead of extracting them into /data/app.
-          # بخش ۹ — extractNativeLibs=false: libs از داخل APK mmap می‌شوند
-          # و اجرا می‌شوند (Android 6+/API 23+ با zipalign درست AGP).
-          # اگر روی دستگاهی UnsatisfiedLinkError دیدی، این مقدار را به
-          # "true" برگردان (fallback دستی در گزارش نهایی آمده است).
+          # بخش ۹ — نتیجه‌ی تست واقعی (release v2.7.9): extractNativeLibs=false
+          # حجم APK را از 73MB به 161MB رساند (libs فشرده‌نشده در APK برای
+          # mmap). طبق مشخصات کاربر برگشتیم به "true" + حذف .so های
+          # بلااستفاده (libobfs4proxy.so حذف شد — lyrebird پوشش می‌دهد).
+          # نتیجه: APK کوچکتر از v2.7.7 با همان رفتار extract در نصب.
           text = text.replace(
+              'android:extractNativeLibs="false"',
               'android:extractNativeLibs="true"',
-              'android:extractNativeLibs="false"',
-          )
-          text = text.replace(
-              'android:extractNativeLibs="false"',
-              'android:extractNativeLibs="false"',
           )
           if 'android:extractNativeLibs' not in text:
-              # FIX بخش ۹ — قبلاً fallback به اشتباه "true" می‌گذاشت!
-              text = text.replace("<application", '<application android:extractNativeLibs="false" android:usesCleartextTraffic="true"', 1)
-              print('extractNativeLibs=false injected (section 9 fix)')
+              text = text.replace("<application", '<application android:extractNativeLibs="true" android:usesCleartextTraffic="true"', 1)
           if 'android:allowBackup' not in text:
               text = text.replace("<application", '<application android:allowBackup="false"', 1)
           queries = """    <queries>
