@@ -225,7 +225,9 @@ class SpeedTestService {
           throw const SocketException('connection closed before header');
         }
         head.addAll(reader.current);
-        final s = ascii.decode(head, allowMalformed: true);
+        // latin1 هرگز خطا نمی‌دهد (1:1 روی بایت‌ها) — برای پیدا کردن
+        // انتهای header کافی است؛ بدنه جدا شمرده می‌شود.
+        final s = latin1.decode(head);
         final idx = s.indexOf('\r\n\r\n');
         if (idx >= 0) {
           debugPrint('[SpeedTest] via socks $socksPort → $host '
