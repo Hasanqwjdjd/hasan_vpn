@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/server.dart';
 import 'socks_probe.dart';
+import 'test_budget.dart';
 import 'v2ray_engine.dart';
 
 /// توکن لغو برای یک دور تست.
@@ -50,35 +51,23 @@ class _Semaphore {
   }
 }
 
-/// بخش ۷ — سیستم تست و رتبه‌بندی با مقادیر هاردکد:
-///
-/// صفحه «تنظیمات تست و رتبه‌بندی» حذف شده است؛ این مقادیر ثابت و
-/// غیرقابل‌تغییرند تا رتبه‌بندی سرورها همیشه قابل مقایسه باشد:
+/// سیستم تست و رتبه‌بندی — بخش ۲.۲: تنظیمات از صفحه «تست و رتبه‌بندی»
+/// (TestBudget) خوانده می‌شود؛ مقادیر پیش‌فرض همان مقادیر سخت‌گیرانهٔ قبلی:
 ///
 ///   • TCP Ping:  تایم‌اوت ۱.۵ ثانیه، هم‌زمانی ۶۴
-///   • Real Ping: تایم‌اوت ۴ ثانیه، هم‌زمانی ۸، آدرس
-///     https://www.gstatic.com/generate_204 (در v2ray_engine.loadDelayUrl)
-///   • منطق: ابتدا همه‌ی سرورها TCP می‌شوند (موازی)، هر کدام جواب دادند
-///     تست واقعی می‌شوند و در نهایت لیست بر اساس کمترین پینگ مرتب می‌شود.
+///   • Real Ping: تایم‌اوت ۴ ثانیه، هم‌زمانی ۸، ۳ نمونه، آدرس
+///     https://www.gstatic.com/generate_204
+///   • حالت‌ها: turbo (فقط TCP) / balanced (Real فقط ۲۴ پاسخ‌دهندهٔ برتر)
+///     / accurate (Real برای همهٔ پاسخ‌دهنده‌ها — پیش‌فرض)
 ///
-/// سرورهای لوکال (127.0.0.1 / localhost) تست نمی‌شوند — پینگ آن‌ها N/A است.
+/// منطق: ابتدا همه‌ی سرورها TCP می‌شوند (موازی)، هر کدام جواب دادند
+/// تست واقعی می‌شوند و در نهایت لیست بر اساس کمترین پینگ مرتب می‌شود.///
+/// سرورهای لوکال (127.0.0.1 / localhost) و سایفون تست نمی‌شوند — N/A.
 class ServerTester {
   ServerTester._();
 
-  /// بخش ۷ — TCP ping timeout: ۱.۵ ثانیه (هاردکد).
-  static const int _tcpTimeoutMs = 1500;
-  /// بخش ۷ — هم‌زمانی فاز TCP: ۶۴ (هاردکد).
-  static const int _tcpConcurrency = 64;
-  /// بخش ۷ — تایم‌اوت Real Ping: ۴ ثانیه (هاردکد).
-  static const int _realTimeoutSec = 4;
-  /// بخش ۷ — هم‌زمانی فاز Real: ۸ (هاردکد).
-  static const int _realConcurrency = 8;
-  /// تعداد نمونه‌ی Real برای median (MarbleNG PingBudget).
-  static const int _realSamples = 3;
-  /// فاصله‌ی نمونه‌ها (MarbleNG SAMPLE_SPACING_MS).
-  static const int _sampleSpacingMs = 60;
-  /// بعد از ۲ شکست متوالی اولیه، Real را رها کن.
-  static const int _consecutiveFailuresBeforeAbandon = 2;
+  /// لغو فعلی بودجهٔ تست (آخرین load) — برای لاگ.
+  static TestBudget? lastBudget;
 
   static Future<TestSummary> testAll(
     List<VpnServer> servers, {
@@ -87,7 +76,22 @@ class ServerTester {
     void Function()? onChanged,
     bool onlyTcp = false,
   }) async {
-    await V2RayEngine.loadDelayUrl();
+    // بخش ۲.۲ — تنظیمات تست از صفحه «تست و رتبه‌بندی».
+    final budget = await TestBudget.load();
+    lastBudget = budget;
+    // آدرس تست واقعی از تنظیمات کاربر (پیش‌فرض gstatic).
+    V2RayEngine.delayUrl = budget.delayUrl;
+    final tcpTimeoutMs = budget.tcpTimeoutMs;
+    final tcpConcurrency = budget.tcpConcurrency;
+    final realTimeoutSec = budget.realTimeoutSec;
+    final realSamples = budget.realSamples;
+    final turbo = budget.mode == TestMode.turbo;
+    final balanced = budget.mode == TestMode.balanced;
+    final isTcpOnly = onlyTcp || turbo;
+    debugPrint('[ServerTester] budget: mode=${budget.mode.name} '
+        'tcp=${tcpTimeoutMs}ms/$tcpConcurrency '
+        'real=${realTimeoutSec}s/${budget.effectiveRealConcurrency}x$realSamples '
+        'url=${budget.delayUrl}');
 
     final regular = servers
         .where((s) => !s.isPsiphon && !s.isLocal)
@@ -114,14 +118,16 @@ class ServerTester {
       });
     }
 
-    // ═══ فاز ۱: TCP برای همه — موازی با هم‌زمانی ۶۴ ═══
+    // ═══ فاز ۱: TCP برای همه — موازی ═══
     debugPrint('[ServerTester] phase 1/2: TCP ping — n=${regular.length} '
-        'timeout=${_tcpTimeoutMs}ms concurrency=$_tcpConcurrency');
-    final tcpGate = _Semaphore(_tcpConcurrency);
+        'timeout=${tcpTimeoutMs}ms concurrency=$tcpConcurrency');
+    final tcpGate = _Semaphore(tcpConcurrency);
     final responders = <VpnServer>[];
 
     await Future.wait(<Future<void>>[
-      for (final server in regular) _tcpPhase(server, session, tcpGate, responders, notify),
+      for (final server in regular)
+        _tcpPhase(server, session, tcpGate, responders, notify,
+            timeoutMs: tcpTimeoutMs),
     ]);
     if (session.cancelled) {
       throttle?.cancel();
@@ -129,16 +135,37 @@ class ServerTester {
     }
     debugPrint('[ServerTester] phase 1 done — responders=${responders.length}');
 
-    // ═══ فاز ۲: تست واقعی برای همه‌ی پاسخ‌دهنده‌ها ═══
-    if (!onlyTcp && responders.isNotEmpty) {
-      debugPrint('[ServerTester] phase 2/2: real ping — n=${responders.length} '
-          'timeout=${_realTimeoutSec}s concurrency=$_realConcurrency '
+    // ═══ فاز ۲: تست واقعی برای پاسخ‌دهنده‌ها ═══
+    if (!isTcpOnly && responders.isNotEmpty) {
+      // balanced: فقط ۲۴ پاسخ‌دهندهٔ برتر (کمترین TCP ping) تست واقعی می‌گیرند.
+      var realTargets = responders;
+      if (balanced && responders.length > TestBudget.balancedRealLimit) {
+        realTargets = List<VpnServer>.from(responders)
+          ..sort((a, b) => (a.ping ?? 9999).compareTo(b.ping ?? 9999));
+        realTargets = realTargets.take(TestBudget.balancedRealLimit).toList();
+        debugPrint('[ServerTester] balanced mode — real test limited to top '
+            '${TestBudget.balancedRealLimit} responders');
+      }
+      debugPrint('[ServerTester] phase 2/2: real ping — n=${realTargets.length} '
+          'timeout=${realTimeoutSec}s '
+          'concurrency=${budget.effectiveRealConcurrency} '
           'url=${V2RayEngine.delayUrl}');
-      final realGate = _Semaphore(_realConcurrency);
+      final realGate = _Semaphore(budget.effectiveRealConcurrency);
       await Future.wait(<Future<void>>[
-        for (final server in responders)
-          _realPhase(server, session, realGate, summary, notify),
+        for (final server in realTargets)
+          _realPhase(server, session, realGate, summary, notify,
+              timeoutSec: realTimeoutSec,
+              samples: realSamples,
+              onDone: onServerDone),
       ]);
+      // سرورهای responder که در حالت balanced تست واقعی نگرفتند:
+      // وضعیت «نامشخص» با مقدار TCP می‌مانند.
+      for (final server in responders) {
+        if (!realTargets.contains(server)) {
+          summary.unknown++;
+          onServerDone?.call(server);
+        }
+      }
       debugPrint('[ServerTester] phase 2 done — online=${summary.online} '
           'tcpOnly=${summary.unknown} offline=${summary.offline}');
     } else {
@@ -161,12 +188,13 @@ class ServerTester {
     TestSession session,
     _Semaphore tcpGate,
     List<VpnServer> responders,
-    void Function() notify,
-  ) async {
+    void Function() notify, {
+    required int timeoutMs,
+  }) async {
     await tcpGate.acquire();
     try {
       if (session.cancelled) return;
-      final tcp = await _tcpConnectMs(server);
+      final tcp = await _tcpConnectMs(server, timeoutMs: timeoutMs);
       if (session.cancelled) return;
       if (tcp > 0) {
         server.ping = tcp;
@@ -193,15 +221,23 @@ class ServerTester {
     TestSession session,
     _Semaphore gate,
     TestSummary summary,
-    void Function() notify,
-  ) async {
+    void Function() notify, {
+    required int timeoutSec,
+    required int samples,
+    void Function(VpnServer server)? onDone,
+  }) async {
     await gate.acquire();
     try {
       if (session.cancelled) return;
       server.status = ServerStatus.testing;
       notify();
 
-      final (ms, jitter) = await _measureReal(server, session);
+      final (ms, jitter) = await _measureReal(
+        server,
+        session,
+        timeoutSec: timeoutSec,
+        samples: samples,
+      );
       if (session.cancelled) return;
       if (ms > 0) {
         server.ping = ms;
@@ -225,6 +261,7 @@ class ServerTester {
         }
       }
       notify();
+      onDone?.call(server);
     } finally {
       gate.release();
     }
@@ -270,14 +307,17 @@ class ServerTester {
     return true;
   }
 
-  static Future<int> _tcpConnectMs(VpnServer server) async {
+  static Future<int> _tcpConnectMs(
+    VpnServer server, {
+    required int timeoutMs,
+  }) async {
     if (!_tcpEligible(server)) return -1;
     final watch = Stopwatch()..start();
     try {
       final socket = await Socket.connect(
         server.host,
         server.port,
-        timeout: const Duration(milliseconds: _tcpTimeoutMs),
+        timeout: Duration(milliseconds: timeoutMs),
       );
       watch.stop();
       socket.destroy();
@@ -293,16 +333,20 @@ class ServerTester {
   /// حذف warm-up وقتی نمونه‌ها >= 3.
   static Future<(int, int?)> _measureReal(
     VpnServer server,
-    TestSession session,
-  ) async {
-    final timeout = const Duration(seconds: _realTimeoutSec);
+    TestSession session, {
+    required int timeoutSec,
+    required int samples,
+  }) async {
+    final timeout = Duration(seconds: timeoutSec);
     final values = <int>[];
     var consecutiveFailures = 0;
+    const abandonAfter = 2;
+    const sampleSpacingMs = 60;
 
-    for (var i = 0; i < _realSamples; i++) {
+    for (var i = 0; i < samples; i++) {
       if (session.cancelled) break;
       if (i > 0) {
-        await Future<void>.delayed(const Duration(milliseconds: _sampleSpacingMs));
+        await Future<void>.delayed(const Duration(milliseconds: sampleSpacingMs));
       }
       int result;
       if (V2RayEngine.isConnected &&
@@ -325,14 +369,13 @@ class ServerTester {
         consecutiveFailures = 0;
       } else {
         consecutiveFailures++;
-        if (values.isEmpty &&
-            consecutiveFailures >= _consecutiveFailuresBeforeAbandon) {
+        if (values.isEmpty && consecutiveFailures >= abandonAfter) {
           break;
         }
         if (values.isEmpty) break;
       }
     }
-    return _summarize(values, dropWarmup: _realSamples >= 3);
+    return _summarize(values, dropWarmup: samples >= 3);
   }
 
   /// امتیاز رتبه‌بندی برای انتخاب «بهترین سرور» (fastest) — ترکیب پینگ و

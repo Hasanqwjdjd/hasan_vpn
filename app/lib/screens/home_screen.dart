@@ -10,7 +10,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import '../models/subscription.dart';
-import '../services/announcement_service.dart';
 import '../services/app_colors.dart';
 import '../services/server_overrides.dart';
 import '../services/server_tester.dart';
@@ -2510,11 +2509,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       }
     });
-    // ignore: unawaited_futures
-    AnnouncementService.onTestFinished(
-      online: summary.online,
-      total: summary.total,
-    );
   }
 
   Future<void> _testOne(VpnServer server) async {
@@ -2806,8 +2800,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _status = status;
     });
     if (wasConnected) {
-      // ignore: unawaited_futures
-      AnnouncementService.onDisconnected();
+      debugPrint('[Home] disconnected (wasConnected=true)');
     }
   }
 
@@ -3269,8 +3262,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       if (connected) {
         await SettingsService.setLastServer(selected.id);
-        // ignore: unawaited_futures
-        AnnouncementService.onConnected(selected.displayName);
         // health monitor — فقط برای WARP/WARP+/MASQUE
         if (selected.protocol == VpnProtocol.amneziaWg ||
             selected.protocol == VpnProtocol.chain ||

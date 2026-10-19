@@ -16,7 +16,7 @@ import '../services/server_batch_export.dart';
 import '../services/warp_batch_tester.dart';
 import '../services/warp_endpoint_health_monitor.dart';
 import '../services/update_service.dart';
-import 'announcements_screen.dart';
+import 'test_settings_screen.dart';
 import 'anti_sanction_screen.dart';
 import 'game_hub_screen.dart';
 import 'live_monitor_screen.dart';
@@ -523,6 +523,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
 
+          // ------- بخش ۲.۲ — تست و رتبه‌بندی (بازگشت به برنامه) -------
+          _sectionTitle(_t('تست و رتبه‌بندی', 'Test & Ranking')),
+          _card(
+            context,
+            InkWell(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        TestSettingsScreen(language: _lang),
+                  ),
+                );
+              },
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.speed,
+                    color: AppColors.accent),
+                title: Text(
+                  _t('تنظیمات تست و رتبه‌بندی',
+                      'Test & ranking settings'),
+                  style: TextStyle(color: AppColors.fg(context)),
+                ),
+                subtitle: Text(
+                  _t(
+                    'تایم‌اوت و هم‌زمانی TCP/Real، آدرس تست، حالت تست',
+                    'TCP/Real timeout & concurrency, test URL, mode',
+                  ),
+                  style: TextStyle(
+                      color: AppColors.muted2(context), fontSize: 11),
+                ),
+                trailing: Icon(Icons.chevron_left,
+                    color: AppColors.muted(context)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // ------- هسته -------
           _sectionTitle(_t('هسته', 'Core')),
           _card(
@@ -586,25 +624,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 Divider(height: 1, color: AppColors.border(context)),
-                _navRow(
-                  context,
-                  icon: Icons.notifications_none,
-                  title: _t('اعلان‌ها', 'Announcements'),
-                  subtitle: _t(
-                    'اتصال، شبکه، اشتراک، هسته',
-                    'Connection, network, subscription, core',
-                  ),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            AnnouncementsScreen(language: _lang),
-                      ),
-                    );
-                  },
-                ),
-                Divider(height: 1, color: AppColors.border(context)),
+                // بخش ۲.۲ — بخش «اعلان‌ها» طبق مشخصات کاملاً حذف شد؛
+                // تنها نوتیفیکیشن مجاز، آیکون ساده vpn_status بدون
+                // صدا/پاپ‌آپ در نوار وضعیت است (IMPORTANCE_LOW).
                 _navRow(
                   context,
                   icon: Icons.monitor_heart_outlined,
