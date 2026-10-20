@@ -294,10 +294,17 @@ class XraySettings {
           }
         }
 
-        // sockopt.dialMode (جای‌گذاری PattNG)
+        // sockopt.dialMode — applied into real Xray streamSettings
         final sockopt = Map<String, dynamic>.from(
             stream['sockopt'] as Map? ?? {});
-        if (dialMode.isNotEmpty) sockopt['dialMode'] = dialMode;
+        if (dialMode.isNotEmpty) {
+          sockopt['dialMode'] = dialMode;
+          debugPrint('[XraySettings] dialMode=$dialMode applied to sockopt');
+        }
+        if (fp.isNotEmpty) {
+          debugPrint('[XraySettings] fingerprint=$fp applied to '
+              '${isReality ? 'reality' : 'tls'}Settings');
+        }
         if (kcpSeed.isNotEmpty && (stream['kcpSettings'] is Map)) {
           // بخش ۴.۲ — mKCP seed (obfuscation)
           final kcp = Map<String, dynamic>.from(

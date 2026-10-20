@@ -263,6 +263,17 @@ class AetherService {
       } else {
         lastError ??= 'Aether could not find a working route';
       }
+      // Phase 5 QA: surface the last native status so logcat proves why
+      // connect failed (binary missing, exit code, last line, …).
+      try {
+        final st = await nativeStatus();
+        final info = await nativeInfo();
+        debugPrint('[Aether] connect failed: lastError=$lastError '
+            'status=$st info.binary=${info['binary']} '
+            'hasIdentity=${info['hasIdentity']} abi=${info['abi']}');
+      } catch (e) {
+        debugPrint('[Aether] connect failed status-poll error: $e');
+      }
       return false;
     } catch (error) {
       lastError = error.toString();

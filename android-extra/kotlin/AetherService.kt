@@ -481,6 +481,12 @@ class AetherService : Service() {
             fail("$BINARY_NAME not found in ${binary.parent}")
             return
         }
+        // Phase 5 QA: ensure the ELF is executable (some devices extract
+        // jniLibs without the +x bit, which makes ProcessBuilder.start fail).
+        if (!binary.canExecute()) {
+            val ok = binary.setExecutable(true, false)
+            SafeLog.i(TAG, "setExecutable($ok) path=${binary.absolutePath}")
+        }
 
         val env = try {
             // parseEnv returns an immutable map; keep a mutable copy.

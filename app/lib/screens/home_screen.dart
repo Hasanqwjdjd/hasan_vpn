@@ -702,14 +702,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     var scan = profile.scan;
     var noize = profile.noize;
     var ip = profile.ip;
+    var blockQuic = profile.blockQuic;
+    var quickReconnect = profile.quickReconnect;
+    var perf = profile.perf;
     final nameCtrl = TextEditingController(text: server.displayName);
     final peerCtrl = TextEditingController(text: profile.peer);
+    final outerCtrl = TextEditingController(text: profile.outer);
+    final innerCtrl = TextEditingController(text: profile.inner);
+    final dnsCtrl = TextEditingController(text: profile.dns);
+    final upstreamCtrl = TextEditingController(text: profile.upstream);
     try {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setLocal) {
+            InputDecoration dec(String label) => InputDecoration(
+                  labelText: label,
+                  labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                );
             return AlertDialog(
               backgroundColor: AppColors.elevated(ctx),
               title: Text('AETHER',
@@ -721,19 +732,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     TextField(
                       controller: nameCtrl,
                       style: TextStyle(color: AppColors.fg(ctx)),
-                      decoration: InputDecoration(
-                        labelText: _t('ملاحظات / نام', 'Remark / name'),
-                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
-                      ),
+                      decoration: dec(_t('ملاحظات / نام', 'Remark / name')),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value: protocol,
                       dropdownColor: AppColors.elevated(ctx),
-                      decoration: InputDecoration(
-                        labelText: _t('پروتکل', 'Protocol'),
-                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
-                      ),
+                      decoration: dec(_t('پروتکل', 'Protocol')),
                       items: AetherProfile.protocols
                           .map((p) => DropdownMenuItem(
                                 value: p,
@@ -750,10 +755,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     DropdownButtonFormField<String>(
                       value: scan,
                       dropdownColor: AppColors.elevated(ctx),
-                      decoration: InputDecoration(
-                        labelText: _t('حالت اسکن', 'Scan mode'),
-                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
-                      ),
+                      decoration: dec(_t('حالت اسکن', 'Scan mode')),
                       items: AetherProfile.scans
                           .map((p) => DropdownMenuItem(
                                 value: p,
@@ -770,10 +772,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     DropdownButtonFormField<String>(
                       value: noize,
                       dropdownColor: AppColors.elevated(ctx),
-                      decoration: InputDecoration(
-                        labelText: _t('مبهم‌سازی', 'Noize'),
-                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
-                      ),
+                      decoration: dec(_t('مبهم‌سازی', 'Noize')),
                       items: AetherProfile.noizes
                           .map((p) => DropdownMenuItem(
                                 value: p,
@@ -790,10 +789,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     DropdownButtonFormField<String>(
                       value: ip,
                       dropdownColor: AppColors.elevated(ctx),
-                      decoration: InputDecoration(
-                        labelText: _t('نسخه IP', 'IP version'),
-                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
-                      ),
+                      decoration: dec(_t('نسخه IP', 'IP version')),
                       items: AetherProfile.ips
                           .map((p) => DropdownMenuItem(
                                 value: p,
@@ -807,14 +803,76 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       },
                     ),
                     const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: perf,
+                      dropdownColor: AppColors.elevated(ctx),
+                      decoration: dec(_t('پروفایل کارایی', 'Perf profile')),
+                      items: const ['auto', 'low', 'medium', 'high']
+                          .map((p) => DropdownMenuItem(
+                                value: p,
+                                child: Text(p,
+                                    style: TextStyle(
+                                        color: AppColors.fg(ctx))),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setLocal(() => perf = v);
+                      },
+                    ),
+                    const SizedBox(height: 8),
                     TextField(
                       controller: peerCtrl,
                       style: TextStyle(color: AppColors.fg(ctx)),
-                      decoration: InputDecoration(
-                        labelText:
-                            _t('نشانی (اختیاری ip:port)', 'Peer (optional)'),
-                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
-                      ),
+                      decoration: dec(
+                          _t('نشانی (اختیاری ip:port)', 'Peer (optional)')),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: outerCtrl,
+                      style: TextStyle(color: AppColors.fg(ctx)),
+                      decoration: dec(
+                          _t('Outer hop (Gool/WIW)', 'Outer hop (Gool/WIW)')),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: innerCtrl,
+                      style: TextStyle(color: AppColors.fg(ctx)),
+                      decoration: dec(
+                          _t('Inner hop (Gool/WIW)', 'Inner hop (Gool/WIW)')),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: dnsCtrl,
+                      style: TextStyle(color: AppColors.fg(ctx)),
+                      decoration: dec(
+                          _t('DNS داخل تونل (کاما)', 'In-tunnel DNS (comma)')),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: upstreamCtrl,
+                      style: TextStyle(color: AppColors.fg(ctx)),
+                      decoration: dec(_t(
+                          'Upstream (socks5://...)',
+                          'Upstream (socks5://...)')),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(_t('مسدود کردن QUIC', 'Block QUIC'),
+                          style: TextStyle(
+                              color: AppColors.fg(ctx), fontSize: 14)),
+                      value: blockQuic,
+                      activeColor: AppColors.accent,
+                      onChanged: (v) => setLocal(() => blockQuic = v),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                          _t('اتصال مجدد سریع', 'Quick reconnect'),
+                          style: TextStyle(
+                              color: AppColors.fg(ctx), fontSize: 14)),
+                      value: quickReconnect,
+                      activeColor: AppColors.accent,
+                      onChanged: (v) => setLocal(() => quickReconnect = v),
                     ),
                   ],
                 ),
@@ -892,23 +950,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       },
     );
     if (ok != true || !mounted) return;
+    // Phase 5: preserve every advanced field so the link actually drives
+    // the native core (outer/inner/dns/upstream/blockQuic/…).
     final updated = AetherProfile(
       protocol: protocol,
       scan: scan,
       noize: noize,
       ip: ip,
-      dns: profile.dns,
+      dns: dnsCtrl.text.trim(),
       peer: peerCtrl.text.trim(),
-      upstream: profile.upstream,
-      quickReconnect: profile.quickReconnect,
-      blockQuic: profile.blockQuic,
-      perf: profile.perf,
+      outer: outerCtrl.text.trim(),
+      inner: innerCtrl.text.trim(),
+      upstream: upstreamCtrl.text.trim(),
+      quickReconnect: quickReconnect,
+      blockQuic: blockQuic,
+      perf: perf,
+      listenPort: profile.listenPort,
+      targetStrategy: profile.targetStrategy,
+      teamName: profile.teamName,
+      accessEmail: profile.accessEmail,
+      accessId: profile.accessId,
+      accessSecret: profile.accessSecret,
+      accessToken: profile.accessToken,
+      gatewayEnabled: profile.gatewayEnabled,
+      psiphonMode: profile.psiphonMode,
+      psiphonRegion: profile.psiphonRegion,
+      psiphonFront: profile.psiphonFront,
+      torMode: profile.torMode,
+      torBridge: profile.torBridge,
+      torRelays: profile.torRelays,
+      routeDirect: profile.routeDirect,
+      routeBlock: profile.routeBlock,
     );
     final newLink = updated.toLink();
     final newName = nameCtrl.text.trim();
     final peerHost = updated.peer.isNotEmpty
         ? updated.peer.split(':').first
         : server.host;
+    debugPrint(
+        '[Home] aether edit saved protocol=$protocol scan=$scan '
+        'noize=$noize outer=${updated.outer} inner=${updated.inner} '
+        'blockQuic=$blockQuic');
     final next = server.copyWith(
       name: newName.isNotEmpty ? newName : null,
       shareLink: newLink,
@@ -931,12 +1013,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (_selected?.id == server.id) _selected = next;
       if (_active?.id == server.id) _active = next;
     });
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_t('تنظیمات Aether ذخیره شد', 'Aether saved'))),
+      SnackBar(
+        content: Text(_t('تنظیمات Aether ذخیره شد', 'Aether settings saved')),
+      ),
     );
     } finally {
       nameCtrl.dispose();
       peerCtrl.dispose();
+      outerCtrl.dispose();
+      innerCtrl.dispose();
+      dnsCtrl.dispose();
+      upstreamCtrl.dispose();
     }
   }
 
