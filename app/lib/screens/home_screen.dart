@@ -1175,7 +1175,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 8),
                     field('dialMode', dialModeCtrl,
-                        hint: 'sockopt.dialMode (مثل PattNG)'),
+                        hint: 'sockopt.dialMode'),
                     // بخش ۴.۲ — پرست‌های FinalMask (Fragment) مثل PattNG
                     SizedBox(
                       width: double.infinity,

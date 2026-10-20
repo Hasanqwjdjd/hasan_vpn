@@ -360,6 +360,13 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               widget.onServerAdded(s);
             }
           },
+          onImportWithoutTest: widget.onServerAddedWithoutTest == null
+              ? null
+              : (servers) {
+                  for (final s in servers) {
+                    widget.onServerAddedWithoutTest!(s);
+                  }
+                },
         ),
       ),
     );
@@ -3853,101 +3860,8 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
-              // ---- جعل نشانگر نام سرور (SNI Spoof) ----
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.surface(context),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.border(context)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        _t('جعل نشانگر نام سرور', 'Spoof Server Name Indicator'),
-                        style: TextStyle(
-                          color: AppColors.fg(context),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      subtitle: Text(
-                        _t(
-                          'اگر SNI مسدود است، دامنهٔ جعلی انتخاب کنید',
-                          'If SNI is blocked, pick a spoofed domain',
-                        ),
-                        style: TextStyle(
-                            color: AppColors.muted2(context), fontSize: 11),
-                      ),
-                      value: _sniEnabled,
-                      activeColor: AppColors.accent,
-                      onChanged: (v) {
-                        setState(() {
-                          _sniEnabled = v;
-                          if (v && _sniController.text.trim().isEmpty) {
-                            _sniController.text = TorSniPresets.defaultSni;
-                          }
-                        });
-                      },
-                    ),
-                    if (_sniEnabled) ...[
-                      const SizedBox(height: 4),
-                      InkWell(
-                        borderRadius: BorderRadius.circular(10),
-                        onTap: () => _showSniPicker(),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: AppColors.bg(context),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                                color: AppColors.border(context)),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.security,
-                                  color: AppColors.accent, size: 18),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  _sniController.text.trim().isEmpty
-                                      ? TorSniPresets.defaultSni
-                                      : _sniController.text.trim(),
-                                  style: TextStyle(
-                                    color: AppColors.fg(context),
-                                    fontSize: 13,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              Icon(Icons.chevron_left,
-                                  color: AppColors.muted2(context), size: 20),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _t(
-                          'از این مورد تنها اگر نمی‌توانید به TOR متصل شوید استفاده کنید. ممکن است باعث عدم اتصال بعضی سرورها شود.',
-                          'Use only if you cannot connect. May break some servers.',
-                        ),
-                        style: TextStyle(
-                            color: AppColors.muted2(context),
-                            fontSize: 11,
-                            height: 1.4),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+              // Phase 2 QA: Spoof SNI toggle + "Add without test" button removed
+              // from the manual add page (moved / purged per issues 4).
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
@@ -3968,32 +3882,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   ),
                 ),
               ),
-              // بخش ۲.۲ — افزودن بدون تست: کاربر هر تعداد سرور می‌تواند
-              // وارد کند و سیستم به‌زور از آن‌ها تست پینگ نمی‌گیرد.
-              if (widget.onServerAddedWithoutTest != null) ...[
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 46,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _addFromLink(skipTest: true),
-                    icon: const Icon(Icons.playlist_add, size: 20),
-                    label: Text(
-                      _t('افزودن بدون تست', 'Add without test'),
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w600),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.accent,
-                      side: BorderSide(
-                          color: AppColors.accent.withValues(alpha: 0.5)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
                         ] else if (_selectedType == 'hysteria2') ...[
               _buildHysteria2Form(),
               const SizedBox(height: 16),

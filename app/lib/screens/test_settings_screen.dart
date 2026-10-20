@@ -142,14 +142,13 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                           Icons.verified_outlined,
                         ),
                         _divider(),
-                        // بخش ۳.۱ — حالت «فقط Real Ping» مثل PingNG:
-                        // بدون هیچ TCP پینگی؛ تست واقعی از همهٔ سرورها.
+                        // حالت «فقط Real Ping»: بدون هیچ TCP پینگی؛ تست واقعی از همهٔ سرورها.
                         _modeTile(
                           TestMode.realOnly,
                           'فقط Real Ping — بدون TCP',
-                          'هیچ TCP پینگی گرفته نمی‌شود؛ تست واقعی (مثل PingNG) از تمام سرورها گرفته می‌شود',
+                          'هیچ TCP پینگی گرفته نمی‌شود؛ تست واقعی از تمام سرورها گرفته می‌شود',
                           'Real Ping only — no TCP',
-                          'No TCP handshake at all; real in-tunnel test for every server (like PingNG)',
+                          'No TCP handshake at all; real in-tunnel test for every server',
                           Icons.network_check,
                         ),
                       ],
@@ -230,8 +229,8 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                         ),
                         Text(
                           _t(
-                            'زمان واقعی پاسخ‌دهی از داخل تونل با درخواست HTTP به این آدرس اندازه‌گیری می‌شود (مثل v2rayNG/PingNG).',
-                            'Real response time is measured inside the tunnel with an HTTP request to this URL (like v2rayNG/PingNG).',
+                            'زمان واقعی پاسخ‌دهی از داخل تونل با درخواست HTTP به این آدرس اندازه‌گیری می‌شود.',
+                            'Real response time is measured inside the tunnel with an HTTP request to this URL.',
                           ),
                           style: TextStyle(
                             color: AppColors.muted2(context),

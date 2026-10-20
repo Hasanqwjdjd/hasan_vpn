@@ -290,6 +290,27 @@ class FreeConfigEngine {
     }
   }
 
+  /// Phase 2 QA: import [count] candidates as servers without any TCP/real
+  /// ping test. Used by "افزودن بدون تست" on the free-config page.
+  static List<VpnServer> collectWithoutTest({
+    required List<String> candidates,
+    required int count,
+  }) {
+    final shuffled = List<String>.from(candidates)..shuffle();
+    final out = <VpnServer>[];
+    for (final uri in shuffled) {
+      if (out.length >= count) break;
+      final s = LinkParser.parse(
+        uri,
+        id: 'free_notest_${DateTime.now().microsecondsSinceEpoch}_${out.length}',
+      );
+      if (s != null) out.add(s);
+    }
+    debugPrint(
+        '[FreeConfig] collectWithoutTest requested=$count got=${out.length}');
+    return out;
+  }
+
   /// Two-stage funnel that stops as soon as [targetCount] working configs
   /// are found or [isCancelled] returns true.
   static Future<List<VpnServer>> collectWorking({

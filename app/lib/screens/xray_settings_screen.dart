@@ -310,7 +310,7 @@ class _XraySettingsScreenState extends State<XraySettingsScreen> {
                     subFa:
                         'هشدار: FakeDNS ممکن است با برخی اپ‌ها ناسازگار باشد',
                     subEn:
-                        'Warning: FakeDNS may break some apps (same as PattNG)'),
+                        'Warning: FakeDNS may break some apps'),
                 _textField('vpnDns', 'DNS VPN (IPv4)', 'VPN DNS (IPv4)',
                     hint: '1.1.1.1,8.8.8.8'),
                 _textField('vpnDns6', 'DNS VPN (IPv6)', 'VPN DNS (IPv6)',

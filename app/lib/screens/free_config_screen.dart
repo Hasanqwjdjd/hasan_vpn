@@ -16,10 +16,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 class FreeConfigScreen extends StatefulWidget {
   final String language;
   final void Function(List<VpnServer>) onImport;
+  /// Phase 2: optional path that skips automatic ping after import.
+  final void Function(List<VpnServer>)? onImportWithoutTest;
   const FreeConfigScreen({
     super.key,
     required this.language,
     required this.onImport,
+    this.onImportWithoutTest,
   });
 
   @override
@@ -285,9 +288,60 @@ class _FreeConfigScreenState extends State<FreeConfigScreen> {
               ),
             ),
           ),
+          // Phase 2 QA: "افزودن بدون تست" lives exclusively on this page
+          // (removed from manual add). Imports the selected count without
+          // any TCP / real-ping health check.
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: OutlinedButton.icon(
+              onPressed: _addWithoutTest,
+              icon: const Icon(Icons.playlist_add, size: 20),
+              label: Text(
+                _t('افزودن بدون تست', 'Add without test'),
+                style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.accent,
+                side: BorderSide(
+                    color: AppColors.accent.withValues(alpha: 0.5)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _addWithoutTest() async {
+    debugPrint(
+        '[FreeConfig] add-without-test count=$_desired candidates=${_candidates.length}');
+    final servers = FreeConfigEngine.collectWithoutTest(
+      candidates: _candidates,
+      count: _desired,
+    );
+    if (servers.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_t('هیچ کانفیگ معتبری پیدا نشد',
+              'No valid configs found')),
+        ),
+      );
+      return;
+    }
+    // Prefer the without-test callback so home does not auto-ping.
+    if (widget.onImportWithoutTest != null) {
+      widget.onImportWithoutTest!(servers);
+    } else {
+      widget.onImport(servers);
+    }
+    if (mounted) Navigator.pop(context);
   }
 
   Widget _buildFetching() {
