@@ -182,7 +182,7 @@ class V2RayEngine {
 
   static bool get isConnected => _connected;
 
-  /// FIX: آیا اتصال فعلی مربوط به یه session ابزاریه (Tor/Psiphon
+  /// FIX: آیا اتصال فعلی مربوط به یه session ابزاریه (Tor/Aether/Psiphon
   /// که Xray فقط برای routing استفاده می‌شه) نه یه سرور کاربر؟
   static bool get isUtilitySession {
     final c = _current;
@@ -191,7 +191,9 @@ class V2RayEngine {
     return id.startsWith('tor_fake_') ||
         id.startsWith('siphon_') ||
         id.startsWith('oblivion_') ||
-        c.name == 'Tor';
+        id.startsWith('aether_') ||
+        c.name == 'Tor' ||
+        c.name == 'Aether';
   }
   static VpnServer? get current => _current;
 

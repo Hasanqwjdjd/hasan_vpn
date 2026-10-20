@@ -141,6 +141,17 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                           'Real in-tunnel test for every responder (slowest, most accurate)',
                           Icons.verified_outlined,
                         ),
+                        _divider(),
+                        // بخش ۳.۱ — حالت «فقط Real Ping» مثل PingNG:
+                        // بدون هیچ TCP پینگی؛ تست واقعی از همهٔ سرورها.
+                        _modeTile(
+                          TestMode.realOnly,
+                          'فقط Real Ping — بدون TCP',
+                          'هیچ TCP پینگی گرفته نمی‌شود؛ تست واقعی (مثل PingNG) از تمام سرورها گرفته می‌شود',
+                          'Real Ping only — no TCP',
+                          'No TCP handshake at all; real in-tunnel test for every server (like PingNG)',
+                          Icons.network_check,
+                        ),
                       ],
                     ),
                   ),
@@ -248,8 +259,8 @@ class _TestSettingsScreenState extends State<TestSettingsScreen> {
                   const SizedBox(height: 8),
                   Text(
                     _t(
-                      'منطق تست: ابتدا همهٔ سرورها TCP می‌شوند، سپس پاسخ‌دهنده‌ها تست واقعی می‌گیرند و لیست بر اساس کمترین پینگ مرتب می‌شود. سرورهای سایفون/لوکال پینگ نمی‌گیرند (N/A).',
-                      'Logic: TCP for all first, responders get the real test, list sorts by lowest ping. Psiphon/local servers are skipped (N/A).',
+                      'منطق تست: ابتدا همهٔ سرورها TCP می‌شوند، سپس پاسخ‌دهنده‌ها تست واقعی می‌گیرند و لیست بر اساس کمترین پینگ مرتب می‌شود. در حالت «فقط Real Ping» فاز TCP حذف می‌شود. سرورهای سایفون/لوکال پینگ نمی‌گیرند (N/A) و سرورهای Aether با هستهٔ بومی تست واقعی می‌گیرند.',
+                      'Logic: TCP for all first, responders get the real test, list sorts by lowest ping. In "Real Ping only" the TCP phase is skipped. Psiphon/local servers are skipped (N/A); Aether servers are real-tested via the native core.',
                     ),
                     style: TextStyle(
                       color: AppColors.muted2(context),

@@ -63,6 +63,82 @@ class FreeConfigEngine {
       url: 'https://raw.githubusercontent.com/mfuu/v2ray/master/v2ray',
       base64: false,
     ),
+    // بخش ۲.۲ — افزایش قابل توجه منابع کانفیگ رایگان (فهرست گسترده‌تر)
+    (
+      url:
+          'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt',
+      base64: false,
+    ),
+    (
+      url:
+          'https://raw.githubusercontent.com/mahdibland/ShadowsocksAggregator/master/Eternity.txt',
+      base64: false,
+    ),
+    (
+      url:
+          'https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt',
+      base64: false,
+    ),
+    (
+      url:
+          'https://raw.githubusercontent.com/ALIILAPRO/v2rayNG-Config/main/server.txt',
+      base64: false,
+    ),
+    (
+      url:
+          'https://raw.githubusercontent.com/ripaojiedian/freenode/main/sub',
+      base64: true,
+    ),
+    (
+      url:
+          'https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub',
+      base64: true,
+    ),
+    (
+      url:
+          'https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2',
+      base64: false,
+    ),
+    (
+      url:
+          'https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.txt',
+      base64: false,
+    ),
+    (
+      url:
+          'https://raw.githubusercontent.com/vpei/Free-Node-Merge/main/o.md',
+      base64: false,
+    ),
+    (
+      url:
+          'https://raw.githubusercontent.com/freefq/free/master/v2',
+      base64: false,
+    ),
+    (
+      url:
+          'https://raw.githubusercontent.com/soroushmirzaei/telegram-configs-collector/main/protocols/vless',
+      base64: false,
+    ),
+    (
+      url:
+          'https://raw.githubusercontent.com/soroushmirzaei/telegram-configs-collector/main/protocols/reality',
+      base64: false,
+    ),
+    (
+      url:
+          'https://raw.githubusercontent.com/soroushmirzaei/telegram-configs-collector/main/protocols/trojan',
+      base64: false,
+    ),
+    (
+      url:
+          'https://raw.githubusercontent.com/Leon406/SubCrawler/master/sub/share1',
+      base64: true,
+    ),
+    (
+      url:
+          'https://raw.githubusercontent.com/Anaer-0/v2ray-sub/main/config.txt',
+      base64: false,
+    ),
   ];
 
   static const List<String> _prefixes = [

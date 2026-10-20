@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../models/server.dart';
+import 'aether_service.dart';
 import 'socks_probe.dart';
 import 'test_budget.dart';
 import 'v2ray_engine.dart';
@@ -63,6 +64,9 @@ class _Semaphore {
 /// منطق: ابتدا همه‌ی سرورها TCP می‌شوند (موازی)، هر کدام جواب دادند
 /// تست واقعی می‌شوند و در نهایت لیست بر اساس کمترین پینگ مرتب می‌شود.///
 /// سرورهای لوکال (127.0.0.1 / localhost) و سایفون تست نمی‌شوند — N/A.
+/// سرورهای Aether (بخش ۵) TCP معنادار ندارند (host = auto-discover)؛
+/// آن‌ها همیشه با AetherService.measureDelay تست واقعی می‌گیرند.
+/// حالت realOnly (بخش ۳.۱): فاز TCP حذف و تست واقعی برای همه گرفته می‌شود.
 class ServerTester {
   ServerTester._();
 
@@ -93,10 +97,19 @@ class ServerTester {
         'real=${realTimeoutSec}s/${budget.effectiveRealConcurrency}x$realSamples '
         'url=${budget.delayUrl}');
 
+    // بخش ۵ — سرورهای Aether از فاز TCP خارج می‌شوند و همیشه تست واقعی
+    // (measureDelay روی هسته‌ی native) می‌گیرند.
     final regular = servers
-        .where((s) => !s.isPsiphon && !s.isLocal)
+        .where((s) => !s.isPsiphon && !s.isLocal && !s.isAether)
         .toList();
-    final summary = TestSummary()..total = regular.length;
+    final aetherServers = servers.where((s) => s.isAether).toList();
+    final summary = TestSummary()
+      ..total = regular.length + aetherServers.length;
+    if (aetherServers.isNotEmpty) {
+      debugPrint('[ServerTester] ${aetherServers.length} aether server(s) '
+          'routed to native measureDelay (concurrency '
+          '${budget.aetherConcurrency})');
+    }
 
     final skippedLocal = servers.where((s) => s.isLocal && !s.isPsiphon).length;
     if (skippedLocal > 0) {
@@ -118,27 +131,33 @@ class ServerTester {
       });
     }
 
-    // ═══ فاز ۱: TCP برای همه — موازی ═══
-    debugPrint('[ServerTester] phase 1/2: TCP ping — n=${regular.length} '
-        'timeout=${tcpTimeoutMs}ms concurrency=$tcpConcurrency');
-    final tcpGate = _Semaphore(tcpConcurrency);
+    // ═══ فاز ۱: TCP برای همه — موازی (در حالت realOnly حذف می‌شود) ═══
     final responders = <VpnServer>[];
+    if (budget.tcpPhaseEnabled) {
+      debugPrint('[ServerTester] phase 1/2: TCP ping — n=${regular.length} '
+          'timeout=${tcpTimeoutMs}ms concurrency=$tcpConcurrency');
+      final tcpGate = _Semaphore(tcpConcurrency);
 
-    await Future.wait(<Future<void>>[
-      for (final server in regular)
-        _tcpPhase(server, session, tcpGate, responders, notify,
-            timeoutMs: tcpTimeoutMs),
-    ]);
-    if (session.cancelled) {
-      throttle?.cancel();
-      return summary;
+      await Future.wait(<Future<void>>[
+        for (final server in regular)
+          _tcpPhase(server, session, tcpGate, responders, notify,
+              timeoutMs: tcpTimeoutMs),
+      ]);
+      if (session.cancelled) {
+        throttle?.cancel();
+        return summary;
+      }
+      debugPrint('[ServerTester] phase 1 done — responders=${responders.length}');
+    } else {
+      debugPrint('[ServerTester] realOnly mode — TCP phase skipped '
+          '(بخش ۳.۱ فقط Real Ping)');
     }
-    debugPrint('[ServerTester] phase 1 done — responders=${responders.length}');
 
-    // ═══ فاز ۲: تست واقعی برای پاسخ‌دهنده‌ها ═══
-    if (!isTcpOnly && responders.isNotEmpty) {
+    // ═══ فاز ۲: تست واقعی برای پاسخ‌دهنده‌ها (+ همیشه سرورهای Aether) ═══
+    if (!isTcpOnly && (responders.isNotEmpty || aetherServers.isNotEmpty)) {
       // balanced: فقط ۲۴ پاسخ‌دهندهٔ برتر (کمترین TCP ping) تست واقعی می‌گیرند.
-      var realTargets = responders;
+      // realOnly (بخش ۳.۱): همه‌ی سرورها مستقیماً تست واقعی می‌گیرند.
+      var realTargets = budget.realForAll ? regular : responders;
       if (balanced && responders.length > TestBudget.balancedRealLimit) {
         realTargets = List<VpnServer>.from(responders)
           ..sort((a, b) => (a.ping ?? 9999).compareTo(b.ping ?? 9999));
@@ -146,16 +165,23 @@ class ServerTester {
         debugPrint('[ServerTester] balanced mode — real test limited to top '
             '${TestBudget.balancedRealLimit} responders');
       }
+      final gate = _Semaphore(budget.effectiveRealConcurrency);
+      final aetherGate = _Semaphore(budget.aetherConcurrency);
       debugPrint('[ServerTester] phase 2/2: real ping — n=${realTargets.length} '
+          '+${aetherServers.length} aether, '
           'timeout=${realTimeoutSec}s '
           'concurrency=${budget.effectiveRealConcurrency} '
           'url=${V2RayEngine.delayUrl}');
-      final realGate = _Semaphore(budget.effectiveRealConcurrency);
       await Future.wait(<Future<void>>[
         for (final server in realTargets)
-          _realPhase(server, session, realGate, summary, notify,
+          _realPhase(server, session, gate, summary, notify,
               timeoutSec: realTimeoutSec,
               samples: realSamples,
+              onDone: onServerDone),
+        for (final server in aetherServers)
+          _realPhase(server, session, aetherGate, summary, notify,
+              timeoutSec: realTimeoutSec,
+              samples: 1,
               onDone: onServerDone),
       ]);
       // سرورهای responder که در حالت balanced تست واقعی نگرفتند:
@@ -232,6 +258,33 @@ class ServerTester {
       server.status = ServerStatus.testing;
       notify();
 
+      // بخش ۵ — Aether: تست واقعی از طریق هسته‌ی native (بدون TCP).
+      if (server.isAether) {
+        final ms = await AetherService.measureDelay(
+          server,
+          budget: Duration(seconds: timeoutSec < 8 ? 8 : timeoutSec),
+        );
+        if (session.cancelled) return;
+        debugPrint('[ServerTester] aether ${server.displayName} '
+            'measureDelay=${ms > 0 ? '${ms}ms' : 'FAIL'}');
+        if (ms > 0) {
+          server.ping = ms;
+          server.jitter = null;
+          server.pingKind = PingKind.real;
+          server.status = ServerStatus.online;
+          summary.online++;
+        } else {
+          server.ping = null;
+          server.jitter = null;
+          server.pingKind = PingKind.none;
+          server.status = ServerStatus.offline;
+          summary.offline++;
+        }
+        notify();
+        onDone?.call(server);
+        return;
+      }
+
       final (ms, jitter) = await _measureReal(
         server,
         session,
@@ -299,6 +352,8 @@ class ServerTester {
 
   static bool _tcpEligible(VpnServer server) {
     if (server.isPsiphon) return false;
+    // بخش ۵ — Aether: TCP ping معنا ندارد (host = auto-discover).
+    if (server.isAether) return false;
     // بخش ۸ — سرورهای لوکال (127.0.0.1) هرگز TCP ping نمی‌گیرند.
     if (server.isLocal) return false;
     if (server.usesUdpTransport) return false;

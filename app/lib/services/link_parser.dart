@@ -25,10 +25,11 @@ class LinkParser {
     'mdns',
     'warpmasque',
     'wmq',
+    'aether',
   ];
 
   static final RegExp linkRegex = RegExp(
-    r'(?:vless|vmess|trojan|ss|ssd|vpn|ssh|masterdns|mdns|warpmasque|wmq|hasan-warp|hysteria2|hy2|custom|xrayjson)://[^\s"<>\\]+',
+    r'(?:vless|vmess|trojan|ss|ssd|vpn|ssh|masterdns|mdns|warpmasque|wmq|hasan-warp|hysteria2|hy2|aether|custom|xrayjson)://[^\s"<>\\]+',
     caseSensitive: false,
   );
 
@@ -123,6 +124,9 @@ class LinkParser {
         case 'warpmasque':
         case 'wmq':
           return _parseWarpMasque(link, id);
+        case 'aether':
+          // بخش ۵ — سرور Aether (هسته‌ی WARP بومی)
+          return _parseAether(link, id);
         default:
           return null;
       }
@@ -609,6 +613,29 @@ class LinkParser {
       protocol: VpnProtocol.shadowsocks,
       host: parsed.$1,
       port: parsed.$2,
+    );
+  }
+
+  // ----------------------------------------------------------------- aether
+
+  /// بخش ۵ — لینک Aether: `aether://config?protocol=…&scan=…` (ساخت
+  /// AetherProfile). سرور بدون host ثابت است — هسته خودش مسیر سالم را
+  /// با اسکن پیدا می‌کند.
+  static VpnServer? _parseAether(String link, String id) {
+    final uri = Uri.tryParse(link);
+    final name = _cleanName(
+      uri == null ? '' : _decode(uri.fragment),
+      fallback: 'Aether',
+    );
+
+    return VpnServer(
+      id: id,
+      name: name,
+      flag: '🟣',
+      shareLink: link,
+      protocol: VpnProtocol.aether,
+      host: 'auto-discover',
+      port: 0,
     );
   }
 

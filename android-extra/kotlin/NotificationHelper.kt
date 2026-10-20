@@ -23,8 +23,14 @@ import android.util.Log
  */
 object NotificationHelper {
     /// کانال اصلی — همه‌ی سرویس‌ها از این استفاده می‌کنن.
-    /// (Section 9) فقط یک کانال در کل اپ: vpn_status با IMPORTANCE_LOW
-    const val CHANNEL_ID = "vpn_status"
+    /// (Section 9) فقط یک کانال در کل اپ: با IMPORTANCE_LOW.
+    ///
+    /// بخش ۱.۲ (v3): کانال‌های اندروید بعد از ساخته‌شدن تغییرناپذیرند؛
+    /// کانال قدیمی "vpn_status" روی نصب‌های قبلی ممکنه با صدای
+    /// IMPORTANCE_DEFAULT ساخته شده باشه و تغییر کد اثری رویش نداره.
+    /// پس شناسه کانال به "vpn_status_v2" ارتقا یافت و کانال قدیمی هم
+    /// در لیست حذف قرار گرفت → تضمین سکوت کامل (بدون صدا/پاپ‌آپ).
+    const val CHANNEL_ID = "vpn_status_v2"
     private const val CHANNEL_NAME = "Hasan VPN"
     private const val CHANNEL_DESC = "اتصال VPN و وضعیت تونل"
 
@@ -35,6 +41,7 @@ object NotificationHelper {
         "hasan_psiphon_runtime", // کانال قدیمی سرویس Psiphon
         "XRAY_SERVICE_CHANNEL",  // کانال قدیمی XrayCoreManager (IMPORTANCE_DEFAULT)
         "vpn_service_channel",   // کانال قدیمی XrayVPNService
+        "vpn_status",            // بخش ۱.۲ — کانال قدیمی با صدای پیش‌فرض
     )
 
     /// All notifications share this group key so Android stacks them under
@@ -45,6 +52,7 @@ object NotificationHelper {
     /// اینا نباید تغییر کنن چون به startForeground گره خوردن.
     const val ID_TELEMETRY = 4240
     const val ID_TOR = 4241
+    const val ID_AETHER = 4242 // سرویس foreground هسته Aether (بخش ۵)
     const val ID_TUNNEL = 4243
     const val ID_WIDGET = 4245
     const val ID_XRAY = 4244  // برای XrayVPNService (forked plugin)
@@ -213,7 +221,7 @@ object NotificationHelper {
             // share; cancel it so nothing is left after the activity goes.
             for (id in intArrayOf(
                 1,
-                ID_TELEMETRY, ID_TOR, ID_TUNNEL, ID_XRAY, ID_WIDGET,
+                ID_TELEMETRY, ID_TOR, ID_AETHER, ID_TUNNEL, ID_XRAY, ID_WIDGET,
             )) {
                 manager.cancel(id)
             }

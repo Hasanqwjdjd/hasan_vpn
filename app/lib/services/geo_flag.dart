@@ -120,6 +120,17 @@ class GeoFlag {
     }
   }
 
+  /// بخش ۲.۱ — کد ISO 2 حرفی → نام فارسی (برای فهرست کشورهای سایفون).
+  /// اگر نگاشتی نبود، خودِ کد ISO برگردانده می‌شود.
+  static String isoToFarsi(String? iso) {
+    if (iso == null || iso.length != 2) return '';
+    final upper = iso.toUpperCase();
+    for (final entry in _nameToIso.entries) {
+      if (entry.value == upper) return farsiName(entry.key);
+    }
+    return upper;
+  }
+
   /// نام کشور → پرچم.
   static String fromName(String? name) {
     if (name == null || name.isEmpty) return '🌐';

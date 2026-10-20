@@ -9,6 +9,9 @@ import '../services/app_colors.dart';
 import '../services/link_parser.dart';
 import '../services/psiphon_auto.dart';
 import '../services/psiphon_service.dart';
+// بخش ۵ — بازگشت کلاینت Aether (هسته‌ی WARP بومی)
+import '../services/aether_service.dart';
+import '../models/aether_profile.dart';
 import '../services/warp_service.dart';
 import '../services/warp_endpoint_tester.dart';
 import '../services/warp_registration_proxy.dart';
@@ -25,10 +28,15 @@ class AddConfigScreen extends StatefulWidget {
   final String language;
   final Function(VpnServer) onServerAdded;
 
+  /// بخش ۲.۲ — افزودن سرور بدون تست خودکار (دکمه «افزودن بدون تست»).
+  /// اگر null باشد دکمه نمایش داده نمی‌شود و همه‌چیز مثل قبل تست می‌شود.
+  final void Function(VpnServer server)? onServerAddedWithoutTest;
+
   const AddConfigScreen({
     super.key,
     required this.language,
     required this.onServerAdded,
+    this.onServerAddedWithoutTest,
   });
 
   @override
@@ -42,7 +50,12 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _sniController = TextEditingController();
   bool _sniEnabled = false;
   bool _isFa = true;
-  String _selectedType = 'manual'; // psiphon|tor|manual|sub 
+  String _selectedType = 'manual'; // psiphon|tor|manual|sub|aether
+
+  // بخش ۵ — تنظیمات فرم Aether (بقیهٔ فیلدها = پیش‌فرض AetherProfile؛
+  // تنظیمات پیشرفته بعداً از صفحه‌ی ویرایش سرور در دسترس است.)
+  String _aetherProtocol = 'auto';
+  String _aetherScan = 'smart';
 
   // Tunnel DNS (DNSTT/NoizDNS/VayDNS/Slipstream)
   String _tunnelKind = 'dnstt';
@@ -352,7 +365,154 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
-  void _addFromLink() {
+  /// بخش ۵ — پنل فرم Aether: توضیح + انتخاب پروتکل/اسکن + دکمه افزودن.
+  /// تنظیمات پیشرفته‌تر (Noize, IP, Peer, DNS و...) از صفحه‌ی ویرایش
+  /// سرور (AETHER) در دسترس است — مثل ساختار PingNG.
+  Widget _buildAetherPanel() {
+    const color = Color(0xFF7E57C2);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _t(
+            'Aether هستهٔ WARP بومی (Rust) است: خودش مسیر سالم را با اسکن '
+            'پیدا می‌کند و به شبکهٔ Cloudflare WARP از طریق MASQUE / '
+            'WireGuard / Gool / MIM وصل می‌شود. نیازی به لینک سرور نیست.',
+            'Aether is a native Rust WARP core: it scans for a working '
+            'route by itself and connects to Cloudflare WARP via MASQUE / '
+            'WireGuard / Gool / MIM. No server link needed.',
+          ),
+          style: TextStyle(
+            color: AppColors.muted2(context),
+            fontSize: 12,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _buildChoiceRow(
+          label: _t('پروتکل', 'Protocol'),
+          values: AetherProfile.protocols,
+          valueLabelsFa: const {
+            'auto': 'خودکار (هوشمند)',
+            'masque': 'MASQUE/H3',
+            'masque_h2': 'MASQUE/H2',
+            'wg': 'WireGuard',
+            'gool': 'Gool (WARP-in-WARP)',
+            'mim': 'MIM',
+          },
+          valueLabelsEn: const {
+            'auto': 'Auto (smart)',
+            'masque': 'MASQUE/H3',
+            'masque_h2': 'MASQUE/H2',
+            'wg': 'WireGuard',
+            'gool': 'Gool (WARP-in-WARP)',
+            'mim': 'MIM',
+          },
+          selected: _aetherProtocol,
+          onSelected: (v) => setState(() => _aetherProtocol = v),
+          color: color,
+        ),
+        const SizedBox(height: 12),
+        _buildChoiceRow(
+          label: _t('حالت اسکن', 'Scan mode'),
+          values: AetherProfile.scans,
+          valueLabelsFa: const {
+            'smart': 'هوشمند',
+            'turbo': 'تربوز (سریع)',
+            'balanced': 'متعادل',
+            'thorough': 'کامل',
+            'verified': 'تأییدشده',
+            'ironclad': 'فولادین',
+          },
+          valueLabelsEn: const {
+            'smart': 'Smart',
+            'turbo': 'Turbo (fast)',
+            'balanced': 'Balanced',
+            'thorough': 'Thorough',
+            'verified': 'Verified',
+            'ironclad': 'Ironclad',
+          },
+          selected: _aetherScan,
+          onSelected: (v) => setState(() => _aetherScan = v),
+          color: color,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _t(
+            'تنظیمات پیشرفته (مبهم‌سازی، IP، Peer، DNS و…) بعد از افزودن، '
+            'از منوی سه‌نقطهٔ سرور ← ویرایش در دسترس است.',
+            'Advanced settings (Noize, IP, Peer, DNS, ...) are available '
+            'after adding via server 3-dot menu > Edit.',
+          ),
+          style: TextStyle(
+            color: AppColors.muted2(context),
+            fontSize: 10,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton.icon(
+            onPressed: _addAetherServer,
+            icon: const Icon(Icons.add),
+            label: Text(_t('افزودن سرور Aether', 'Add Aether Server')),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 30),
+      ],
+    );
+  }
+
+  /// بخش ۵ — ساخت سرور Aether از روی فرم و افزودن به لیست.
+  /// لاگ دقیق: [AddConfig] aether add protocol=… scan=…
+  void _addAetherServer() {
+    final profile = AetherProfile(
+      protocol: _aetherProtocol,
+      scan: _aetherScan,
+    );
+    debugPrint('[AddConfig] aether add protocol=$_aetherProtocol '
+        'scan=$_aetherScan link=${profile.toLink()}');
+
+    final nameCtrlText = _nameController.text.trim();
+    final server = VpnServer(
+      id: 'aether_${DateTime.now().millisecondsSinceEpoch}',
+      name: nameCtrlText.isNotEmpty
+          ? nameCtrlText
+          : 'Aether · ${profile.summary}',
+      flag: '🟣',
+      shareLink: profile.toLink(),
+      protocol: VpnProtocol.aether,
+      host: 'auto-discover',
+      port: 0,
+      isDeletable: true,
+    );
+
+    widget.onServerAdded(server);
+    Navigator.pop(context);
+    _showMsg(_t('سرور Aether اضافه شد', 'Aether server added'));
+  }
+
+  /// بخش ۲.۲ — مسیریابی افزودن: با skipTest=true سرور بدون تست خودکار
+  /// اضافه می‌شود (از دکمه «افزودن بدون تست»).
+  void _routeAdded(VpnServer server, {required bool skipTest}) {
+    if (skipTest && widget.onServerAddedWithoutTest != null) {
+      debugPrint('[AddConfig] add-without-test: ${server.displayName}');
+      widget.onServerAddedWithoutTest!(server);
+    } else {
+      widget.onServerAdded(server);
+    }
+  }
+
+  void _addFromLink({bool skipTest = false}) {
     final text = _linkController.text.trim();
     if (text.isEmpty) {
       _showMsg(_t('لینک را وارد کنید', 'Enter a link'));
@@ -385,7 +545,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             name: jsonServers.length == 1 ? customName : '$customName ${i + 1}',
           );
         }
-        widget.onServerAdded(server);
+        _routeAdded(server, skipTest: skipTest);
         added++;
       }
     } else if (XrayJson.looksLike(text)) {
@@ -413,7 +573,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
         final servers =
             LinkParser.parseMany(rawLink, id: 'custom_${stamp}_$i');
         for (final server in servers) {
-          widget.onServerAdded(server);
+          _routeAdded(server, skipTest: skipTest);
           added++;
         }
       }
@@ -3565,6 +3725,15 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               type: 'siphon',
               color: const Color(0xFF26A69A),
             ),
+            // بخش ۵ — دکمه افزودن Aether، بلافاصله بعد از دکمه سایفون.
+            _buildTypeCard(
+              title: 'Aether',
+              subtitle: _t('هستهٔ WARP بومی (MASQUE/WG/Gool/MIM)',
+                  'Native WARP core (MASQUE/WG/Gool/MIM)'),
+              icon: Icons.hub_outlined,
+              type: 'aether',
+              color: const Color(0xFF7E57C2),
+            ),
             _buildTypeCard(
               title: 'Chain (2-hop)',
               subtitle: _t(
@@ -3784,7 +3953,7 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: _addFromLink,
+                  onPressed: () => _addFromLink(),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.accent,
                     foregroundColor: Colors.black,
@@ -3799,11 +3968,39 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
                   ),
                 ),
               ),
+              // بخش ۲.۲ — افزودن بدون تست: کاربر هر تعداد سرور می‌تواند
+              // وارد کند و سیستم به‌زور از آن‌ها تست پینگ نمی‌گیرد.
+              if (widget.onServerAddedWithoutTest != null) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _addFromLink(skipTest: true),
+                    icon: const Icon(Icons.playlist_add, size: 20),
+                    label: Text(
+                      _t('افزودن بدون تست', 'Add without test'),
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.accent,
+                      side: BorderSide(
+                          color: AppColors.accent.withValues(alpha: 0.5)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
                         ] else if (_selectedType == 'hysteria2') ...[
               _buildHysteria2Form(),
               const SizedBox(height: 16),
             ] else if (_selectedType == 'siphon') ...[
               _buildSiphonForm(),
+            ] else if (_selectedType == 'aether') ...[
+              _buildAetherPanel(),
                         ] else if (_selectedType == 'chain') ...[
               _buildChainForm(),
             ],

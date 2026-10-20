@@ -199,6 +199,9 @@ enum VpnProtocol {
   masterdns,
   /// WARP MASQUE/H2 — Cloudflare usque client. بدون نیاز به کلید.
   warpMasque,
+  /// Aether (بخش ۵) — هسته‌ی WARP بومی (libaether.so): MASQUE/WireGuard/
+  /// GOOL/MIM با اسکن خودکار مسیر سالم. لینک با فرمت aether://config?…
+  aether,
 }
 
 /// idle: تست نشده | testing: در حال تست | online: سالم | offline: از کار افتاده
@@ -301,6 +304,10 @@ class VpnServer {
   }) : name = sanitizeServerName(name);
 
   bool get isPsiphon => protocol == VpnProtocol.psiphon;
+
+  /// بخش ۵ — true اگر این سرور از نوع Aether باشد (دور زدن فیلترینگ با
+  /// هسته‌ی WARP بومی و اسکن خودکار مسیر).
+  bool get isAether => protocol == VpnProtocol.aether;
 
   /// بخش ۸ — سرورهای لوکال (آدرس 127.0.0.1 / localhost / ::1) که روی خود
   /// دستگاه اجرا می‌شوند (مثلاً کانفیگ‌های زنجیره‌ای سابسکریپشن).

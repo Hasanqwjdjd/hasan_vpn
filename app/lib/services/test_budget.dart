@@ -9,11 +9,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///   turbo    → فقط TCP connect (بدون تست واقعی). برای ۱۰۰۰+ سرور در چند ثانیه.
 ///   balanced → TCP برای همه + تست واقعی فقط برای ۲۴ پاسخ‌دهنده‌ی برتر.
 ///   accurate → TCP برای همه + تست واقعی برای همه‌ی پاسخ‌دهنده‌ها (پیش‌فرض).
+///   realOnly → بخش ۳.۱ (v3): «فقط Real Ping» — بدون هیچ TCP پینگی؛
+///     تست واقعی (HTTP داخل تونل، مثل PingNG) برای همه‌ی سرورها گرفته
+///     می‌شود. برای سرورهایی که TCP handshake دارند ولی از بیرون جواب
+///     نمی‌دهند (CF/CDN) نتیجه‌ی دقیق‌تری می‌دهد.
 ///
 /// مقادیر پیش‌فرض = مقادیر هاردکد قبلی (بخش ۷ نسخه قبل):
 ///   TCP: تایم‌اوت ۱۵۰۰ms، هم‌زمانی ۶۴
 ///   Real: تایم‌اوت ۴s، هم‌زمانی ۸، ۳ نمونه، آدرس gstatic generate_204
-enum TestMode { turbo, balanced, accurate }
+enum TestMode { turbo, balanced, accurate, realOnly }
 
 class TestBudget {
   static const String storageKey = 'test_settings_v2';
@@ -132,6 +136,7 @@ class TestBudget {
   ///   turbo    → 0 (اجرا نمی‌شود)
   ///   balanced → همان realConcurrency (سقف ۱۲ برای جلوگیری از فشار)
   ///   accurate → همان realConcurrency
+  ///   realOnly → همان realConcurrency (بخش ۳.۱ — فاز Real برای همه)
   int get effectiveRealConcurrency {
     switch (mode) {
       case TestMode.turbo:
@@ -139,7 +144,17 @@ class TestBudget {
       case TestMode.balanced:
         return realConcurrency.clamp(1, 12);
       case TestMode.accurate:
+      case TestMode.realOnly:
         return realConcurrency;
     }
   }
+
+  /// بخش ۵ — هم‌زمانی تست Aether (پردازه‌ی native؛ کم نگه داشته می‌شود).
+  int get aetherConcurrency => 2;
+
+  /// بخش ۳.۱ — در حالت «فقط Real Ping» فاز TCP کامل حذف می‌شود.
+  bool get tcpPhaseEnabled => mode != TestMode.realOnly;
+
+  /// بخش ۳.۱ — در حالت realOnly همه‌ی سرورها تست واقعی می‌گیرند.
+  bool get realForAll => mode == TestMode.realOnly || mode == TestMode.accurate;
 }

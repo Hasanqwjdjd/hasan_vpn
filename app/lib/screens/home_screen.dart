@@ -38,8 +38,12 @@ import '../services/xray_settings.dart';
 import '../services/settings_service.dart';
 import '../services/exit_ip_service.dart';
 import '../services/geo_flag.dart';
+import '../services/psiphon_auto.dart';
 import '../services/server_batch_export.dart';
 import '../services/psiphon_service.dart';
+// بخش ۵ — بازگشت کلاینت Aether (هسته‌ی WARP بومی)
+import '../services/aether_service.dart';
+import '../models/aether_profile.dart';
 import '../services/link_parser.dart';
 import '../services/xray_json.dart';
 import '../services/v2ray_engine.dart';
@@ -491,7 +495,449 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _editServerName(VpnServer server) async {
+    // بخش ۲.۱ — سایفون: صفحه‌ی ویرایش اختصاصی (فقط نام / کشور / حالت)
+    if (server.isPsiphon) {
+      await _editPsiphonServer(server);
+      return;
+    }
+    // بخش ۵ — Aether: صفحه‌ی ویرایش اختصاصی (تنظیمات پیشرفته)
+    if (server.isAether) {
+      await _editAetherServer(server);
+      return;
+    }
     await _editServerFull(server);
+  }
+
+  /// بخش ۲.۱ — ویرایش سرور سایفون: فقط «نام / کشور خروج / حالت».
+  ///
+  /// باگ قبلی: سایفون هم مثل سرورهای Xray در دیالوگ عمومی پیشرفته (TLS,
+  /// REALITY, FinalMask و...) باز می‌شد — گزینه‌هایی که برای سایفون بی‌معنا
+  /// هستند. حالا فقط سه فیلد معنادار نمایش داده می‌شود و با تغییر کشور،
+  /// پرچم آن کشور بلافاصله روی کارت سرور در صفحه اصلی نشان داده می‌شود.
+  Future<void> _editPsiphonServer(VpnServer server) async {
+    final nameCtrl = TextEditingController(text: server.displayName);
+    final currentRegion = PsiphonService.regionOfLink(server.shareLink);
+    final currentMode = _psiphonModeOfLink(server.shareLink);
+    final regions = await PsiphonAuto.loadRegions();
+    if (!mounted) return;
+
+    var region = currentRegion; // '' = خودکار (سریع‌ترین کشور)
+    var mode = currentMode;     // auto | cdn | direct
+
+    String modeLabel(String m) => switch (m) {
+          'cdn' => _t('عبور از CDN', 'Via CDN'),
+          'direct' => _t('اتصال مستقیم', 'Direct'),
+          _ => _t('خودکار', 'Automatic'),
+        };
+
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setLocal) => AlertDialog(
+            backgroundColor: AppColors.elevated(ctx),
+            title: Text(_t('ویرایش سایفون', 'Edit Psiphon'),
+                style: TextStyle(color: AppColors.fg(ctx))),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    style: TextStyle(color: AppColors.fg(ctx)),
+                    decoration: InputDecoration(
+                      labelText: _t('نام', 'Name'),
+                      labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: region,
+                    dropdownColor: AppColors.elevated(ctx),
+                    decoration: InputDecoration(
+                      labelText: _t('کشور خروج', 'Exit region'),
+                      labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: '',
+                        child: Text(_t('خودکار — سریع‌ترین کشور',
+                                'Automatic — fastest country'),
+                            style: TextStyle(color: AppColors.fg(ctx))),
+                      ),
+                      ...regions.map(
+                        (r) => DropdownMenuItem(
+                          value: r,
+                          child: Text(
+                            '${GeoFlag.fromIso(r)} ${GeoFlag.isoToFarsi(r)}  ($r)',
+                            style: TextStyle(color: AppColors.fg(ctx)),
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) => setLocal(() => region = v ?? ''),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: mode,
+                    dropdownColor: AppColors.elevated(ctx),
+                    decoration: InputDecoration(
+                      labelText: _t('حالت', 'Mode'),
+                      labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                    ),
+                    items: ['auto', 'cdn', 'direct']
+                        .map((m) => DropdownMenuItem(
+                              value: m,
+                              child: Text(modeLabel(m),
+                                  style:
+                                      TextStyle(color: AppColors.fg(ctx))),
+                            ))
+                        .toList(),
+                    onChanged: (v) =>
+                        setLocal(() => mode = (v == null || v.isEmpty)
+                            ? 'auto'
+                            : v),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(_t('لغو', 'Cancel'),
+                    style: TextStyle(color: AppColors.muted(ctx))),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(_t('ذخیره', 'Save'),
+                    style: const TextStyle(color: AppColors.accent)),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (ok != true || !mounted) return;
+
+      // بازسازی لینک با حفظ بقیه‌ی پارامترها (sponsor/channel/config/…)
+      // و فقط تغییر region و mode.
+      String newLink;
+      try {
+        final uri = Uri.parse(server.shareLink.trim());
+        final params = Map<String, String>.from(uri.queryParameters);
+        if (region.isEmpty) {
+          params.remove('region');
+        } else {
+          params['region'] = PsiphonAuto.normalizeRegion(region);
+        }
+        if (mode == 'auto') {
+          params.remove('mode');
+        } else {
+          params['mode'] = mode;
+        }
+        newLink = Uri(
+          scheme: 'psiphon',
+          host: uri.host.isEmpty ? 'auto' : uri.host,
+          queryParameters: params.isEmpty ? null : params,
+        ).toString();
+      } catch (_) {
+        newLink = PsiphonService.toAutoLink(region: region);
+      }
+
+      // بخش ۲.۱ — پرچم کشور انتخابی روی کارت سرور در صفحه اصلی.
+      final newFlag = region.isEmpty
+          ? '💧'
+          : GeoFlag.fromIso(PsiphonAuto.normalizeRegion(region));
+      final newName = nameCtrl.text.trim();
+      debugPrint('[Home] psiphon edit: region=$region mode=$mode '
+          'flag=$newFlag link=$newLink');
+
+      final next = server.copyWith(
+        name: newName.isNotEmpty ? newName : null,
+        shareLink: newLink,
+        flag: newFlag,
+        nameOverride:
+            newName.isNotEmpty ? VpnServer.sanitizeServerName(newName) : null,
+      );
+      final idx = _customServers.indexWhere((s) => s.id == server.id);
+      if (idx >= 0) {
+        _customServers[idx] = next;
+        await _saveCustomServers();
+      } else if (newName.isNotEmpty) {
+        await SettingsService.setServerNameOverride(server.id, newName);
+      }
+      if (!mounted) return;
+      setState(() {
+        final si = _servers.indexWhere((s) => s.id == server.id);
+        if (si >= 0) _servers[si] = next;
+        if (_selected?.id == server.id) _selected = next;
+        if (_active?.id == server.id) _active = next;
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_t('تنظیمات سایفون ذخیره شد', 'Psiphon saved')),
+        ),
+      );
+    } finally {
+      nameCtrl.dispose();
+    }
+  }
+
+  /// حالت اتصال سایفون از لینک (mode= auto | cdn | direct).
+  static String _psiphonModeOfLink(String link) {
+    try {
+      final uri = Uri.parse(link.trim());
+      final m = (uri.queryParameters['mode'] ?? 'auto').toLowerCase();
+      return (m == 'cdn' || m == 'direct') ? m : 'auto';
+    } catch (_) {
+      return 'auto';
+    }
+  }
+
+  /// بخش ۵ — ویرایش اختصاصی سرور Aether (تنظیمات پیشرفته: پروتکل/اسکن/
+  /// مبهم‌سازی/IP/Peer + تست باینری) — مطابق ساختار صفحات ویرایش PingNG.
+  Future<void> _editAetherServer(VpnServer server) async {
+    final profile = AetherProfile.fromLink(server.shareLink);
+    var protocol = profile.protocol;
+    var scan = profile.scan;
+    var noize = profile.noize;
+    var ip = profile.ip;
+    final nameCtrl = TextEditingController(text: server.displayName);
+    final peerCtrl = TextEditingController(text: profile.peer);
+    try {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            return AlertDialog(
+              backgroundColor: AppColors.elevated(ctx),
+              title: Text('AETHER',
+                  style: TextStyle(color: AppColors.fg(ctx))),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameCtrl,
+                      style: TextStyle(color: AppColors.fg(ctx)),
+                      decoration: InputDecoration(
+                        labelText: _t('ملاحظات / نام', 'Remark / name'),
+                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: protocol,
+                      dropdownColor: AppColors.elevated(ctx),
+                      decoration: InputDecoration(
+                        labelText: _t('پروتکل', 'Protocol'),
+                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                      ),
+                      items: AetherProfile.protocols
+                          .map((p) => DropdownMenuItem(
+                                value: p,
+                                child: Text(p,
+                                    style: TextStyle(
+                                        color: AppColors.fg(ctx))),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setLocal(() => protocol = v);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: scan,
+                      dropdownColor: AppColors.elevated(ctx),
+                      decoration: InputDecoration(
+                        labelText: _t('حالت اسکن', 'Scan mode'),
+                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                      ),
+                      items: AetherProfile.scans
+                          .map((p) => DropdownMenuItem(
+                                value: p,
+                                child: Text(p,
+                                    style: TextStyle(
+                                        color: AppColors.fg(ctx))),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setLocal(() => scan = v);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: noize,
+                      dropdownColor: AppColors.elevated(ctx),
+                      decoration: InputDecoration(
+                        labelText: _t('مبهم‌سازی', 'Noize'),
+                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                      ),
+                      items: AetherProfile.noizes
+                          .map((p) => DropdownMenuItem(
+                                value: p,
+                                child: Text(p,
+                                    style: TextStyle(
+                                        color: AppColors.fg(ctx))),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setLocal(() => noize = v);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: ip,
+                      dropdownColor: AppColors.elevated(ctx),
+                      decoration: InputDecoration(
+                        labelText: _t('نسخه IP', 'IP version'),
+                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                      ),
+                      items: AetherProfile.ips
+                          .map((p) => DropdownMenuItem(
+                                value: p,
+                                child: Text(p,
+                                    style: TextStyle(
+                                        color: AppColors.fg(ctx))),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null) setLocal(() => ip = v);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: peerCtrl,
+                      style: TextStyle(color: AppColors.fg(ctx)),
+                      decoration: InputDecoration(
+                        labelText:
+                            _t('نشانی (اختیاری ip:port)', 'Peer (optional)'),
+                        labelStyle: TextStyle(color: AppColors.muted(ctx)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () async {
+                    final r = await AetherService.testBinary();
+                    if (!ctx.mounted) return;
+                    final buf = StringBuffer();
+                    buf.writeln(r['ok'] == true ? 'OK' : 'FAIL');
+                    if (r['path'] != null) buf.writeln('path: ${r['path']}');
+                    if (r['cmd'] != null) buf.writeln('cmd: ${r['cmd']}');
+                    if (r['exitCode'] != null) {
+                      buf.writeln('exit: ${r['exitCode']}');
+                    }
+                    if (r['elf'] != null) buf.writeln('elf: ${r['elf']}');
+                    if (r['stdout'] != null &&
+                        r['stdout'].toString().isNotEmpty) {
+                      buf.writeln('--- stdout ---');
+                      buf.writeln(r['stdout']);
+                    }
+                    if (r['stderr'] != null &&
+                        r['stderr'].toString().isNotEmpty) {
+                      buf.writeln('--- stderr ---');
+                      buf.writeln(r['stderr']);
+                    }
+                    if (r['error'] != null) buf.writeln('error: ${r['error']}');
+                    await showDialog<void>(
+                      context: ctx,
+                      builder: (c2) => AlertDialog(
+                        backgroundColor: AppColors.elevated(c2),
+                        title: Text(
+                          _t('تست باینری Aether', 'Aether binary test'),
+                          style: TextStyle(color: AppColors.fg(c2)),
+                        ),
+                        content: SingleChildScrollView(
+                          child: SelectableText(
+                            buf.toString(),
+                            style: TextStyle(
+                              color: AppColors.fg(c2),
+                              fontFamily: 'monospace',
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(c2),
+                            child: Text('OK',
+                                style: const TextStyle(
+                                    color: AppColors.accent)),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  child: Text(_t('تست باینری', 'Test binary'),
+                      style: TextStyle(color: AppColors.muted(ctx))),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(_t('لغو', 'Cancel'),
+                      style: TextStyle(color: AppColors.muted(ctx))),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: Text(_t('ذخیره', 'Save'),
+                      style: const TextStyle(color: AppColors.accent)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (ok != true || !mounted) return;
+    final updated = AetherProfile(
+      protocol: protocol,
+      scan: scan,
+      noize: noize,
+      ip: ip,
+      dns: profile.dns,
+      peer: peerCtrl.text.trim(),
+      upstream: profile.upstream,
+      quickReconnect: profile.quickReconnect,
+      blockQuic: profile.blockQuic,
+      perf: profile.perf,
+    );
+    final newLink = updated.toLink();
+    final newName = nameCtrl.text.trim();
+    final peerHost = updated.peer.isNotEmpty
+        ? updated.peer.split(':').first
+        : server.host;
+    final next = server.copyWith(
+      name: newName.isNotEmpty ? newName : null,
+      shareLink: newLink,
+      host: peerHost,
+      nameOverride: newName.isNotEmpty
+          ? VpnServer.sanitizeServerName(newName)
+          : null,
+    );
+    final idx = _customServers.indexWhere((s) => s.id == server.id);
+    if (idx >= 0) {
+      _customServers[idx] = next;
+      await _saveCustomServers();
+    } else if (newName.isNotEmpty) {
+      await SettingsService.setServerNameOverride(server.id, newName);
+    }
+    if (!mounted) return;
+    setState(() {
+      final si = _servers.indexWhere((s) => s.id == server.id);
+      if (si >= 0) _servers[si] = next;
+      if (_selected?.id == server.id) _selected = next;
+      if (_active?.id == server.id) _active = next;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_t('تنظیمات Aether ذخیره شد', 'Aether saved'))),
+    );
+    } finally {
+      nameCtrl.dispose();
+      peerCtrl.dispose();
+    }
   }
 
   Future<void> _editServerFull(VpnServer server) async {
@@ -1374,6 +1820,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           SshSessionService.instance.anyRouting ||
           MasterDnsSessionService.instance.anyRouting ||
           WarpMasqueSessionService.instance.anyRouting ||
+          AetherService.isConnected ||
           PsiphonService.isConnected ||
           V2RayEngine.isUtilitySession;
       if (anyUtility) {
@@ -1928,6 +2375,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final cur = _active;
     if (cur == null) return;
     if (cur.isPsiphon) return;
+    // بخش ۵ — Aether سشن ابزاری است؛ auto-failover برای آن معنا ندارد.
+    if (cur.isAether) return;
     if (cur.protocol == VpnProtocol.ssh ||
         cur.protocol == VpnProtocol.tunnel ||
         cur.protocol == VpnProtocol.warpMasque ||
@@ -2766,6 +3215,60 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _t('${toDelete.length} سرور حذف شد', '${toDelete.length} servers deleted'));
   }
 
+  /// بخش ۱.۱ — حذف چندتایی با پایداری دائمی (Persistence Bug).
+  ///
+  /// باگ قبلی: حذف فقط از لیست in-memory انجام می‌شد (_servers /
+  /// _customServers) و هیچ‌کدام از store های دائمی ذخیره نمی‌شدند؛
+  /// بنابراین بعد از ری‌استارت برنامه، سرورهای حذف‌شده دوباره برمی‌گشتند.
+  ///
+  /// مسیر درست (همان مسیر حذف تکی):
+  ///   ۱) هر id در _deletedIds ثبت شود → سابسکریشن‌ها و سرورهای داخلی
+  ///      بعد از sync/ری‌استارت فیلتر می‌شوند (خط ۱۱۶۴ و ۱۶۲۶).
+  ///   ۲) از _customServers حذف شود و _saveCustomServers() ذخیره شود.
+  ///   ۳) ویرایش‌های ذخیره‌شده (ServerOverrides / _serverFullOverrides)
+  ///      و تگ گروه‌ها (_customSubTags) هم پاک شوند.
+  ///   ۴) _rebuildServerList + _saveDeleted + _savePings + پاک‌سازی
+  ///      گروه‌های یتیم.
+  Future<void> _bulkDeleteSelected() async {
+    // فقط سرورهای قابل‌حذف (کاربر) — سرورهای محافظت‌شده‌ی داخلی نه.
+    final ids = _selectedIds
+        .where((id) => _servers.any((s) => s.id == id && s.isDeletable))
+        .toSet();
+    if (ids.isEmpty) {
+      _showMsg(_t('سروری برای حذف نیست', 'Nothing deletable selected'));
+      return;
+    }
+    debugPrint('[Home] bulk delete: ${ids.length} server(s) ids=$ids');
+
+    setState(() {
+      for (final id in ids) {
+        _deletedIds.add(id);
+        _customServers.removeWhere((item) => item.id == id);
+        _customSubTags.remove(id);
+        _serverFullOverrides.remove(id);
+        // ignore: unawaited_futures
+        ServerOverrides.remove(id);
+      }
+      if (_selected != null && ids.contains(_selected!.id)) {
+        _selected = null;
+      }
+      if (_active != null && ids.contains(_active!.id)) {
+        _active = null;
+      }
+      _selectionMode = false;
+      _selectedIds.clear();
+    });
+    // ignore: unawaited_futures
+    _cleanupOrphanGroupIds();
+    _rebuildServerList();
+    await _saveDeleted();
+    await _saveCustomServers();
+    _saveCustomSubTags();
+    _savePings();
+    _showMsg(_t('${ids.length} سرور برای همیشه حذف شد',
+        '${ids.length} server(s) permanently deleted'));
+  }
+
   /// FIX: قبل از هر اتصال جدید، همه‌ی session های فعلی رو ببند.
   /// این تضمین می‌کنه که هیچ‌وقت دو تونل همزمان فعال نباشن —
   /// مثلاً کاربر وسط Tor هست، روی یه vless می‌زنه: Tor باید بمیره.
@@ -2816,6 +3319,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       await PsiphonService.stop();
     } catch (_) {}
+    // بخش ۵ — قطع هسته‌ی Aether در صورت اتصال
+    try {
+      if (AetherService.isConnected) {
+        await AetherService.disconnect();
+      }
+    } catch (_) {}
     try {
       if (V2RayEngine.isConnected) {
         await V2RayEngine.disconnect();
@@ -2833,6 +3342,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _disconnectAll() async {
     try {
       await PsiphonService.stop();
+    } catch (_) {}
+    // بخش ۵ — قطع Aether
+    try {
+      if (AetherService.isConnected) {
+        await AetherService.disconnect();
+      }
     } catch (_) {}
     try {
       await V2RayEngine.disconnect();
@@ -3152,6 +3667,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // ignore: unawaited_futures
           PsiphonService.stop(reason: 'user-cancel');
         }
+        // بخش ۵ — لغو اتصال Aether (توقف پردازه‌ی هسته)
+        if (which.isAether) {
+          // ignore: unawaited_futures
+          AetherService.disconnect();
+        }
       }
       return;
     }
@@ -3245,7 +3765,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       final bool connected;
       final String? error;
-      if (selected.isPsiphon) {
+      if (selected.isAether) {
+        // بخش ۵ — اتصال از طریق هسته‌ی بومی Aether (WARP)
+        if (mounted) {
+          setState(() => _status =
+              _t('Aether · آماده‌سازی...', 'Aether · preparing...'));
+        }
+        connected = await AetherService.connect(
+          selected,
+          isCancelled: () => _cancelConnect,
+          onProgress: (message) {
+            if (!mounted || _cancelConnect) return;
+            final flat = message.replaceAll('\n', ' · ');
+            // Extract "Aether 1/3 · MASQUE/H2 · balanced" shape
+            final m = RegExp(r'Aether\s+(\d+/\d+)\s*·\s*([^·\n]+)')
+                .firstMatch(flat);
+            setState(() {
+              _status = flat;
+              if (m != null) {
+                _connectAttemptLabel = m.group(1);
+                _connectAttemptTarget = m.group(2)?.trim();
+              }
+            });
+          },
+        );
+        error = AetherService.lastError;
+      } else if (selected.isPsiphon) {
         if (mounted) {
           setState(() => _status =
               _t('Psiphon · آماده‌سازی...', 'Psiphon · preparing...'));
@@ -3825,42 +4370,56 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       MaterialPageRoute(
         builder: (_) => AddConfigScreen(
           language: widget.language,
-          onServerAdded: (server) async {
-            _customServers.insert(0, server);
-            _manualOrder.insert(0, server.id);
-            final subId = _selectedSubId;
-            if (subId != null && subId.startsWith('ugroup:')) {
-              // FIX4: adding a server while a user group tab is active must
-              // put it in that group too, or the group filter hides it and
-              // the auto-ping below updates a server the UI never shows.
-              final gname = subId.substring('ugroup:'.length);
-              final gList =
-                  List<String>.from(_userGroups[gname] ?? const <String>[]);
-              if (!gList.contains(server.id)) {
-                gList.add(server.id);
-                _userGroups = {..._userGroups, gname: gList};
-                // ignore: unawaited_futures
-                SharedPreferences.getInstance().then(
-                  (p) => p.setString(_userGroupsKey, jsonEncode(_userGroups)),
-                );
-              }
-            } else if (subId != null) {
-              // اگر سابسکریپشن خاصی انتخاب شده، سرور را به آن tag بزن
-              _customSubTags[server.id] = subId;
-              _saveCustomSubTags();
-            }
-            _rebuildServerList();
-            _saveCustomServers();
-            _saveManualOrder();
-            // auto-ping: سرور جدید رو خودکار تست کن
-            // ignore: unawaited_futures
-            Future.delayed(const Duration(milliseconds: 400), () {
-              _testOne(server);
-            });
-          },
+          onServerAdded: (server) =>
+              _handleServerAdded(server, skipTest: false),
+          onServerAddedWithoutTest: (server) =>
+              _handleServerAdded(server, skipTest: true),
         ),
       ),
     );
+  }
+
+  /// افزودن سرور از صفحه‌ی AddConfig (هم مسیر عادی، هم مسیر «بدون تست»).
+  /// بخش ۲.۲ — وقتی [skipTest]=true باشد، تست پینگ خودکار اجرا نمی‌شود
+  /// و سرور فقط به لیست اضافه و ذخیره می‌شود.
+  void _handleServerAdded(VpnServer server, {required bool skipTest}) {
+    _customServers.insert(0, server);
+    _manualOrder.insert(0, server.id);
+    final subId = _selectedSubId;
+    if (subId != null && subId.startsWith('ugroup:')) {
+      // FIX4: adding a server while a user group tab is active must
+      // put it in that group too, or the group filter hides it and
+      // the auto-ping below updates a server the UI never shows.
+      final gname = subId.substring('ugroup:'.length);
+      final gList =
+          List<String>.from(_userGroups[gname] ?? const <String>[]);
+      if (!gList.contains(server.id)) {
+        gList.add(server.id);
+        _userGroups = {..._userGroups, gname: gList};
+        // ignore: unawaited_futures
+        SharedPreferences.getInstance().then(
+          (p) => p.setString(_userGroupsKey, jsonEncode(_userGroups)),
+        );
+      }
+    } else if (subId != null) {
+      // اگر سابسکریپشن خاصی انتخاب شده، سرور را به آن tag بزن
+      _customSubTags[server.id] = subId;
+      _saveCustomSubTags();
+    }
+    _rebuildServerList();
+    _saveCustomServers();
+    _saveManualOrder();
+    debugPrint('[Home] server added: ${server.displayName} '
+        'skipTest=$skipTest');
+    if (skipTest) {
+      // بخش ۲.۲ — بدون تست خودکار؛ کاربر هر وقت بخواهد از لیست تست می‌گیرد.
+      return;
+    }
+    // auto-ping: سرور جدید رو خودکار تست کن
+    // ignore: unawaited_futures
+    Future.delayed(const Duration(milliseconds: 400), () {
+      _testOne(server);
+    });
   }
 
   void _openSearch() => setState(() => _showSearch = true);
@@ -4858,6 +5417,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           await _handleWidgetServerSelection(server);
           return;
         }
+        // بخش ۵ — Aether: انتخاب سرور؛ اتصال/قطع با دکمه اصلی تغذیه
+        // (منطق اتصال در _toggleConnection و AetherService انجام می‌شود).
+        if (server.isAether) {
+          setState(() => _selected = server);
+          await SettingsService.setLastServer(server.id);
+          return;
+        }
         // SSH: routing از SshSessionService انجام می‌شود
         if (server.protocol == VpnProtocol.ssh) {
           final n = SshSessionService.instance.notifierFor(server.id);
@@ -5110,7 +5676,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     var blockedCount = 0;
     for (final s in selected) {
       // بخش ۱.۳ — معیار مالکیت: isDeletable (سرور کاربر = قابل کپی).
-      if (s.isDeletable || s.isPsiphon) {
+      // بخش ۵ — سرورهای Aether هم کاربر هستند و قابل کپی‌اند.
+      if (s.isDeletable || s.isAether || s.isPsiphon) {
         copyable.add(s);
       } else {
         blockedCount++;
@@ -5831,15 +6398,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       icon: Icons.delete_outline,
                       tooltip: _t('حذف', 'Delete'),
                       color: AppColors.danger,
-                      onPressed: () {
-                        final ids = _selectedIds.toSet();
-                        setState(() {
-                          _servers.removeWhere((s) => ids.contains(s.id) && s.isDeletable);
-                          _customServers.removeWhere((s) => ids.contains(s.id));
-                          _selectionMode = false;
-                          _selectedIds.clear();
-                        });
-                      },
+                      onPressed: _bulkDeleteSelected,
                     ),
                   ],
                 ),
