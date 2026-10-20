@@ -483,24 +483,8 @@ class ServerTile extends StatelessWidget {
 
                 SizedBox(width: c ? 0 : 2),
 
-                // بخش ۳ — دکمه اتصال سمت راست کارت (tap = همان منطق اتصال کارت)
-                if (!c)
-                  InkWell(
-                    onTap: onTap,
-                    borderRadius: BorderRadius.circular(20),
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Icon(
-                        active
-                            ? Icons.check_circle
-                            : Icons.play_circle_fill,
-                        color: active ? AppColors.good : AppColors.accent,
-                        size: 22,
-                      ),
-                    ),
-                  ),
-
-                SizedBox(width: c ? 0 : 2),
+                // Phase 1 QA: triangle / play_circle icon on server cards removed
+                // per QA spec (issue 7). Tap on the card itself still connects.
 
                 // FIX3: منوی سه‌نقطه — همه گزینه‌ها در یک PopupMenu.
                 // کپی/اشتراک فقط برای سرورهای خود کاربر (onCopy/onShare

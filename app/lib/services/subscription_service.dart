@@ -71,18 +71,10 @@ class SubscriptionService {
 
 
 
-  /// اشتراک‌های پیش‌فرض. لینک‌ها اینجا نیستند: از جدول رمزشدهٔ
-  /// [ProtectedDefaults] (ساخته‌شده در CI) فقط لحظهٔ دانلود خوانده می‌شوند.
-  static List<Subscription> get defaultSubscriptions => [
-        // Netra is the ONLY protected default kept. Every other entry —
-        // including the old "Hasan Built-in" group — was removed at the
-        // user's request; the subscription tab strip now shows nothing
-        // but Netra.
-        for (final e in ProtectedDefaults.entries)
-          if (e[1].toLowerCase().contains('netra') ||
-              e[0].toLowerCase().contains('netra'))
-            Subscription(id: e[0], name: e[1], url: '', isDefault: true),
-      ];
+  /// اشتراک‌های پیش‌فرض.
+  /// Phase 1 QA: Netra (and every other hardcoded default) completely removed.
+  /// No protected default subscriptions are injected into the app anymore.
+  static List<Subscription> get defaultSubscriptions => const <Subscription>[];
 
   /// آدرس واقعی برای دانلود. برای اشتراک پیش‌فرض از جدول محافظت‌شده می‌آید.
   ///
@@ -168,6 +160,20 @@ class SubscriptionService {
 
       // حذف Morning-Shape از ذخیره‌ی موجود
       subscriptions.removeWhere((s) => _isMorningShape(s));
+
+      // Phase 1 QA: purge any leftover Netra (or other protected defaults)
+      // that were previously injected so they never reappear.
+      final before = subscriptions.length;
+      subscriptions.removeWhere((s) {
+        if (!s.isDefault) return false;
+        final id = s.id.toLowerCase();
+        final name = s.name.toLowerCase();
+        return id.contains('netra') || name.contains('netra');
+      });
+      if (subscriptions.length != before) {
+        debugPrint(
+            '[SubscriptionService] purged Netra default(s); remaining=${subscriptions.length}');
+      }
 
       final removed = await _loadRemovedDefaults(prefs);
       for (final defaultSub in defaultSubscriptions) {

@@ -7,7 +7,6 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../services/app_colors.dart';
 import '../services/settings_service.dart';
-import 'security_test_screen.dart';
 import 'backup_screen.dart';
 import 'connection_log_screen.dart';
 import '../services/warp_scout_scheduler.dart';
@@ -485,43 +484,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          // ------- تست و امنیت -------
-          _sectionTitle(_t('تست و امنیت', 'Test & Security')),
-          _card(
-            context,
-            InkWell(
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        SecurityTestScreen(language: _lang),
-                  ),
-                );
-              },
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.security,
-                    color: AppColors.accent),
-                title: Text(
-                  _t('IP / سرعت / نشت DNS',
-                      'IP / Speed / DNS leak'),
-                  style: TextStyle(color: AppColors.fg(context)),
-                ),
-                subtitle: Text(
-                  _t(
-                    'تست IP خروجی، سرعت دانلود و بررسی نشت DNS',
-                    'Check exit IP, download speed, and DNS leak',
-                  ),
-                  style: TextStyle(
-                      color: AppColors.muted2(context), fontSize: 11),
-                ),
-                trailing: Icon(Icons.chevron_left,
-                    color: AppColors.muted(context)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
+          // Phase 1 QA: entire "Test & Security" (IP / Speed / DNS leak) section
+          // removed per QA issue 3. Files security_test_screen.dart and
+          // speed_test_service.dart deleted; ExitIpService kept for home screen.
 
           // ------- بخش ۲.۲ — تست و رتبه‌بندی (بازگشت به برنامه) -------
           _sectionTitle(_t('تست و رتبه‌بندی', 'Test & Ranking')),
