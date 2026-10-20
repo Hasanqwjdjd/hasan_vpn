@@ -9,6 +9,7 @@ import '../services/app_colors.dart';
 import '../services/link_parser.dart';
 import '../services/psiphon_auto.dart';
 import '../services/psiphon_service.dart';
+import '../services/geo_flag.dart';
 // بخش ۵ — بازگشت کلاینت Aether (هسته‌ی WARP بومی)
 import '../services/aether_service.dart';
 import '../models/aether_profile.dart';
@@ -699,10 +700,18 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
             ? 'Psiphon · Auto'
             : 'Psiphon · ${sponsor.isNotEmpty ? sponsor : "custom"}');
 
+    // Phase 3 QA: selected exit-country flag on the server card.
+    final regionIso =
+        region.isEmpty ? '' : PsiphonAuto.normalizeRegion(region);
+    final countryFlag =
+        regionIso.isEmpty ? '💧' : GeoFlag.fromIso(regionIso);
+    debugPrint(
+        '[AddConfig] psiphon add: region=$region iso=$regionIso flag=$countryFlag');
+
     final server = VpnServer(
       id: 'psiphon_${DateTime.now().millisecondsSinceEpoch}',
       name: name,
-      flag: '💧',
+      flag: countryFlag,
       shareLink: link,
       protocol: VpnProtocol.psiphon,
       host: 'auto-discover',
