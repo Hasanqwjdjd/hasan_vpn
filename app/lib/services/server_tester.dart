@@ -154,9 +154,15 @@ class ServerTester {
     }
 
     // ═══ فاز ۲: تست واقعی برای پاسخ‌دهنده‌ها (+ همیشه سرورهای Aether) ═══
-    if (!isTcpOnly && (responders.isNotEmpty || aetherServers.isNotEmpty)) {
+    // Phase 4 QA fix: in realOnly mode responders is empty (TCP skipped),
+    // so the gate must also open when realForAll and there are regular servers.
+    final shouldRealPhase = !isTcpOnly &&
+        (budget.realForAll
+            ? (regular.isNotEmpty || aetherServers.isNotEmpty)
+            : (responders.isNotEmpty || aetherServers.isNotEmpty));
+    if (shouldRealPhase) {
       // balanced: فقط ۲۴ پاسخ‌دهندهٔ برتر (کمترین TCP ping) تست واقعی می‌گیرند.
-      // realOnly (بخش ۳.۱): همه‌ی سرورها مستقیماً تست واقعی می‌گیرند.
+      // realOnly: همه‌ی سرورها مستقیماً تست واقعی می‌گیرند.
       var realTargets = budget.realForAll ? regular : responders;
       if (balanced && responders.length > TestBudget.balancedRealLimit) {
         realTargets = List<VpnServer>.from(responders)
