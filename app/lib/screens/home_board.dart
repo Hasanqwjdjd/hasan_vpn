@@ -92,6 +92,10 @@ class _HomeBoardState extends State<HomeBoard> {
         return c.activeServer?.id.startsWith('tor_fake_') == true;
       case 'geph':
         return c.activeServer?.id.startsWith('geph_fake_') == true;
+      case 'flux':
+        return c.activeServer?.id.startsWith('flux_') == true;
+      case 'quick':
+        return c.connected;
       case 'cloud':
       case 'settings':
         return false;

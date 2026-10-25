@@ -9,6 +9,7 @@ import '../services/aether_service.dart';
 import '../services/connection_log_service.dart';
 import '../services/connection_quality.dart';
 import '../services/desync_service.dart';
+import '../services/flux_service.dart';
 import '../services/geph_service.dart';
 import '../services/home_widget_service.dart';
 import '../services/master_dns_session_service.dart';
@@ -64,6 +65,9 @@ class ConnectionController extends ChangeNotifier {
   bool get connecting => _connecting;
   bool get connected => _connected;
   VpnServer? get activeServer => _active;
+
+  /// لغو مسابقهٔ Flux (قبل از اتصال واقعی).
+  void cancelConnectFlag() => _cancelConnect = true;
 
   String _t(String fa, String en) => S.isFa ? fa : en;
 
@@ -228,6 +232,16 @@ class ConnectionController extends ChangeNotifier {
         if (_deadStrikes >= 5) {
           ConnectionLogService.logError('TRACE',
               'Conn._poll dead-strikes hit threshold (5) — killing tunnel');
+          // سوییچ خودکار به standby فلاکس (مثل MLM FluxEngine)
+          if (_active != null && _active!.id.startsWith('flux_')) {
+            final next = FluxService.instance.nextStandby();
+            if (next != null) {
+              ConnectionLogService.logError(
+                  'FLUX', 'auto-failover → ${next.displayName}');
+              unawaited(_fluxFailover(next));
+              return;
+            }
+          }
           try {
             await disconnectAll();
           } catch (_) {}
@@ -490,6 +504,65 @@ class ConnectionController extends ChangeNotifier {
         // نمی‌شود.
         onLog?.call('use WireGuard screen');
         return false;
+    }
+  }
+
+  /// سوییچ بی‌سروصدا به standby بعدی فلاکس.
+  bool _fluxFailoverBusy = false;
+  Future<void> _fluxFailover(VpnServer next) async {
+    if (_fluxFailoverBusy) return;
+    _fluxFailoverBusy = true;
+    try {
+      await disconnectAll();
+      _setStatus(_t('فلاکس · مسیر جایگزین…', 'Flux · switching route...'),
+          st: ConnStage.connecting);
+      await connectServer(next);
+    } finally {
+      _fluxFailoverBusy = false;
+    }
+  }
+
+  /// اتصال از تایل FLUX — مسابقهٔ واقعی و سپس dispatch عادی.
+  Future<bool> connectFlux({void Function(String msg)? onProgress}) async {
+    _cancelConnect = false;
+    _setStatus(_t('FLUX · شروع مسابقه…', 'FLUX · starting race...'),
+        st: ConnStage.connecting);
+    notifyListeners();
+    try {
+      final ok = await FluxService.instance.connectBest(
+        doConnect: () async {
+          final s = FluxService.instance.current;
+          if (s == null) return false;
+          return connectServer(s);
+        },
+        onProgress: (m) {
+          onProgress?.call(m);
+          _setStatus(m, st: ConnStage.connecting);
+          notifyListeners();
+        },
+        isCancelled: () => _cancelConnect,
+      );
+      if (!ok && _cancelConnect) {
+        _markDisconnected(_t('لغو شد', 'Cancelled'));
+        return false;
+      }
+      if (ok) {
+        _connected = true;
+        _active = FluxService.instance.current;
+        _setStatus(
+            _t('متصل — FLUX', 'Connected — FLUX'),
+            st: ConnStage.connected);
+      } else if (!_cancelConnect) {
+        _setStatus(_t('FLUX · مسیر سالمی پیدا نشد', 'FLUX · no healthy route'),
+            st: ConnStage.failed);
+      }
+      notifyListeners();
+      return ok;
+    } catch (e) {
+      _setStatus(_t('FLUX · خطا', 'FLUX · error') + ' · $e',
+          st: ConnStage.failed);
+      notifyListeners();
+      return false;
     }
   }
 

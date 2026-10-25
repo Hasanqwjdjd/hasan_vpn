@@ -7,7 +7,10 @@ import '../ui/theme/ios_palette.dart';
 import '../screens/nodes_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/cloud_screen.dart';
+import '../screens/flux_screen.dart';
+import '../screens/freeconfig_screen.dart';
 import '../screens/geph_screen.dart';
+import '../screens/quick_screen.dart';
 import '../screens/transport_screen.dart';
 import '../screens/wg_screen.dart';
 
@@ -110,6 +113,27 @@ final List<Destination> kDestinations = [
     tint: Ios.tileBlue,
     builder: (_) => const GephScreen(),
   ),
+  Destination(
+    id: 'quick',
+    stringKey: 'quick_connect',
+    art: const TileArt.glyph(Icons.rocket_launch),
+    tint: Ios.tileBlue,
+    builder: (_) => const QuickConnectScreen(),
+  ),
+  Destination(
+    id: 'flux',
+    stringKey: 'flux_title_short',
+    art: const TileArt.png('$_assets/ic_app_flux.png'),
+    tint: Ios.tileIndigo,
+    builder: (_) => const FluxScreen(),
+  ),
+  Destination(
+    id: 'freeconfig',
+    stringKey: 'home_freeconfig',
+    art: const TileArt.glyph(Icons.cloud_download),
+    tint: Ios.tileTeal,
+    builder: (_) => const FreeConfigScreen(),
+  ),
 ];
 
 Destination? destinationById(String id) {
@@ -131,4 +155,7 @@ const List<String> kBoardDefault = [
   'psiphon',
   'tor',
   'geph',
+  'quick',
+  'flux',
+  'freeconfig',
 ];
