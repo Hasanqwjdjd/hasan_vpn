@@ -22,6 +22,10 @@ class TelemetryService {
   /// آخرین امتیاز کیفیت — از home_screen ست می‌شه.
   static int? lastQualityScore;
   static String? lastQualityEmoji;
+
+  /// آخرین سرعت گزارش‌شدهٔ پلاگین (bytes/s) — برای نوار وضعیت صفحه‌خانه.
+  static int lastDown = 0;
+  static int lastUp = 0;
   static bool _shown = false;
   static DateTime _last = DateTime.fromMillisecondsSinceEpoch(0);
   static String? _lastServer;
@@ -93,6 +97,8 @@ class TelemetryService {
   }) {
     if (!enabled && !force) return;
     final now = DateTime.now();
+    lastDown = down;
+    lastUp = up;
     if (!force &&
         now.difference(_last) < const Duration(milliseconds: 1500)) {
       return;

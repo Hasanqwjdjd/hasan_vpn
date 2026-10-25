@@ -12,3 +12,5 @@ __pycache__/
 *.bak_dns
 .new_servers.txt
 aether*.toml
+app/plugins/
+app/pubspec.lock

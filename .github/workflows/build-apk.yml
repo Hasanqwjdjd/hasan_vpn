@@ -135,6 +135,8 @@ jobs:
           flutter create --org com.hasan --project-name hasan_vpn --platforms android build_src
           cp -r app/lib/. build_src/lib/
           cp app/pubspec.yaml build_src/pubspec.yaml
+          # فاز rebuild-UI: فونت‌ها و آیکون‌های تایل (ارجاع‌شده در pubspec)
+          cp -r app/assets build_src/assets
           cp hasan.keystore build_src/android/app/hasan.keystore
 
           # Patch gradle-wrapper.properties: bump Gradle from 8.3 to 8.9

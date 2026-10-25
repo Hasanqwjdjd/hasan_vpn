@@ -23,6 +23,7 @@ dependencies:
   mobile_scanner: ^5.2.3
   qr_flutter: ^4.1.0
   path_provider: ^2.1.0
+  flutter_svg: ^2.0.17
 
 dependency_overrides:
   # DEFECT 6 FIXED: path is relative to the directory that contains THIS
@@ -38,3 +39,16 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/tiles/
+  fonts:
+    - family: IRANSansX
+      fonts:
+        - asset: assets/fonts/iransansx_regular.ttf
+          weight: 400
+        - asset: assets/fonts/iransansx_medium.ttf
+          weight: 500
+        - asset: assets/fonts/iransansx_demibold.ttf
+          weight: 600
+        - asset: assets/fonts/iransansx_bold.ttf
+          weight: 700
