@@ -129,6 +129,7 @@ class _TransportScreenState extends State<TransportScreen> {
       }
       if (s.protocol == VpnProtocol.amneziaWg) return id == TransportId.warp;
       if (s.id.startsWith('tor_fake_')) return id == TransportId.tor;
+      if (s.id.startsWith('geph_fake_')) return id == TransportId.geph;
       return false;
     }
     return false;

@@ -24,6 +24,7 @@ dependencies:
   qr_flutter: ^4.1.0
   path_provider: ^2.1.0
   flutter_svg: ^2.0.17
+  archive: ^3.6.1
 
 dependency_overrides:
   # DEFECT 6 FIXED: path is relative to the directory that contains THIS

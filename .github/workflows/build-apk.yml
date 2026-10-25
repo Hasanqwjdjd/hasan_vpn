@@ -199,6 +199,7 @@ jobs:
           cp -f android-extra/kotlin/WidgetConnectService.kt "$KT_DIR/WidgetConnectService.kt"
           cp -f android-extra/kotlin/AetherService.kt "$KT_DIR/AetherService.kt"
           cp -f android-extra/kotlin/AetherStageParser.kt "$KT_DIR/AetherStageParser.kt"
+          cp -f android-extra/kotlin/GephService.kt "$KT_DIR/GephService.kt"
           cp -f android-extra/kotlin/WidgetHeadlessActivity.kt "$KT_DIR/WidgetHeadlessActivity.kt"
           cp -f android-extra/kotlin/NotificationHelper.kt "$KT_DIR/NotificationHelper.kt"
           cp -f android-extra/kotlin/PsiphonRuntimeService.kt "$KT_DIR/PsiphonRuntimeService.kt"
@@ -458,6 +459,16 @@ jobs:
           if 'AetherService' not in text:
               svc = """    <service
                   android:name="com.hasan.hasan_vpn.AetherService"
+                  android:enabled="true"
+                  android:exported="false"
+                  android:foregroundServiceType="specialUse" />
+          """
+              text = text.replace("</application>", svc + "</application>", 1)
+
+          # P2b — ثبت سرویس هستهٔ Geph (پردازهٔ libgeph.so از استور)
+          if 'GephService' not in text:
+              svc = """    <service
+                  android:name="com.hasan.hasan_vpn.GephService"
                   android:enabled="true"
                   android:exported="false"
                   android:foregroundServiceType="specialUse" />

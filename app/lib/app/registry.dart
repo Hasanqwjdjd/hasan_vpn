@@ -7,6 +7,7 @@ import '../ui/theme/ios_palette.dart';
 import '../screens/nodes_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/cloud_screen.dart';
+import '../screens/geph_screen.dart';
 import '../screens/transport_screen.dart';
 import '../screens/wg_screen.dart';
 
@@ -102,6 +103,13 @@ final List<Destination> kDestinations = [
     tint: Ios.tilePurple,
     builder: (_) => const TransportScreen(transport: TransportId.tor),
   ),
+  Destination(
+    id: 'geph',
+    stringKey: 'home_geph',
+    art: const TileArt.svg('$_assets/ic_app_geph.svg'),
+    tint: Ios.tileBlue,
+    builder: (_) => const GephScreen(),
+  ),
 ];
 
 Destination? destinationById(String id) {
@@ -122,4 +130,5 @@ const List<String> kBoardDefault = [
   'warp',
   'psiphon',
   'tor',
+  'geph',
 ];

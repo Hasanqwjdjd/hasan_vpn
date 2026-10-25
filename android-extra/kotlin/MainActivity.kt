@@ -523,6 +523,79 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        // ── Store — اجراپذیر کردن و آزمایش باینری‌های استور (فاز P2b) ──
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.hasan.hasan_vpn/store")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "makeExecutable" -> {
+                        val path = call.argument<String>("path") ?: ""
+                        result.success(
+                            try {
+                                val f = java.io.File(path)
+                                f.exists() && f.setExecutable(true, true)
+                            } catch (_: Exception) {
+                                false
+                            }
+                        )
+                    }
+                    "probe" -> {
+                        val path = call.argument<String>("path") ?: ""
+                        val args = call.argument<List<String>>("args") ?: emptyList()
+                        kotlin.concurrent.thread(name = "store-probe") {
+                            var output = ""
+                            var code = -1
+                            try {
+                                val cmd = listOf("/system/bin/linker64", path) + args
+                                val pb = ProcessBuilder(cmd)
+                                pb.redirectErrorStream(true)
+                                pb.environment().clear()
+                                pb.environment()["HOME"] = filesDir.absolutePath
+                                pb.environment()["TMPDIR"] = cacheDir.absolutePath
+                                val p = pb.start()
+                                output = p.inputStream.bufferedReader().use { r ->
+                                    r.readText().take(2000)
+                                }
+                                code = p.waitFor()
+                            } catch (e: Exception) {
+                                output = e.message ?: "probe error"
+                            }
+                            // هسته‌ها معمولاً --help را با 0 می‌بندند؛ برخی با غیر صفر
+                            // ولی خروجی مفید — هر دو «کار می‌کند» حساب می‌شوند (مثل MLM).
+                            result.success(mapOf(
+                                "ok" to (code == 0 || output.isNotBlank()),
+                                "exitCode" to code,
+                                "output" to output,
+                            ))
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // ── Geph — هستهٔ geph5-client (فاز P2b) ──
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.hasan.hasan_vpn/geph")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        val binary = call.argument<String>("binary") ?: ""
+                        val config = call.argument<String>("config") ?: ""
+                        val port = call.argument<Int>("port") ?: 0
+                        val remark = call.argument<String>("remark") ?: "Geph"
+                        result.success(
+                            GephService.start(
+                                applicationContext, binary, config, port, remark,
+                            )
+                        )
+                    }
+                    "status" -> result.success(GephService.status())
+                    "stop" -> {
+                        GephService.stop(applicationContext)
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         widgetChannelRef = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, widgetChannel)
         widgetChannelRef!!.setMethodCallHandler { call, result ->
             when (call.method) {

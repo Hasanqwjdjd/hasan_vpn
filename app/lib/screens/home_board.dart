@@ -90,6 +90,8 @@ class _HomeBoardState extends State<HomeBoard> {
         return c.activeServer?.protocol == VpnProtocol.amneziaWg;
       case 'tor':
         return c.activeServer?.id.startsWith('tor_fake_') == true;
+      case 'geph':
+        return c.activeServer?.id.startsWith('geph_fake_') == true;
       case 'cloud':
       case 'settings':
         return false;

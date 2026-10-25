@@ -9,6 +9,7 @@ import '../services/aether_service.dart';
 import '../services/connection_log_service.dart';
 import '../services/connection_quality.dart';
 import '../services/desync_service.dart';
+import '../services/geph_service.dart';
 import '../services/home_widget_service.dart';
 import '../services/master_dns_session_service.dart';
 import '../services/psiphon_service.dart';
@@ -131,6 +132,11 @@ class ConnectionController extends ChangeNotifier {
       }
     } catch (_) {}
     try {
+      if (GephServiceDart.isConnected) {
+        await GephServiceDart.stop();
+      }
+    } catch (_) {}
+    try {
       if (V2RayEngine.isConnected) {
         await V2RayEngine.disconnect();
       }
@@ -148,6 +154,11 @@ class ConnectionController extends ChangeNotifier {
     try {
       if (AetherService.isConnected) {
         await AetherService.disconnect();
+      }
+    } catch (_) {}
+    try {
+      if (GephServiceDart.isConnected) {
+        await GephServiceDart.stop();
       }
     } catch (_) {}
     try {
@@ -472,11 +483,77 @@ class ConnectionController extends ChangeNotifier {
         return _connectPsiphonTransport(onLog: onLog);
       case TransportId.tor:
         return _connectTorTransport(onLog: onLog);
-      case TransportId.wireguard:
       case TransportId.geph:
-        // در فازهای بعدی (P2a/P2b) کامل می‌شود.
-        onLog?.call('engine not available in this build');
+        return _connectGephTransport(onLog: onLog);
+      case TransportId.wireguard:
+        // تایل WireGuard صفحهٔ خودش را دارد (WireGuardScreen) — اینجا استفاده
+        // نمی‌شود.
+        onLog?.call('use WireGuard screen');
         return false;
+    }
+  }
+
+  Future<bool> _connectGephTransport(
+      {void Function(String msg)? onLog}) async {
+    _cancelConnect = false;
+    _connecting = true;
+    _active = null;
+    progress = null;
+    _setStatus(_t('Geph · آماده‌سازی...', 'Geph · preparing...'),
+        st: ConnStage.preparing);
+    notifyListeners();
+    await _disconnectAllSessionsForNewConnect();
+    try {
+      final ok = await GephServiceDart.connect(
+        isCancelled: () => _cancelConnect,
+        onProgress: (msg) {
+          if (_cancelConnect) return;
+          _setStatus(msg, st: ConnStage.connecting);
+          notifyListeners();
+        },
+      );
+      _connecting = false;
+      if (ok) {
+        _connected = true;
+        final st = await GephServiceDart.status();
+        _active = VpnServer(
+          id: 'geph_fake_${DateTime.now().millisecondsSinceEpoch}',
+          name: 'Geph',
+          flag: '🌀',
+          shareLink: 'xrayjson://geph',
+          protocol: VpnProtocol.xrayJson,
+          host: '127.0.0.1',
+          port: (st['socksPort'] as num?)?.toInt() ?? 0,
+          isDeletable: false,
+        );
+        _deadStrikes = 0;
+        _pollTick = 0;
+        _lastConnectTime = DateTime.now();
+        HomeWidgetService.setConnectedStart(DateTime.now());
+        _startWidgetTimerRefresh();
+        _setStatus(_t('متصل — Geph', 'Connected — Geph'),
+            st: ConnStage.connected);
+      } else {
+        final missing = GephServiceDart.lastError == 'engine-missing';
+        _setStatus(
+            missing
+                ? _t('هستهٔ Geph نصب نیست — از صفحهٔ Geph نصبش کن',
+                    'Geph core is not installed — install it from the Geph screen')
+                : _t('Geph · اتصال ناموفق', 'Geph · could not connect') +
+                    ((GephServiceDart.lastError == null
+                            ? ''
+                            : ' · ${GephServiceDart.lastError}')),
+            st: ConnStage.failed);
+        ConnectionLogService.logError('Geph', GephServiceDart.lastError ?? '-');
+      }
+      notifyListeners();
+      return ok;
+    } catch (e) {
+      _connecting = false;
+      _setStatus(_t('Geph · خطا', 'Geph · error') + ' · $e',
+          st: ConnStage.failed);
+      notifyListeners();
+      return false;
     }
   }
 
