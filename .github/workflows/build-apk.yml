@@ -198,6 +198,7 @@ jobs:
           cp -f android-extra/kotlin/WidgetBgConnectActivity.kt "$KT_DIR/WidgetBgConnectActivity.kt"
           cp -f android-extra/kotlin/WidgetConnectService.kt "$KT_DIR/WidgetConnectService.kt"
           cp -f android-extra/kotlin/AetherService.kt "$KT_DIR/AetherService.kt"
+          cp -f android-extra/kotlin/AetherStageParser.kt "$KT_DIR/AetherStageParser.kt"
           cp -f android-extra/kotlin/WidgetHeadlessActivity.kt "$KT_DIR/WidgetHeadlessActivity.kt"
           cp -f android-extra/kotlin/NotificationHelper.kt "$KT_DIR/NotificationHelper.kt"
           cp -f android-extra/kotlin/PsiphonRuntimeService.kt "$KT_DIR/PsiphonRuntimeService.kt"

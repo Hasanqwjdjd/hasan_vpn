@@ -53,6 +53,31 @@ class AetherService : Service() {
         private var lastError: String? = null
         private val tail = mutableListOf<String>()
 
+        // ── ردیابی مرحله (پورت از MLM AetherEngine/AetherState) ──
+        // connected فقط وقتی true است که parser مرحله‌ی CONNECTED را دیده
+        // باشد؛ «پورت باز» به‌تنهایی معنایش تونلِ واقعی نیست.
+        @Volatile private var stage: AetherStage = AetherStage.IDLE
+        @Volatile private var stageFa: String = AetherStage.IDLE.fa
+        @Volatile private var connected = false
+        @Volatile private var stageServer: String? = null
+        @Volatile private var stageRtt: String? = null
+        @Volatile private var stageProfile: String? = null
+        @Volatile private var sawAccessDenied = false
+        @Volatile private var sawNoGateway = false
+        private val probeFailures = LinkedHashMap<String, Int>()
+
+        private fun resetStageLocked(next: AetherStage) {
+            stage = next
+            stageFa = next.fa
+            connected = false
+            stageServer = null
+            stageRtt = null
+            stageProfile = null
+            sawAccessDenied = false
+            sawNoGateway = false
+            synchronized(probeFailures) { probeFailures.clear() }
+        }
+
         // ------------------------------------------------------------ public
 
         fun binaryFile(context: Context): File =
@@ -230,6 +255,7 @@ class AetherService : Service() {
                     lastLine = ""
                     lastError = null
                     tail.clear()
+                    resetStageLocked(AetherStage.STARTING)
                 }
 
                 val intent = Intent(context, AetherService::class.java)
@@ -355,6 +381,21 @@ class AetherService : Service() {
                 "lastLine" to lastLine,
                 "error" to lastError,
                 "log" to tail.takeLast(20).joinToString("\n"),
+                // پورت از MLM AetherState: Dart با این فیلدها آمادگی واقعی
+                // (stage==CONNECTED و نه فقط پورتِ باز) را می‌سنجد و
+                // پیشرفت اتصال را مرحله‌به‌مرحله نشان می‌دهد.
+                "stage" to stage.name,
+                "stageFa" to stageFa,
+                "connected" to connected,
+                "server" to stageServer,
+                "rtt" to stageRtt,
+                "profile" to stageProfile,
+                "sawAccessDenied" to sawAccessDenied,
+                "sawNoGateway" to sawNoGateway,
+                "probeFailures" to synchronized(probeFailures) {
+                    probeFailures.entries.sortedByDescending { it.value }
+                        .take(5).associate { it.key to it.value }
+                },
             )
         }
 
@@ -375,28 +416,27 @@ class AetherService : Service() {
             val target = victim ?: return
             val pid = victimPid
 
+            // ترتیب teardown دقیقاً مثل MLM AetherEngine.stop():
+            //   ۱. destroy (SIGTERM — Rust تمیز بسته می‌شود، SOCKS بند می‌آید)
+            //   ۲. waitFor تا ۲ ثانیه
+            //   ۳. اگر هنوز زنده بود kill اجباری
             try {
-                target.destroy() // SIGTERM؛ Rust معمولاً تمیز بسته می‌شود.
+                target.destroy()
             } catch (error: Exception) {
                 SafeLog.w(TAG, "Could not stop process", error)
             }
-
-            // اگر تا ۱.۵ ثانیه بسته نشد، اجباری می‌کُشیم (بدون API های ۲۶+).
-            thread(name = "aether-reaper", isDaemon = true) {
-                try {
-                    Thread.sleep(1500)
-                    val stillAlive = try {
-                        target.exitValue()
-                        false
-                    } catch (error: IllegalThreadStateException) {
-                        true
-                    }
-                    if (stillAlive && pid > 0) {
-                        android.os.Process.killProcess(pid)
-                    }
-                } catch (error: Exception) {
-                    SafeLog.w(TAG, "reaper: ${error.message}")
+            try {
+                if (!target.waitFor(2, java.util.concurrent.TimeUnit.SECONDS) && pid > 0) {
+                    android.os.Process.killProcess(pid)
                 }
+            } catch (error: Exception) {
+                SafeLog.w(TAG, "waitFor after destroy: ${error.message}")
+            }
+
+            synchronized(lock) {
+                connected = false
+                stage = AetherStage.STOPPED
+                stageFa = AetherStage.STOPPED.fa
             }
         }
 
@@ -563,6 +603,8 @@ class AetherService : Service() {
             running = true
             exited = false
             exitCode = null
+            resetStageLocked(AetherStage.STARTING)
+            stageFa = "در حال راه‌اندازی موتور"
         }
         val gen = current
 
@@ -577,14 +619,30 @@ class AetherService : Service() {
             } catch (error: InterruptedException) {
                 return@thread
             }
+            // طبقه‌بندی خروج مثل MLM onExit(): panic از خطای تمیز از
+            // سیگنال از خروج عادی تفکیک می‌شود تا پیام درست به UI برسد.
             synchronized(lock) {
                 if (generation == gen) {
+                    val panicked = tail.any { AetherStageParser.isPanicLine(it) }
+                    val apiFailed = tail.any { AetherStageParser.isApiFailLine(it) }
                     running = false
                     exited = true
                     exitCode = code
+                    connected = false
+                    stage = when {
+                        code == 0 -> AetherStage.STOPPED
+                        panicked -> AetherStage.CRASHED
+                        else -> AetherStage.FAILED
+                    }
+                    stageFa = when {
+                        code == 0 -> "متوقف شد"
+                        panicked -> "کرش موتور (کد $code)"
+                        apiFailed -> "ثبت‌نام ناموفق — API کلادفلر در دسترس نیست"
+                        else -> "خطا در اجرا (کد $code)"
+                    }
+                    SafeLog.w(TAG, "Aether exited code=$code stage=$stage panicked=$panicked apiFailed=$apiFailed")
                 }
             }
-            SafeLog.w(TAG, "Aether exited with code $code")
             clearPid()
         }
     }
@@ -601,11 +659,86 @@ class AetherService : Service() {
                             if (tail.size > TAIL_SIZE) tail.removeAt(0)
                         }
                     }
+                    handleEngineLine(line, gen)
                     SafeLog.d(TAG, "[aether] $line")
                 }
             }
         } catch (error: Exception) {
             SafeLog.d(TAG, "log reader stopped: ${error.message}")
+        }
+    }
+
+    /**
+     * تحلیل یک خط خروجی موتور — پورت از MLM AetherEngine.handleLine().
+     *
+     * - خطوط panic جداگانه در filesDir/aether/last-crash.log ثبت می‌شوند.
+     * - دلایل ردشدن کاندیدها شمرده (نه لاگ) می‌شوند؛ هر چند ثانیه یک
+     *   جمع‌بندی در logcat می‌رود تا اسکنِ بی‌نتیجه قابل تشخیص باشد.
+     * - خطوط نویز شمرده می‌شوند و مانع پرشدن لاگ می‌شوند.
+     * - تغییر مرحله فقط رو به جلو است مگر سیگنال صریح قطع (regression) —
+     *   این همان محافظتی است که جلوی «CONNECTED شدن مجدد به خط دیرهنگام»
+     *   و برعکسِ آن، «قطع‌شده دیده‌شدن تونل سالم» را می‌گیرد.
+     */
+    private fun handleEngineLine(line: String, gen: Long) {
+        if (AetherStageParser.isPanicLine(line)) {
+            SafeLog.e(TAG, "[aether][panic] $line")
+            try {
+                val f = File(filesDir, "aether/last-crash.log")
+                f.parentFile?.mkdirs()
+                f.appendText("[${System.currentTimeMillis()}] $line\n")
+            } catch (_: Exception) {}
+        }
+
+        synchronized(lock) {
+            if (generation != gen) return
+
+            // دو سیگنال با درمان شناخته‌شده، مثل MLM:
+            // ACCESS_DENIED یعنی هویت باید نوسازی شود؛ no usable/no clean
+            // endpoint یعنی کل اسکن بی‌نتیجه بوده.
+            if (line.contains("ACCESS_DENIED", ignoreCase = true)) sawAccessDenied = true
+            if (line.contains("no usable", ignoreCase = true) ||
+                line.contains("scan deadline reached with no gateway", ignoreCase = true) ||
+                line.contains("no clean endpoint found", ignoreCase = true)
+            ) sawNoGateway = true
+
+            AetherStageParser.probeFailureReason(line)?.let { reason ->
+                synchronized(probeFailures) {
+                    probeFailures[reason] = (probeFailures[reason] ?: 0) + 1
+                    val total = probeFailures.values.sum()
+                    if (total % 100 == 0) {
+                        val top = probeFailures.entries.sortedByDescending { it.value }
+                            .take(3).joinToString(", ") { "${it.key}×${it.value}" }
+                        SafeLog.i(TAG, "[AETHER] $total کاندید رد شد — دلایل: $top")
+                    }
+                }
+                return  // شمرده می‌شود، هرگز فوروارد نمی‌شود
+            }
+            if (AetherStageParser.isNoise(line)) return
+
+            val detail = AetherStageParser.extractDetail(line)
+            val rule = AetherStageParser.classify(line)
+            if (rule != null) {
+                val (newStage, fa) = rule
+                val cur = stage
+                val stale = newStage.progressRank in 0 until cur.progressRank && !newStage.isRegression
+                if (!stale) {
+                    stage = newStage
+                    stageFa = fa
+                    SafeLog.i(TAG, "[AETHER] مرحله: $fa ($newStage)")
+                } else {
+                    SafeLog.d(TAG, "[AETHER] نادیده‌گیری مرحله‌ی دیرهنگام $newStage (در $cur هستیم): $line")
+                }
+                // جزئیات در هر حال اعمال می‌شوند: خطی که مرحله‌اش قدیمی است
+                // می‌تواند تازه‌ترین server/rtt را داشته باشد (مثل MLM).
+                detail.server?.let { stageServer = it }
+                detail.rtt?.let { stageRtt = it }
+                detail.profile?.let { stageProfile = it }
+                connected = (if (stale) cur else newStage) == AetherStage.CONNECTED
+            } else {
+                detail.server?.let { stageServer = it }
+                detail.rtt?.let { stageRtt = it }
+                detail.profile?.let { stageProfile = it }
+            }
         }
     }
 

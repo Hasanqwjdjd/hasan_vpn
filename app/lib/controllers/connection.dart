@@ -485,20 +485,39 @@ class ConnectionController extends ChangeNotifier {
     void Function(String msg)? onLog,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    // گزینه‌های پیشرفتهٔ ذخیره‌شده از صفحهٔ Transport (کلید‌های جدا).
     final scan = prefs.getString('transport_masque_scan') ?? 'balanced';
-    final link =
-        'aether://config?protocol=$protocol&scan=$scan&name=${Uri.encodeComponent('MASQUE')}';
+    final noize = prefs.getString('transport_masque_noize') ?? 'auto';
+    final ip = prefs.getString('transport_masque_ip') ?? 'v4';
+    final perf = prefs.getString('transport_masque_perf') ?? 'auto';
+    final quickReconnect = prefs.getBool('transport_masque_qr') ?? true;
+    final blockQuic = prefs.getBool('transport_masque_noquic') ?? true;
+    final h2 = prefs.getBool('transport_masque_h2') ?? false;
+    // تایل MASQUE: masque | masque_h2 — تایل WARP²: gool (ثابت).
+    final proto = protocol == 'gool' ? 'gool' : (h2 ? 'masque_h2' : 'masque');
+    final q = <String, String>{
+      'protocol': proto,
+      'scan': scan,
+      'noize': noize,
+      'ip': ip,
+      'perf': perf,
+      if (!quickReconnect) 'qr': '0',
+      if (!blockQuic) 'quic': 'allow',
+    };
+    final link = Uri(scheme: 'aether', host: 'config', queryParameters: q)
+        .toString();
+    final label = proto == 'gool' ? 'WARP²' : 'MASQUE';
     final server = VpnServer(
-      id: 'aether_transport_$protocol',
-      name: 'MASQUE',
-      flag: '🟣',
+      id: 'aether_transport_$proto',
+      name: label,
+      flag: proto == 'gool' ? '🟠' : '🟣',
       shareLink: link,
       protocol: VpnProtocol.aether,
       host: 'auto-discover',
       port: 0,
       isDeletable: false,
     );
-    onLog?.call('aether transport: protocol=$protocol scan=$scan');
+    onLog?.call('aether transport: $proto scan=$scan noize=$noize ip=$ip');
     return connectServer(server);
   }
 

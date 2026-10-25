@@ -280,6 +280,7 @@ class SettingsRow extends StatelessWidget {
   final bool destructive;
   final int? badge;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final Widget? trailing;
 
   const SettingsRow({
@@ -291,6 +292,7 @@ class SettingsRow extends StatelessWidget {
     this.destructive = false,
     this.badge,
     this.onTap,
+    this.onLongPress,
     this.trailing,
   });
 
@@ -301,6 +303,7 @@ class SettingsRow extends StatelessWidget {
     final rtl = Directionality.of(context) == TextDirection.rtl;
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         constraints: const BoxConstraints(minHeight: 44),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),

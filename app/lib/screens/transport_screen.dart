@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../controllers/connection.dart';
 import '../l10n/s.dart';
 import '../models/server.dart';
+import '../services/aether_service.dart';
 import '../services/tor_service.dart';
 import '../services/warp_service.dart';
 import '../ui/fx/fx.dart';
@@ -155,6 +156,12 @@ class _TransportScreenState extends State<TransportScreen> {
     final busy = c.connecting;
     final mine = c.connected && _isThisTransport(widget.transport);
     final otherRunning = c.connected && !mine;
+    final aetherStage = (widget.transport == TransportId.masque ||
+                widget.transport == TransportId.warpOnWarp) &&
+            c.connecting &&
+            AetherService.lastStageFa.isNotEmpty
+        ? AetherService.lastStageFa
+        : null;
 
     DialStage dialStage;
     String headline;
@@ -221,7 +228,9 @@ class _TransportScreenState extends State<TransportScreen> {
           stage: dialStage,
           headline: headline,
           accent: _accent,
-          message: c.statusText.isEmpty ? null : c.statusText,
+          message: aetherStage != null
+              ? '$aetherStage${c.statusText.isEmpty ? '' : ' · ${c.statusText}'}'
+              : (c.statusText.isEmpty ? null : c.statusText),
         ),
         const SizedBox(height: 18),
         ..._enginePanels(context, c),
@@ -276,14 +285,26 @@ class _TransportScreenState extends State<TransportScreen> {
 
   List<Widget> _masquePanel(BuildContext context) {
     final isWow = widget.transport == TransportId.warpOnWarp;
+    final h2 = _pref('transport_masque_h2', '0') == '1';
     return [
       SettingsSectionHeader(_t('تنظیمات', 'Settings')),
       SettingsGroup(
         children: [
+          if (!isWow)
+            SettingsRow(
+              title: _t('ترنسپورت MASQUE', 'MASQUE transport'),
+              leading: SettingsGlyph(
+                  tint: Ios.tileBlue, icon: Icons.swap_horiz),
+              value: h2 ? 'HTTP/2' : 'HTTP/3',
+              onTap: () async {
+                final p = await SharedPreferences.getInstance();
+                await p.setString('transport_masque_h2', h2 ? '0' : '1');
+                setState(() {});
+              },
+            ),
           SettingsRow(
             title: _t('حالت اسکن', 'Scan mode'),
-            leading: SettingsGlyph(
-                tint: Ios.tileBlue, icon: Icons.radar),
+            leading: SettingsGlyph(tint: Ios.tileBlue, icon: Icons.radar),
             value: _scanPref,
             onTap: () async {
               final v = await pushIosPicker<String>(
@@ -292,8 +313,7 @@ class _TransportScreenState extends State<TransportScreen> {
                 selected: _scanPref,
                 options: [
                   for (final m in kScanModes)
-                    IosPickerOption(m, m,
-                        detail: _scanDetail(m)),
+                    IosPickerOption(m, m, detail: _scanDetail(m)),
                 ],
               );
               if (v != null) {
@@ -301,6 +321,98 @@ class _TransportScreenState extends State<TransportScreen> {
                 await p.setString('transport_masque_scan', v);
                 setState(() {});
               }
+            },
+          ),
+          SettingsRow(
+            title: _t('نویز (Noize)', 'Noize profile'),
+            leading:
+                SettingsGlyph(tint: Ios.tilePurple, icon: Icons.waves),
+            value: _pref('transport_masque_noize', 'auto'),
+            onTap: () async {
+              final v = await pushIosPicker<String>(
+                context,
+                title: _t('پروفایل نویز', 'Noize profile'),
+                selected: _pref('transport_masque_noize', 'auto'),
+                options: const [
+                  IosPickerOption('auto', 'auto'),
+                  IosPickerOption('off', 'off'),
+                  IosPickerOption('light', 'light'),
+                  IosPickerOption('firewall', 'firewall'),
+                  IosPickerOption('balanced', 'balanced'),
+                  IosPickerOption('gfw', 'gfw'),
+                  IosPickerOption('aggressive', 'aggressive'),
+                ],
+              );
+              if (v != null) {
+                final p = await SharedPreferences.getInstance();
+                await p.setString('transport_masque_noize', v);
+                setState(() {});
+              }
+            },
+          ),
+          SettingsRow(
+            title: _t('نسخهٔ IP', 'IP version'),
+            leading: SettingsGlyph(
+                tint: Ios.tileTeal, icon: Icons.lan_outlined),
+            value: _pref('transport_masque_ip', 'v4'),
+            onTap: () async {
+              final v = await pushIosPicker<String>(
+                context,
+                title: _t('نسخهٔ IP', 'IP version'),
+                selected: _pref('transport_masque_ip', 'v4'),
+                options: const [
+                  IosPickerOption('v4', 'IPv4'),
+                  IosPickerOption('v6', 'IPv6'),
+                  IosPickerOption('both', 'IPv4 + IPv6'),
+                ],
+              );
+              if (v != null) {
+                final p = await SharedPreferences.getInstance();
+                await p.setString('transport_masque_ip', v);
+                setState(() {});
+              }
+            },
+          ),
+          SettingsRow(
+            title: _t('پروفایل کارایی', 'Performance profile'),
+            leading: SettingsGlyph(
+                tint: Ios.tileGreen, icon: Icons.speed),
+            value: _pref('transport_masque_perf', 'auto'),
+            onTap: () async {
+              final v = await pushIosPicker<String>(
+                context,
+                title: _t('پروفایل کارایی', 'Performance profile'),
+                selected: _pref('transport_masque_perf', 'auto'),
+                options: const [
+                  IosPickerOption('auto', 'auto'),
+                  IosPickerOption('low', 'low'),
+                  IosPickerOption('medium', 'medium'),
+                  IosPickerOption('high', 'high'),
+                ],
+              );
+              if (v != null) {
+                final p = await SharedPreferences.getInstance();
+                await p.setString('transport_masque_perf', v);
+                setState(() {});
+              }
+            },
+          ),
+          SettingsToggle(
+            title: _t('اتصال مجدد سریع', 'Quick reconnect'),
+            value: _pref('transport_masque_qr', '1') == '1',
+            onChanged: (v) async {
+              final p = await SharedPreferences.getInstance();
+              await p.setString('transport_masque_qr', v ? '1' : '0');
+              setState(() {});
+            },
+          ),
+          SettingsToggle(
+            title: _t('مسدودسازی QUIC', 'Block QUIC'),
+            value: _pref('transport_masque_noquic', '1') == '1',
+            onChanged: (v) async {
+              final p = await SharedPreferences.getInstance();
+              await p.setString('transport_masque_noquic', v ? '1' : '0');
+              setState(() {});
             },
           ),
           if (isWow)
@@ -314,8 +426,8 @@ class _TransportScreenState extends State<TransportScreen> {
         ],
       ),
       SettingsFooter(_t(
-          'اسکن، مسیر سالم روی شبکهٔ فعلی را پیدا می‌کند؛ حالت سنگین‌تر کندتر ولی پایدارتر است.',
-          'Scan finds a healthy path on the current network; heavier modes are slower but steadier.')),
+          'اسکن، مسیر سالم روی شبکهٔ فعلی را پیدا می‌کند؛ حالت سنگین‌تر کندتر ولی پایدارتر است. نویز، شکل ترافیک را برای عبور از DPI تغییر می‌دهد.',
+          'Scan finds a healthy path on the current network; heavier modes are slower but steadier. Noize reshapes traffic against DPI.')),
     ];
   }
 

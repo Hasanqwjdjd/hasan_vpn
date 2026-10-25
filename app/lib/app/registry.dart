@@ -8,6 +8,7 @@ import '../screens/nodes_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/cloud_screen.dart';
 import '../screens/transport_screen.dart';
+import '../screens/wg_screen.dart';
 
 /// رجیستری مقصدهای صفحه‌خانه — پورت `ui/home/HomeDestinations.kt`.
 /// هر فاز تایل‌های جدید را اینجا اضافه می‌کند؛ فقط مقصدهایی که
@@ -66,6 +67,21 @@ final List<Destination> kDestinations = [
     builder: (_) => const TransportScreen(transport: TransportId.masque),
   ),
   Destination(
+    id: 'wireguard',
+    stringKey: 'home_wireguard',
+    art: const TileArt.svg('$_assets/ic_app_wireguard.svg'),
+    tint: Ios.tileGreen,
+    builder: (_) => const WireGuardScreen(),
+  ),
+  Destination(
+    id: 'warp_on_warp',
+    stringKey: 'home_warp_on_warp',
+    art: const TileArt.svg('$_assets/ic_glyph_layers.svg'),
+    tint: Ios.tileOrange,
+    builder: (_) =>
+        const TransportScreen(transport: TransportId.warpOnWarp),
+  ),
+  Destination(
     id: 'warp',
     stringKey: 'home_warp',
     art: const TileArt.svg('$_assets/ic_app_warp.svg'),
@@ -98,5 +114,12 @@ Destination? destinationById(String id) {
 /// داک — ترتیب MLM (اسکنر در P2d اضافه می‌شود).
 const List<String> kDockIds = ['nodes', 'settings', 'cloud'];
 
-/// چیدمان پیش‌فرض برد (تا وقتی کاربر ترتیب دلخواه بسازد).
-const List<String> kBoardDefault = ['masque', 'warp', 'psiphon', 'tor'];
+/// چیدمان پیش‌فرض برد — ترتیب MLM (HomeDestinations.kt BOARD_DEFAULT).
+const List<String> kBoardDefault = [
+  'masque',
+  'wireguard',
+  'warp_on_warp',
+  'warp',
+  'psiphon',
+  'tor',
+];

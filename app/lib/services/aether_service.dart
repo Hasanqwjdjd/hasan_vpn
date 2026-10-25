@@ -40,6 +40,11 @@ class AetherService {
 
   static String? lastError;
 
+  /// مرحلهٔ فعلی هسته (نام enum انگلیسی + برچسب فارسی) — از AetherStageParser.
+  /// برای نمایش پیشرفت مرحله‌به‌مرحله در UI.
+  static String lastStage = '';
+  static String lastStageFa = '';
+
   static bool get isConnected => _connected;
   static VpnServer? get current => _current;
 
@@ -397,6 +402,7 @@ class AetherService {
 
     final deadline = DateTime.now().add(attempt.timeout);
     var lastShown = '';
+    var sawConnectedStage = false;
 
     while (DateTime.now().isBefore(deadline)) {
       if (cancelled()) return false;
@@ -406,6 +412,24 @@ class AetherService {
       // own. 400 ms is fast enough to feel live and slow enough to be free.
       await Future<void>.delayed(const Duration(milliseconds: 400));
       final status = await nativeStatus();
+
+      // فیلدهای مرحله‌ای — پورت AetherState از MLM VPN. «پورت باز» به‌تنهایی
+      // تونلِ واقعی نیست؛ connected فقط وقتی true است که پارسر مرحله‌ی
+      // CONNECTED را دیده باشد.
+      final stageName = status['stage']?.toString() ?? '';
+      final stageFa = status['stageFa']?.toString() ?? '';
+      final coreConnected = status['connected'] == true;
+      final coreServer = status['server']?.toString() ?? '';
+      final coreRtt = status['rtt']?.toString() ?? '';
+      lastStage = stageName;
+      lastStageFa = stageFa;
+
+      if (coreConnected && !sawConnectedStage) {
+        sawConnectedStage = true;
+        onProgress?.call(
+            '$prefix${attempt.label}\nCONNECTED · $coreServer'
+            '${coreRtt.isNotEmpty ? ' · $coreRtt' : ''}');
+      }
 
       final line = _shorten(status['lastLine']?.toString() ?? '');
       if (line.isNotEmpty && line != lastShown) {
@@ -420,10 +444,30 @@ class AetherService {
         return false;
       }
 
+      // خرابی‌های صریح پارسر — مثل MLM زودتر از تایم‌اوت شکست بخور.
+      if (stageName == 'CRASHED' || stageName == 'FAILED') {
+        final detail = status['probeFailures'];
+        lastError = 'Aether $stageName'
+            '${line.isNotEmpty ? ': $line' : ''}'
+            '${detail != null && detail.toString().length > 2 ? ' · probes: $detail' : ''}';
+        return false;
+      }
+
       final error = status['error']?.toString();
       if (error != null && error.isNotEmpty) {
         lastError = error;
         return false;
+      }
+
+      // مسیر سریع: هسته خودش CONNECTED را گزارش کرده — فقط یک probe
+      // کوتاه برای اطمینان (سالم‌ترین تعریف «وصل»).
+      if (coreConnected) {
+        final probe = await SocksProbe.measure(
+          port: port,
+          samples: 1,
+          timeout: const Duration(seconds: 5),
+        );
+        if (probe.ok) return true;
       }
 
       if (await SocksProbe.isPortOpen(port)) {
