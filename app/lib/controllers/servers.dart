@@ -51,17 +51,6 @@ class ServerRepository extends ChangeNotifier {
 
   Future<void>? _refreshing;
 
-  // پروتکل‌هایی که هسته‌ی بومی‌شان در این بیلد حذف شده — از لیست‌ها
-  // فیلتر می‌شوند تا هیچ مسیر مرده‌ای به UI نشت نکند (پاک‌سازی کامل در P3).
-  static const Set<VpnProtocol> _unsupportedProtocols = {
-    VpnProtocol.warpMasque,
-    VpnProtocol.masterdns,
-    VpnProtocol.tunnel,
-  };
-
-  static bool _supported(VpnServer s) =>
-      !_unsupportedProtocols.contains(s.protocol);
-
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -231,7 +220,6 @@ class ServerRepository extends ChangeNotifier {
     final merged = <VpnServer>[];
     for (final list in lists) {
       for (final server in list) {
-        if (!_supported(server)) continue;
         if (!seen.add(server.id)) continue;
         merged.add(previous[server.id] ?? server);
       }
@@ -243,7 +231,7 @@ class ServerRepository extends ChangeNotifier {
 
   void rebuild() {
     final allServers = <VpnServer>[
-      ...customServers.where((s) => _supported(s)),
+      ...customServers,
       ..._merge(_fetchedLists),
     ].where((s) => !deletedIds.contains(s.id)).toList();
 
@@ -387,7 +375,7 @@ class ServerRepository extends ChangeNotifier {
       final id = LinkParser.stableId('c', link);
       if (existingIds.contains(id)) continue;
       final server = LinkParser.parse(link, id: id);
-      if (server == null || !_supported(server)) continue;
+      if (server == null) continue;
       server.isDeletable = true;
       customServers.add(server);
       if (subTag != null && subTag.isNotEmpty) {
@@ -408,7 +396,6 @@ class ServerRepository extends ChangeNotifier {
 
   /// افزودن مستقیم (فرم دستی).
   Future<bool> addServer(VpnServer server, {String? subTag}) async {
-    if (!_supported(server)) return false;
     if (customServers.any((s) => s.id == server.id)) return false;
     server.isDeletable = true;
     customServers.add(server);

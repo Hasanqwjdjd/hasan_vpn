@@ -7,8 +7,6 @@ import 'package:flutter/services.dart';
 import '../models/server.dart';
 import 'socks_xray_builder.dart';
 import 'xray_settings.dart';
-import 'warp_masque_service.dart';
-import 'master_dns_service.dart';
 import 'psiphon_auto.dart';
 import 'v2ray_engine.dart';
 import 'connection_log_service.dart';
@@ -137,42 +135,7 @@ class PsiphonService {
       final upstream = (uri.queryParameters['upstream'] ?? '').trim();
       if (upstream.isEmpty || upstream == 'none') return;
 
-      if (upstream == 'warpmasque') {
-        if (WarpMasqueService.isRunning) return;
-        onProgress?.call('Psiphon · connecting WARP MASQUE upstream');
-        final ok = await WarpMasqueService.start();
-        if (!ok || cancelled() || stale()) {
-          throw StateError(
-              'Upstream WARP MASQUE failed: ${WarpMasqueService.lastError ?? "unknown"}');
-        }
-        return;
-      }
 
-      if (upstream == 'masterdns') {
-        if (MasterDnsService.isRunning) return;
-        final domain = (uri.queryParameters['mdns_domain'] ?? '').trim();
-        final key = (uri.queryParameters['mdns_key'] ?? '').trim();
-        final method =
-            int.tryParse(uri.queryParameters['mdns_method'] ?? '1') ?? 1;
-        final resolvers =
-            (uri.queryParameters['mdns_resolvers'] ?? '').trim();
-        if (domain.isEmpty || key.isEmpty) {
-          throw StateError(
-              'برای Psiphon Over MasterDNS، domain و key را در فرم Psiphon پر کنید');
-        }
-        onProgress?.call('Psiphon · connecting MasterDNS upstream');
-        final ok = await MasterDnsService.start(
-          domain: domain,
-          key: key,
-          method: method,
-          resolvers: resolvers,
-        );
-        if (!ok || cancelled() || stale()) {
-          throw StateError(
-              'Upstream MasterDNS failed: ${MasterDnsService.lastError ?? "unknown"}');
-        }
-        return;
-      }
     } catch (e) {
       lastError = e.toString();
       rethrow;

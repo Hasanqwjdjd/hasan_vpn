@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
+import 'app_log.dart';
 import 'connection_log_service.dart';
 import 'socks_probe.dart';
 import 'socks_xray_builder.dart';
@@ -174,6 +175,7 @@ class GephServiceDart {
       final binary = await StoreService.gephBinaryPath();
       await _storeCh.invokeMethod('makeExecutable', {'path': binary});
 
+      AppLog.i('GEPH', 'starting core (v${StoreService.gephInstalledVersion ?? "?"}) socks=$port');
       onProgress?.call('Geph · راه‌اندازی هسته (v'
           '${StoreService.gephInstalledVersion ?? "?"})');
       final started = await _ch.invokeMethod<bool>('start', {
@@ -199,6 +201,9 @@ class GephServiceDart {
         await Future<void>.delayed(const Duration(milliseconds: 600));
         final st = await status();
         final line = st['lastLine']?.toString() ?? '';
+        if (line.isNotEmpty && line != lastShown) {
+          AppLog.i('GEPH', line);
+        }
         final alive = st['running'] == true;
         if (!alive) {
           lastError = st['error']?.toString() ??

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 import '../models/server.dart';
+import 'app_log.dart';
 import 'connection_log_service.dart';
 import 'v2ray_engine.dart';
 
@@ -47,6 +48,7 @@ class LanternServiceDart {
 
       onProgress?.call('Lantern · راه‌اندازی هسته…');
       final port = await _freePort();
+      AppLog.i('LANTERN', 'starting core on :$port');
       final started = await _ch.invokeMethod<bool>(
         'start',
         {'port': port, 'app': 'HasanVPN'},
@@ -67,6 +69,7 @@ class LanternServiceDart {
         }
         await Future<void>.delayed(const Duration(milliseconds: 700));
         ready = await _httpProxyReady(port);
+      if (ready) AppLog.i('LANTERN', 'http proxy ready on :$port');
         if (ready) break;
         final st = await status();
         if (st['running'] != true) {

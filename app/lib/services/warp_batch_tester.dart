@@ -56,8 +56,7 @@ class WarpBatchTester {
     final targets = servers
         .where((s) =>
             s.protocol == VpnProtocol.amneziaWg ||
-            s.protocol == VpnProtocol.chain ||
-            s.protocol == VpnProtocol.warpMasque)
+            s.protocol == VpnProtocol.chain)
         .toList();
 
     if (targets.isEmpty) {

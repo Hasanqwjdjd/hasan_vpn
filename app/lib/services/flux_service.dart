@@ -1,4 +1,6 @@
 import 'dart:convert';
+
+import 'app_log.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -209,6 +211,8 @@ class FluxService {
         ..clear()
         ..addAll(ranked.skip(1).take(2));
       current = ranked.first;
+      AppLog.i('FLUX',
+          'race done: best=${current!.displayName} ${current!.ping}ms standbys=${_standbys.length}');
       onProgress?.call(
           'اتصال به ${current!.displayName} (${current!.ping}ms)'
           '${_standbys.isNotEmpty ? ' + ${_standbys.length} standby' : ''}');

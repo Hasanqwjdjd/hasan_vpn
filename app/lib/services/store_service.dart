@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'app_log.dart';
 import 'minisign.dart';
 
 /// استور موتورها — پورت `scanner/store/StoreManager.kt` (مسیر SignedManifest).
@@ -126,9 +127,11 @@ class StoreService {
     final ok = await _download(latest.url, apkPath, onProgress,
         expectedSha256: latest.sha256);
     if (!ok) {
+      AppLog.e('STORE', 'download/sha256 failed for ${latest.url}');
       onLog?.call('دانلود یا بررسی هش ناموفق بود');
       return false;
     }
+    AppLog.i('STORE', 'sha256 OK — extracting libgeph.so');
     onLog?.call('هش تأیید شد — استخراج libgeph.so…');
 
     try {

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import '../services/aether_service.dart';
+import '../services/app_log.dart';
 import '../services/connection_log_service.dart';
 import '../services/connection_quality.dart';
 import '../services/desync_service.dart';
@@ -13,17 +14,14 @@ import '../services/flux_service.dart';
 import '../services/geph_service.dart';
 import '../services/home_widget_service.dart';
 import '../services/lantern_service.dart';
-import '../services/master_dns_session_service.dart';
 import '../services/psiphon_service.dart';
 import '../services/quality_alert.dart';
 import '../services/ssh_session_service.dart';
 import '../services/telemetry_service.dart';
 import '../services/tor_service.dart';
 import '../services/tor_session_service.dart';
-import '../services/tunnel_session_service.dart';
 import '../services/v2ray_engine.dart';
 import '../services/warp_endpoint_health_monitor.dart';
-import '../services/warp_masque_session_service.dart';
 import '../services/warp_service.dart';
 import '../l10n/s.dart';
 
@@ -93,34 +91,23 @@ class ConnectionController extends ChangeNotifier {
   void _setStatus(String s, {ConnStage? st}) {
     statusText = s;
     if (st != null) stage = st;
+    AppLog.i('CONN', '[$st] $s');
     notifyListeners();
   }
 
   // ── قطع همهٔ sessionها قبل از اتصال جدید (پورت ۱:۱) ──
   Future<void> _disconnectAllSessionsForNewConnect() async {
+    AppLog.i('CONN', 'teardown: closing all previous sessions');
     try {
       if (TorSessionService.instance.anyRouting) {
+        AppLog.i('CONN', 'teardown: Tor session active — disconnecting');
         await TorSessionService.instance.disconnect();
       }
     } catch (_) {}
     try {
-      if (TunnelSessionService.instance.anyRouting) {
-        await TunnelSessionService.instance.disconnect();
-      }
-    } catch (_) {}
-    try {
       if (SshSessionService.instance.anyRouting) {
+        AppLog.i('CONN', 'teardown: SSH session active — disconnecting');
         await SshSessionService.instance.disconnect();
-      }
-    } catch (_) {}
-    try {
-      if (MasterDnsSessionService.instance.anyRouting) {
-        await MasterDnsSessionService.instance.disconnect();
-      }
-    } catch (_) {}
-    try {
-      if (WarpMasqueSessionService.instance.anyRouting) {
-        await WarpMasqueSessionService.instance.disconnect();
       }
     } catch (_) {}
     try {
@@ -217,10 +204,7 @@ class ConnectionController extends ChangeNotifier {
     try {
       // sessionهای ابزاری strike نمی‌خورند ولی sample کیفیت می‌گیرند.
       if (TorSessionService.instance.anyRouting ||
-          TunnelSessionService.instance.anyRouting ||
           SshSessionService.instance.anyRouting ||
-          MasterDnsSessionService.instance.anyRouting ||
-          WarpMasqueSessionService.instance.anyRouting ||
           PsiphonService.isConnected ||
           V2RayEngine.isUtilitySession) {
         _pollTick++;
@@ -320,6 +304,8 @@ class ConnectionController extends ChangeNotifier {
     livePing = null;
     attemptLabel = null;
     attemptTarget = null;
+    AppLog.i('CONN',
+        'connectServer: ${selected.protocol.name} id=${selected.id} host=${selected.host}:${selected.port}');
     _setStatus(_t('آماده‌سازی...', 'Preparing...'), st: ConnStage.preparing);
     notifyListeners();
 

@@ -195,10 +195,6 @@ enum VpnProtocol {
   /// AmneziaWG — WireGuard با obfuscation (Jc/Jmin/Jmax/S1/S2/H1..H4).
   /// link با فرمت vpn:// (base64 JSON) از Amnezia.
   amneziaWg,
-  /// MasterDNS — DNS tunnel با سرور MasterDnsVPN.
-  masterdns,
-  /// WARP MASQUE/H2 — Cloudflare usque client. بدون نیاز به کلید.
-  warpMasque,
   /// Aether (بخش ۵) — هسته‌ی WARP بومی (libaether.so): MASQUE/WireGuard/
   /// GOOL/MIM با اسکن خودکار مسیر سالم. لینک با فرمت aether://config?…
   aether,
@@ -271,7 +267,6 @@ class VpnServer {
 
   /// لیست endpoint candidates برای MASQUE parallel fallback scan.
   /// فرمت: `host:port,subnet/24:port,...` — null = پیش‌فرض داخلی.
-  String? warpMasqueEndpointCandidates;
 
   int? ping;
   int? jitter;
@@ -295,7 +290,6 @@ class VpnServer {
     this.tls = TlsOptions.empty,
     this.dns,
     this.warpEndpointMode,
-    this.warpMasqueEndpointCandidates,
     this.ping,
     this.jitter,
     this.pingKind = PingKind.none,
@@ -339,7 +333,6 @@ class VpnServer {
     TlsOptions? tls,
     String? dns,
     String? warpEndpointMode,
-    String? warpMasqueEndpointCandidates,
     List<String>? backupAddresses,
   }) =>
       VpnServer(
@@ -357,7 +350,6 @@ class VpnServer {
         tls: tls ?? this.tls,
         dns: dns ?? this.dns,
         warpEndpointMode: warpEndpointMode ?? this.warpEndpointMode,
-        warpMasqueEndpointCandidates: warpMasqueEndpointCandidates ?? this.warpMasqueEndpointCandidates,
         backupAddresses: backupAddresses ?? this.backupAddresses,
       );
 

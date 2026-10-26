@@ -21,15 +21,11 @@ class LinkParser {
     'ssd',
     'vpn',
     'ssh',
-    'masterdns',
-    'mdns',
-    'warpmasque',
-    'wmq',
     'aether',
   ];
 
   static final RegExp linkRegex = RegExp(
-    r'(?:vless|vmess|trojan|ss|ssd|vpn|ssh|masterdns|mdns|warpmasque|wmq|hasan-warp|hysteria2|hy2|aether|custom|xrayjson)://[^\s"<>\\]+',
+    r'(?:vless|vmess|trojan|ss|ssd|vpn|sshhasan-warp|hysteria2|hy2|aether|custom|xrayjson)://[^\s"<>\\]+',
     caseSensitive: false,
   );
 
@@ -118,12 +114,6 @@ class LinkParser {
           return _parseVpnLink(link, id);
         case 'ssh':
           return _parseSsh(link, id);
-        case 'masterdns':
-        case 'mdns':
-          return _parseMasterDns(link, id);
-        case 'warpmasque':
-        case 'wmq':
-          return _parseWarpMasque(link, id);
         case 'aether':
           // بخش ۵ — سرور Aether (هسته‌ی WARP بومی)
           return _parseAether(link, id);
@@ -147,107 +137,6 @@ class LinkParser {
   ///   password=xxx یا pwd=xxx
   ///   key=base64(private key PEM)
   ///   socks=1080 (پورت SOCKS روی سرور)
-  /// MasterDNS — masterdns://config?domain=...&key=...&method=N&resolvers=...
-  /// WARP MASQUE — warpmasque://config?endpoint=host:port&sni=...&dns=...&h2=1
-  static VpnServer? _parseWarpMasque(String link, String id) {
-    try {
-      final uri = Uri.parse(link);
-      final q = uri.queryParameters;
-      final endpoint =
-          (q['endpoint'] ?? q['ep'] ?? '162.159.198.238:443').trim();
-      final sni = (q['sni'] ?? 'soft98.ir').trim();
-      final dns = (q['dns'] ?? '1.1.1.1,1.0.0.1').trim();
-      final h2 = (q['h2'] ?? '1') == '1';
-
-      final name = _cleanName(
-        _decode(uri.fragment),
-        fallback: 'WARP MASQUE · $endpoint',
-      );
-
-      final candidates = (q['candidates'] ?? q['cn'] ?? '').trim();
-      final device = (q['device'] ?? q['dn'] ?? '').trim();
-
-      final internal = <String, String>{
-        'endpoint': endpoint,
-        'sni': sni,
-        'dns': dns,
-        'h2': h2 ? '1' : '0',
-        if (candidates.isNotEmpty) 'candidates': candidates,
-        if (device.isNotEmpty) 'device': device,
-        if (name.isNotEmpty) 'name': name,
-      };
-      final rebuilt = Uri(
-        scheme: 'warpmasque',
-        host: 'config',
-        queryParameters: internal,
-      );
-
-      final hostPort = endpoint.split(':');
-      final host = hostPort.first;
-      final port =
-          int.tryParse(hostPort.length > 1 ? hostPort[1] : '443') ?? 443;
-
-      return VpnServer(
-        id: id,
-        name: name,
-        flag: '\u{1F310}',
-        shareLink: rebuilt.toString(),
-        protocol: VpnProtocol.warpMasque,
-        host: host,
-        port: port,
-        sniOrHost: sni,
-        warpMasqueEndpointCandidates: candidates.isEmpty ? null : candidates,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  static VpnServer? _parseMasterDns(String link, String id) {
-    try {
-      final uri = Uri.parse(link);
-      final q = uri.queryParameters;
-      final domain = (q['domain'] ?? '').trim();
-      final key = (q['key'] ?? '').trim();
-      if (domain.isEmpty || key.isEmpty) return null;
-      final method = int.tryParse(q['method'] ?? '1')?.clamp(0, 5) ?? 1;
-      final resolvers = (q['resolvers'] ?? '').trim();
-      final advanced = (q['advanced'] ?? '').trim();
-
-      final name = _cleanName(
-        _decode(uri.fragment),
-        fallback: 'MasterDNS · $domain',
-      );
-
-      final internal = <String, String>{
-        'domain': domain,
-        'key': key,
-        'method': '$method',
-        if (resolvers.isNotEmpty) 'resolvers': resolvers,
-        if (advanced.isNotEmpty) 'advanced': advanced,
-        if (name.isNotEmpty) 'name': name,
-      };
-      final rebuilt = Uri(
-        scheme: 'masterdns',
-        host: 'config',
-        queryParameters: internal,
-      );
-
-      return VpnServer(
-        id: id,
-        name: name,
-        flag: '\u{1F5FA}',
-        shareLink: rebuilt.toString(),
-        protocol: VpnProtocol.masterdns,
-        host: domain,
-        port: 0,
-        sniOrHost: domain,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
   static VpnServer? _parseSsh(String link, String id) {
     try {
       final uri = Uri.parse(link);

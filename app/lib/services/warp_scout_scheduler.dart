@@ -123,8 +123,7 @@ class WarpScoutScheduler {
     for (final s in servers) {
       if (!s.isDeletable) continue;
       if (s.protocol == VpnProtocol.amneziaWg ||
-          s.protocol == VpnProtocol.chain ||
-          s.protocol == VpnProtocol.warpMasque) {
+          s.protocol == VpnProtocol.chain) {
         return s;
       }
     }

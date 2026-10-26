@@ -490,8 +490,7 @@ class ServerTester {
       // FIX: ssh/tunnel نمی‌تونن از مسیر Connect/auto-fastest وصل شن —
       // session سرویس اختصاصی لازم دارن. اگه انتخاب شن، کاربر پیام
       // «روی سرور ضربه بزن» می‌گیره و اتصال خودکار شکست می‌خوره.
-      if (server.protocol == VpnProtocol.ssh ||
-          server.protocol == VpnProtocol.tunnel) {
+      if (server.protocol == VpnProtocol.ssh) {
         continue;
       }
       final s = scoreOf(server);

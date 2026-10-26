@@ -22,7 +22,6 @@ class WarpShareCodec {
 
   /// آیا این سرور باید با codec فشرده به اشتراک گذاشته بشه؟
   static bool shouldEncode(VpnServer server) {
-    if (server.protocol == VpnProtocol.warpMasque) return true;
     if (server.protocol == VpnProtocol.amneziaWg) return true;
     if (server.protocol == VpnProtocol.chain) {
       final link = server.shareLink;
@@ -34,9 +33,6 @@ class WarpShareCodec {
 
   /// کدگذاری سرور به URI فشرده. اگه پشتیبانی نشه `null`.
   static String? encode(VpnServer server) {
-    if (server.protocol == VpnProtocol.warpMasque) {
-      return _encodeMasque(server);
-    }
     if (server.protocol == VpnProtocol.amneziaWg) {
       return _encodeWireGuard(server);
     }
@@ -55,8 +51,6 @@ class WarpShareCodec {
       final kind = uri.host;
       final q = uri.queryParameters;
       switch (kind) {
-        case 'm':
-          return _decodeMasque(q, id);
         case 'w':
           return _decodeWireGuard(q, id);
         case 'p':
@@ -70,90 +64,6 @@ class WarpShareCodec {
   }
 
   // ── MASQUE ─────────────────────────────────────────────────
-
-  static String _encodeMasque(VpnServer server) {
-    final params = _parseMasqueParams(server.shareLink);
-    if (params == null) return server.shareLink;
-    final payload = [
-      params.endpoint,
-      params.sni,
-      params.dns,
-      params.http2 ? '1' : '0',
-      server.displayName,
-      params.candidates ?? '',
-    ].join('|');
-    return Uri(
-      scheme: 'hasan-warp',
-      host: 'm',
-      queryParameters: <String, String>{'d': _b64(payload)},
-    ).toString();
-  }
-
-  static VpnServer? _decodeMasque(Map<String, String> q, String id) {
-    final payload = _unb64(q['d'] ?? '');
-    if (payload == null) return null;
-    final parts = payload.split('|');
-    if (parts.length < 4) return null;
-    final endpoint = parts[0];
-    final sni = parts[1];
-    final dns = parts[2];
-    final http2 = parts[3] == '1';
-    final name = parts.length > 4 && parts[4].isNotEmpty
-        ? parts[4]
-        : 'WARP MASQUE · $endpoint';
-    // v2: candidates اختیاری (سازگار با v1 که نداره)
-    final candidates = parts.length > 5 ? parts[5] : '';
-
-    final internal = <String, String>{
-      'endpoint': endpoint,
-      'sni': sni,
-      'dns': dns,
-      'h2': http2 ? '1' : '0',
-      if (candidates.isNotEmpty) 'candidates': candidates,
-      'name': name,
-    };
-    final rebuilt = Uri(
-      scheme: 'warpmasque',
-      host: 'config',
-      queryParameters: internal,
-    ).toString();
-
-    final hostPort = endpoint.split(':');
-    final host = hostPort.first;
-    final port = int.tryParse(hostPort.length > 1 ? hostPort[1] : '443') ?? 443;
-
-    return VpnServer(
-      id: id,
-      name: name,
-      flag: '\u{1F310}',
-      shareLink: rebuilt,
-      protocol: VpnProtocol.warpMasque,
-      host: host,
-      port: port,
-      sniOrHost: sni,
-      warpMasqueEndpointCandidates:
-          candidates.isEmpty ? null : candidates,
-      isDeletable: true,
-    );
-  }
-
-  static _MasqueParams? _parseMasqueParams(String link) {
-    try {
-      final uri = Uri.parse(link);
-      if (uri.scheme != 'warpmasque' && uri.scheme != 'wmq') return null;
-      final q = uri.queryParameters;
-      final candidates = (q['candidates'] ?? q['cn'] ?? '').trim();
-      return _MasqueParams(
-        endpoint: (q['endpoint'] ?? q['ep'] ?? '162.159.198.238:443').trim(),
-        sni: (q['sni'] ?? 'soft98.ir').trim(),
-        dns: (q['dns'] ?? '1.1.1.1,1.0.0.1').trim(),
-        http2: (q['h2'] ?? '1') == '1',
-        candidates: candidates.isEmpty ? null : candidates,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
 
   // ── WireGuard تک‌هاپ ───────────────────────────────────────
 
@@ -480,21 +390,6 @@ class WarpShareCodec {
       return null;
     }
   }
-}
-
-class _MasqueParams {
-  final String endpoint;
-  final String sni;
-  final String dns;
-  final bool http2;
-  final String? candidates;
-  const _MasqueParams({
-    required this.endpoint,
-    required this.sni,
-    required this.dns,
-    required this.http2,
-    this.candidates,
-  });
 }
 
 class _WgFields {
