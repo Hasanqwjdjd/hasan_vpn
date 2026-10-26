@@ -334,10 +334,9 @@ jobs:
               compileOptions {
                   sourceCompatibility = JavaVersion.VERSION_17
                   targetCompatibility = JavaVersion.VERSION_17
+                  // P2d — Lantern SDK رسمی core library desugaring می‌خواهد
+                  coreLibraryDesugaringEnabled = true
               }
-
-              // P2d — Lantern SDK رسمی core library desugaring می‌خواهد
-              coreLibraryDesugaringEnabled = true
 
               kotlinOptions {
                   jvmTarget = "17"
