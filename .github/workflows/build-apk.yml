@@ -336,6 +336,9 @@ jobs:
                   targetCompatibility = JavaVersion.VERSION_17
               }
 
+              // P2d — Lantern SDK رسمی core library desugaring می‌خواهد
+              coreLibraryDesugaringEnabled = true
+
               kotlinOptions {
                   jvmTarget = "17"
                   freeCompilerArgs += ["-Xskip-metadata-version-check"]
@@ -385,6 +388,7 @@ jobs:
 
           dependencies {
               implementation fileTree(dir: "libs", include: ["*.jar", "*.aar"])
+              coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"
           }
           EOF
 
