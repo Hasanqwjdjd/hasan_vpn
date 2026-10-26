@@ -293,6 +293,15 @@ class _LightsPainter extends CustomPainter {
 // ─────────────────────────────────────────────────────────── لبه‌های محو
 
 /// `fadingEdges` — DstIn gradient بالای/پایین محتوا (روی همه صفحات اسکرولی).
+///
+/// FIX v2.10.2 — ریشهٔ واقعی «صفحهٔ سیاه/خالی» (v2.10.0 و v2.10.1):
+/// ترتیب رنگ‌های گرادیان برعکس بود — [کدر، شفاف، شفاف، کدر] — یعنی ماسک
+/// `dstIn` در **میانهٔ صفحه (حدود ۹۲٪ ارتفاع) کاملاً شفاف** می‌شد و کل
+/// محتوای اسکرول نامرئی می‌شد؛ فقط نوار باریک لبهٔ پایین دوباره ظاهر
+/// می‌شد (همان فوتر/تاگل محو در اسکرین‌شات‌ها). این باگ مستقل از GPU و
+/// مستقل از Impeller بود؛ به‌همین دلیل غیرفعال‌سازی Impeller در
+/// v2.10.1 اثری نداشت. ترتیب درست: [شفاف، کدر، کدر، شفاف] — لبه‌ها محو،
+/// میانهٔ صفحه کاملاً کدر (محتوا دیده می‌شود).
 class FadingEdges extends StatelessWidget {
   final Widget child;
   final double top;
@@ -305,19 +314,27 @@ class FadingEdges extends StatelessWidget {
     if (top <= 0 && bottom <= 0) return child;
     return ShaderMask(
       shaderCallback: (bounds) {
+        final h = bounds.height;
+        if (h <= 0) {
+          return const LinearGradient(
+                  colors: [Colors.black], stops: [0.0])
+              .createShader(bounds);
+        }
         final stops = <double>[];
         final colors = <Color>[];
         if (top > 0) {
-          colors.addAll([Colors.black, Colors.black.withValues(alpha: 0)]);
-          stops.addAll([0.0, (top / bounds.height).clamp(0.0, 0.45)]);
+          // لبهٔ بالا: شفاف → کدر (محتوا زیر نوار محو می‌شود)
+          colors.addAll([Colors.black.withValues(alpha: 0), Colors.black]);
+          stops.addAll([0.0, (top / h).clamp(0.0, 0.45)]);
         }
         if (bottom > 0) {
+          // لبهٔ پایین: کدر → شفاف (محتوا در انتها محو می‌شود)
           colors.addAll([
-            Colors.black.withValues(alpha: 0),
             Colors.black,
+            Colors.black.withValues(alpha: 0),
           ]);
           stops.addAll([
-            1.0 - (bottom / bounds.height).clamp(0.0, 0.45),
+            1.0 - (bottom / h).clamp(0.0, 0.45),
             1.0,
           ]);
         }
