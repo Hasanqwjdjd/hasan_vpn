@@ -109,13 +109,12 @@ class LanternService : Service() {
             try {
                 SafeLog.i(TAG, "[LANTERN] setup(app=$appName) start(:$port)")
                 LanternManager.setup(applicationContext, appName, "$appName/config")
-                val result = LanternManager.startLantern(":$port", false)
-                val addr = result?.addr
+                LanternManager.startLantern(":$port", false)
                 synchronized(lock) {
                     running = true
                     socksHttpPort = port
                 }
-                SafeLog.i(TAG, "[LANTERN] started addr=$addr")
+                SafeLog.i(TAG, "[LANTERN] started on :$port")
             } catch (e: Exception) {
                 synchronized(lock) {
                     lastError = e.message
