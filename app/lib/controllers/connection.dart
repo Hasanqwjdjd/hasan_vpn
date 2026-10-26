@@ -12,6 +12,7 @@ import '../services/desync_service.dart';
 import '../services/flux_service.dart';
 import '../services/geph_service.dart';
 import '../services/home_widget_service.dart';
+import '../services/lantern_service.dart';
 import '../services/master_dns_session_service.dart';
 import '../services/psiphon_service.dart';
 import '../services/quality_alert.dart';
@@ -141,6 +142,11 @@ class ConnectionController extends ChangeNotifier {
       }
     } catch (_) {}
     try {
+      if (LanternServiceDart.isConnected) {
+        await LanternServiceDart.stop();
+      }
+    } catch (_) {}
+    try {
       if (V2RayEngine.isConnected) {
         await V2RayEngine.disconnect();
       }
@@ -163,6 +169,11 @@ class ConnectionController extends ChangeNotifier {
     try {
       if (GephServiceDart.isConnected) {
         await GephServiceDart.stop();
+      }
+    } catch (_) {}
+    try {
+      if (LanternServiceDart.isConnected) {
+        await LanternServiceDart.stop();
       }
     } catch (_) {}
     try {
@@ -560,6 +571,65 @@ class ConnectionController extends ChangeNotifier {
       return ok;
     } catch (e) {
       _setStatus(_t('FLUX · خطا', 'FLUX · error') + ' · $e',
+          st: ConnStage.failed);
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// اتصال از تایل Lantern — SDK رسمی + زنجیرهٔ Xray.
+  Future<bool> connectLantern({void Function(String msg)? onProgress}) async {
+    _cancelConnect = false;
+    _connecting = true;
+    _active = null;
+    progress = null;
+    _setStatus(_t('Lantern · آماده‌سازی...', 'Lantern · preparing...'),
+        st: ConnStage.preparing);
+    notifyListeners();
+    await _disconnectAllSessionsForNewConnect();
+    try {
+      final ok = await LanternServiceDart.connect(
+        isCancelled: () => _cancelConnect,
+        onProgress: (m) {
+          if (_cancelConnect) return;
+          _setStatus(m, st: ConnStage.connecting);
+          notifyListeners();
+        },
+      );
+      _connecting = false;
+      if (ok) {
+        _connected = true;
+        _active = VpnServer(
+          id: 'lantern_fake_${DateTime.now().millisecondsSinceEpoch}',
+          name: 'Lantern',
+          flag: '🏮',
+          shareLink: 'xrayjson://lantern',
+          protocol: VpnProtocol.xrayJson,
+          host: '127.0.0.1',
+          port: LanternServiceDart.port,
+          isDeletable: false,
+        );
+        _deadStrikes = 0;
+        _pollTick = 0;
+        _lastConnectTime = DateTime.now();
+        HomeWidgetService.setConnectedStart(DateTime.now());
+        _startWidgetTimerRefresh();
+        _setStatus(_t('متصل — Lantern', 'Connected — Lantern'),
+            st: ConnStage.connected);
+      } else {
+        _setStatus(_t('Lantern · اتصال ناموفق', 'Lantern · could not connect') +
+            (LanternServiceDart.lastError == null
+                ? ''
+                : ' · ${LanternServiceDart.lastError}'),
+            st: ConnStage.failed);
+        ConnectionLogService.logError(
+            'Lantern', LanternServiceDart.lastError ?? '-');
+      }
+      notifyListeners();
+      return ok;
+    } catch (e) {
+      _connecting = false;
+      _setStatus(_t('Lantern · خطا', 'Lantern · error') + ' · $e',
           st: ConnStage.failed);
       notifyListeners();
       return false;

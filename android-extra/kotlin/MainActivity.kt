@@ -572,6 +572,24 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        // ── Lantern — SDK رسمی (فاز P2d) ──
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.hasan.hasan_vpn/lantern")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        val port = call.argument<Int>("port") ?: 0
+                        val appName = call.argument<String>("app") ?: "HasanVPN"
+                        result.success(LanternService.start(applicationContext, port, appName))
+                    }
+                    "status" -> result.success(LanternService.status())
+                    "stop" -> {
+                        LanternService.stop(applicationContext)
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         // ── Geph — هستهٔ geph5-client (فاز P2b) ──
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.hasan.hasan_vpn/geph")
             .setMethodCallHandler { call, result ->

@@ -9,9 +9,14 @@ import '../screens/settings_screen.dart';
 import '../screens/cloud_screen.dart';
 import '../screens/flux_screen.dart';
 import '../screens/freeconfig_screen.dart';
+import '../screens/game_screen.dart';
 import '../screens/geph_screen.dart';
+import '../screens/lantern_screen.dart';
 import '../screens/quick_screen.dart';
+import '../screens/scanner_screen.dart';
+import '../screens/store_screen.dart';
 import '../screens/transport_screen.dart';
+import '../screens/widgetstudio_screen.dart';
 import '../screens/wg_screen.dart';
 
 /// رجیستری مقصدهای صفحه‌خانه — پورت `ui/home/HomeDestinations.kt`.
@@ -41,6 +46,13 @@ const String _assets = 'assets/tiles';
 
 final List<Destination> kDestinations = [
   // ── داک ──
+  Destination(
+    id: 'scanner',
+    stringKey: 'nav_scanner',
+    art: const TileArt.svg('$_assets/ic_glyph_radar.svg'),
+    tint: Ios.tileBlue,
+    builder: (_) => const ScannerScreen(),
+  ),
   Destination(
     id: 'nodes',
     stringKey: 'home_v2ray',
@@ -134,6 +146,34 @@ final List<Destination> kDestinations = [
     tint: Ios.tileTeal,
     builder: (_) => const FreeConfigScreen(),
   ),
+  Destination(
+    id: 'lantern',
+    stringKey: 'home_lantern',
+    art: const TileArt.glyph(Icons.lightbulb_outline),
+    tint: Ios.tileYellow,
+    builder: (_) => const LanternScreen(),
+  ),
+  Destination(
+    id: 'game',
+    stringKey: 'home_game',
+    art: const TileArt.svg('$_assets/ic_glyph_pad.svg'),
+    tint: Ios.tileGreen,
+    builder: (_) => const GameScreen(),
+  ),
+  Destination(
+    id: 'store',
+    stringKey: 'home_store',
+    art: const TileArt.svg('$_assets/ic_app_store.svg'),
+    tint: Ios.tileBlue,
+    builder: (_) => const StoreScreen(),
+  ),
+  Destination(
+    id: 'widgetstudio',
+    stringKey: 'studio_home_tile',
+    art: const TileArt.glyph(Icons.widgets_outlined),
+    tint: Ios.tileIndigo,
+    builder: (_) => const WidgetStudioScreen(),
+  ),
 ];
 
 Destination? destinationById(String id) {
@@ -143,8 +183,8 @@ Destination? destinationById(String id) {
   return null;
 }
 
-/// داک — ترتیب MLM (اسکنر در P2d اضافه می‌شود).
-const List<String> kDockIds = ['nodes', 'settings', 'cloud'];
+/// داک — ترتیب MLM: اسکنر/V2Ray/تنظیمات/ابر.
+const List<String> kDockIds = ['scanner', 'nodes', 'settings', 'cloud'];
 
 /// چیدمان پیش‌فرض برد — ترتیب MLM (HomeDestinations.kt BOARD_DEFAULT).
 const List<String> kBoardDefault = [
@@ -158,4 +198,8 @@ const List<String> kBoardDefault = [
   'quick',
   'flux',
   'freeconfig',
+  'lantern',
+  'game',
+  'store',
+  'widgetstudio',
 ];

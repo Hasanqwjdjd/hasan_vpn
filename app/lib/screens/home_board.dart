@@ -96,6 +96,8 @@ class _HomeBoardState extends State<HomeBoard> {
         return c.activeServer?.id.startsWith('flux_') == true;
       case 'quick':
         return c.connected;
+      case 'lantern':
+        return c.activeServer?.id.startsWith('lantern_fake_') == true;
       case 'cloud':
       case 'settings':
         return false;

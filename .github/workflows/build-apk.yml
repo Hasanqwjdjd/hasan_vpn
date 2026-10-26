@@ -137,6 +137,12 @@ jobs:
           cp app/pubspec.yaml build_src/pubspec.yaml
           # فاز rebuild-UI: فونت‌ها و آیکون‌های تایل (ارجاع‌شده در pubspec)
           cp -r app/assets build_src/assets
+          # P2d — Lantern SDK رسمی v1.0.1 (هش پین‌شده؛ در libs قرار می‌گیرد
+          # و gradle با fileTree آن را برمی‌دارد)
+          mkdir -p build_src/android/app/libs
+          curl -fL --retry 3 -o build_src/android/app/libs/lanternsdk-android.aar \
+            "https://github.com/getlantern/lanternsdk-android/releases/download/v1.0.1/lanternsdk-android-1.0.1.aar"
+          echo "637b2ad0c604e959e0eb85de9a255e8afdfe187af465c96a9cdd85bf53fa6dbe  build_src/android/app/libs/lanternsdk-android.aar" | sha256sum -c -
           cp hasan.keystore build_src/android/app/hasan.keystore
 
           # Patch gradle-wrapper.properties: bump Gradle from 8.3 to 8.9
@@ -200,6 +206,7 @@ jobs:
           cp -f android-extra/kotlin/AetherService.kt "$KT_DIR/AetherService.kt"
           cp -f android-extra/kotlin/AetherStageParser.kt "$KT_DIR/AetherStageParser.kt"
           cp -f android-extra/kotlin/GephService.kt "$KT_DIR/GephService.kt"
+          cp -f android-extra/kotlin/LanternService.kt "$KT_DIR/LanternService.kt"
           cp -f android-extra/kotlin/WidgetHeadlessActivity.kt "$KT_DIR/WidgetHeadlessActivity.kt"
           cp -f android-extra/kotlin/NotificationHelper.kt "$KT_DIR/NotificationHelper.kt"
           cp -f android-extra/kotlin/PsiphonRuntimeService.kt "$KT_DIR/PsiphonRuntimeService.kt"
@@ -469,6 +476,16 @@ jobs:
           if 'GephService' not in text:
               svc = """    <service
                   android:name="com.hasan.hasan_vpn.GephService"
+                  android:enabled="true"
+                  android:exported="false"
+                  android:foregroundServiceType="specialUse" />
+          """
+              text = text.replace("</application>", svc + "</application>", 1)
+
+          # P2d — ثبت سرویس Lantern (SDK رسمی، in-process)
+          if 'LanternService' not in text:
+              svc = """    <service
+                  android:name="com.hasan.hasan_vpn.LanternService"
                   android:enabled="true"
                   android:exported="false"
                   android:foregroundServiceType="specialUse" />

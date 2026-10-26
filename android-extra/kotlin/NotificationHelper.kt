@@ -56,7 +56,8 @@ object NotificationHelper {
     const val ID_TUNNEL = 4243
     const val ID_WIDGET = 4245
     const val ID_XRAY = 4244  // برای XrayVPNService (forked plugin)
-    const val ID_GEPH = 4246  // سرویس هستهٔ Geph (بازسازی UI فاز P2b)
+    const val ID_GEPH = 4246
+    const val ID_LANTERN = 4247 // سرویس هستهٔ Lantern (SDK رسمی، فاز P2d)
 
     /// ساخت/به‌روزرسانی کانال + پاک کردن کانال‌های قدیمی. idempotent.
     fun ensureChannel(context: Context) {
