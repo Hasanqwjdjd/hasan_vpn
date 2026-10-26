@@ -33,7 +33,13 @@ class _TransportScreenState extends State<TransportScreen> {
     SharedPreferences.getInstance().then((p) {
       if (mounted) setState(() => _prefs = p);
     });
+    // وضعیت واقعی هویت WARP برای کارت «هویت وارپ»
+    WarpService.hasExisting().then((v) {
+      if (mounted) setState(() => _warpHasIdentity = v);
+    }).catchError((_) {});
   }
+
+  bool _warpHasIdentity = false;
 
   String _pref(String key, String def) => _prefs?.getString(key) ?? def;
 
@@ -452,9 +458,25 @@ class _TransportScreenState extends State<TransportScreen> {
 
   List<Widget> _warpPanel(BuildContext context) {
     return [
-      SettingsSectionHeader(_t('هویت WARP', 'WARP identity')),
+      SettingsSectionHeader(_t('هویت وارپ', 'WARP identity')),
       SettingsGroup(
         children: [
+          SettingsRow(
+            title: _t('هویت وارپ', 'WARP identity'),
+            leading: SettingsGlyph(
+                tint: Ios.tileTeal, icon: Icons.badge_outlined),
+            value: _warpHasIdentity
+                ? _t('روشن است', 'Active')
+                : _t('ساخته نشده', 'Not created'),
+            chevron: false,
+          ),
+          SettingsRow(
+            title: _t('نسخهٔ هویت', 'Identity version'),
+            leading: SettingsGlyph(
+                tint: Ios.tileGray, icon: Icons.tag),
+            value: _warpHasIdentity ? '۱' : '—',
+            chevron: false,
+          ),
           SettingsActionRow(
             icon: Icons.badge_outlined,
             title: _t('بازنشانی هویت WARP', 'Reset WARP identity'),
@@ -471,7 +493,8 @@ class _TransportScreenState extends State<TransportScreen> {
                   await WarpService.reset();
                 },
               );
-              setState(() {});
+              final v = await WarpService.hasExisting();
+              if (mounted) setState(() => _warpHasIdentity = v);
             },
           ),
         ],
@@ -495,12 +518,53 @@ class _TransportScreenState extends State<TransportScreen> {
     ('FR', 'فرانسه / France'),
   ];
 
+  static const List<(String, String, String)> kPsiphonMethods = [
+    ('auto', 'خودکار — نردبان کامل', 'Auto — full ladder'),
+    ('meek', 'Meek — عبور از DPI', 'Meek — DPI evasion'),
+    ('ossh', 'OSSH — مستقیم و سریع', 'OSSH — direct & fast'),
+    ('cdn', 'CDN — فرانتینگ ابری', 'CDN — cloud fronting'),
+  ];
+
   List<Widget> _psiphonPanel(BuildContext context) {
     final region = _pref('transport_psiphon_region', 'auto');
     final label = kPsiphonRegions
         .firstWhere((r) => r.$1 == region, orElse: () => kPsiphonRegions.first)
         .$2;
+    final method = _pref('transport_psiphon_method', 'auto');
+    final methodLabel = kPsiphonMethods
+        .firstWhere((m) => m.$1 == method, orElse: () => kPsiphonMethods.first)
+        .$2;
     return [
+      SettingsSectionHeader(_t('روش اتصال', 'Connection method')),
+      SettingsGroup(
+        children: [
+          SettingsRow(
+            title: _t('روش اتصال', 'Connection method'),
+            leading: SettingsGlyph(
+                tint: Ios.tileIndigo, icon: Icons.alt_route),
+            value: methodLabel,
+            onTap: () async {
+              final v = await pushIosPicker<String>(
+                context,
+                title: _t('روش اتصال سایفون', 'Psiphon connection method'),
+                selected: method,
+                footer: _t(
+                    '«خودکار» کل نردبان پروتکل‌ها را امتحان می‌کند؛ بقیهٔ گزینه‌ها نردبان را به همان خانوادهٔ پروتکل محدود می‌کنند.',
+                    '"Auto" tries the full protocol ladder; other options restrict the ladder to that protocol family.'),
+                options: [
+                  for (final m in kPsiphonMethods)
+                    IosPickerOption(m.$1, _t(m.$2, m.$3)),
+                ],
+              );
+              if (v != null) {
+                final p = await SharedPreferences.getInstance();
+                await p.setString('transport_psiphon_method', v);
+                setState(() {});
+              }
+            },
+          ),
+        ],
+      ),
       SettingsSectionHeader(_t('کشور خروج', 'Exit country')),
       SettingsGroup(
         children: [

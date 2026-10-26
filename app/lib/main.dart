@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import 'controllers/home_layout.dart';
 import 'controllers/servers.dart';
 import 'l10n/s.dart';
 import 'models/server.dart';
+import 'services/app_log.dart';
 import 'services/package_info_proxy.dart';
 import 'services/tor_service.dart';
 import 'services/v2ray_engine.dart';
@@ -295,6 +297,44 @@ void main() {
   if (kReleaseMode) {
     debugPrint = (String? message, {int? wrapWidth}) {};
   }
+  // قانون لاگ اجباری: هر خطای فریم‌ورک/زون‌گرفته‌نشده در AppLog ثبت می‌شود
+  // تا «صفحهٔ سیاه» یا هر خرابی دیگر همیشه سرنخ دقیق در گزارش‌ها داشته باشد.
+  FlutterError.onError = (details) {
+    try {
+      AppLog.e('FLUTTER',
+          '${details.exception}\n${details.stack?.toString() ?? ''}');
+    } catch (_) {}
+  };
+  PlatformDispatcher.instance.onError = (e, st) {
+    try {
+      AppLog.e('UNCAUGHT', '$e\n$st');
+    } catch (_) {}
+    return false;
+  };
+  // FIX v2.10.1: در release هر خطای build به‌صورت ناحیهٔ خالی/سیاه
+  // رندر می‌شد (همان «صفحهٔ سیاه» گزارش‌شده) بدون هیچ سرنخی. از این
+  // به‌بعد خطا در AppLog ثبت می‌شود و یک کارت خطای خوانا جای آن
+  // نمایش داده می‌شود — هم قانون لاگ اجباری، هم رفع کوریِ دیباگ.
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    try {
+      AppLog.e('WIDGET',
+          'build error: ${details.exception}\n${details.stack?.toString() ?? ''}');
+    } catch (_) {}
+    return Material(
+      color: const Color(0xFF1C1C1E),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'render: ${details.exception.toString()}',
+            direction: TextDirection.ltr,
+            style: const TextStyle(
+                color: Colors.white, fontSize: 12, height: 1.4),
+          ),
+        ),
+      ),
+    );
+  };
   runApp(const HasanApp());
 }
 

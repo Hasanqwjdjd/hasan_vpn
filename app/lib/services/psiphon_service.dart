@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import 'socks_xray_builder.dart';
@@ -189,9 +190,18 @@ class PsiphonService {
       // حالت دستی: فقط یک تلاش با همان کانفیگی که کاربر داده.
       final List<PsiphonAttempt> attempts;
       if (isAutoLink(server.shareLink)) {
-        attempts = await PsiphonAuto.attempts(
+        var list = await PsiphonAuto.attempts(
           region: regionOfLink(server.shareLink),
         );
+        // «روش اتصال» صفحهٔ سایفون — فیلتر واقعی نردبان تلاش‌ها بر اساس
+        // انتخاب کاربر. auto = نردبان کامل (رفتار پیش‌فرض).
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final method =
+              prefs.getString('transport_psiphon_method') ?? 'auto';
+          list = _applyConnectionMethod(list, method);
+        } catch (_) {}
+        attempts = list;
       } else {
         attempts = <PsiphonAttempt>[
           PsiphonAttempt(
@@ -337,6 +347,42 @@ class PsiphonService {
       await _stopIfStillCurrent(gen, 'exception');
       return false;
     }
+  }
+
+  /// «روش اتصال» — فیلتر واقعی نردبان تلاش‌ها:
+  ///   auto → نردبان کامل (پیش‌فرض)
+  ///   meek → فقط تلاش‌های Meek (عبور از DPI سخت)
+  ///   ossh → فقط تلاش‌های OSSH/SSH مستقیم (سریع‌تر)
+  ///   cdn  → فقط تلاش‌های CDN-fronted (label با «·cdn»)
+  /// اگر فیلتر هیچ تلاشی باقی نگذارد، نردبان کامل برمی‌گردد تا اتصال
+  /// همیشه امکان‌پذیر بماند.
+  static List<PsiphonAttempt> _applyConnectionMethod(
+      List<PsiphonAttempt> list, String method) {
+    if (list.isEmpty || method == 'auto' || method.isEmpty) return list;
+    bool isMeek(PsiphonAttempt a) {
+      try {
+        final m = jsonDecode(a.configJson);
+        if (m is Map) {
+          final lp = m['LimitTunnelProtocols'];
+          if (lp is List && lp.isNotEmpty) {
+            return lp
+                .any((e) => e.toString().toUpperCase().contains('MEEK'));
+          }
+        }
+      } catch (_) {}
+      return false;
+    }
+
+    final filtered = <PsiphonAttempt>[
+      if (method == 'meek')
+        ...list.where(isMeek),
+      if (method == 'ossh')
+        ...list.where((a) => !isMeek(a)),
+      if (method == 'cdn')
+        ...list.where((a) => a.label.endsWith('·cdn') ||
+            a.label.endsWith('.cdn')),
+    ];
+    return filtered.isEmpty ? list : filtered;
   }
 
   static Future<void> _cacheRegionsLater() async {

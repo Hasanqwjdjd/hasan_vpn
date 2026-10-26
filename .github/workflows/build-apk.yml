@@ -421,6 +421,25 @@ jobs:
               text = text.replace("<application", '<application android:extractNativeLibs="true" android:usesCleartextTraffic="true"', 1)
           if 'android:allowBackup' not in text:
               text = text.replace("<application", '<application android:allowBackup="false"', 1)
+          # FIX v2.10.1 — ریشهٔ «صفحهٔ سیاه» (v2.10.0): Impeller (پیش‌فرض
+          # Flutter 3.27.4 روی دستگاه‌های Vulkan) روی بعضی درایورهای GPU،
+          # ShaderMask(BlendMode.dstIn) و BackdropFilter را کاملاً سیاه
+          # رندر می‌کند — v2.10.0 روی همهٔ صفحات همین را نشان می‌داد.
+          # اپ‌های قدیمی‌تر (بدون هیچ افکتی) روی همان دستگاه سالم بودند و
+          # اپ مرجع (MLM VPN / Compose) هم بلور را سالم رندر می‌کند؛ پس
+          # مشکل از پایپ‌لاین شیدر Impeller است، نه دستگاه. با «false»
+          # پایپ‌لاین Skia (آزمودهٔ سال‌ها) جایگزین می‌شود و شیشه‌های
+          # FrostedGlass + محوشدگی لبه‌ها درست رندر می‌شوند.
+          if 'EnableImpeller' not in text:
+              text = text.replace(
+                  "</application>",
+                  '    <meta-data\n'
+                  '        android:name="io.flutter.embedding.android.EnableImpeller"\n'
+                  '        android:value="false" />\n'
+                  '</application>',
+                  1,
+              )
+
           queries = """    <queries>
               <intent>
                   <action android:name="android.net.VpnService"/>
