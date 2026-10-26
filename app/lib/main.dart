@@ -327,7 +327,7 @@ void main() {
           padding: const EdgeInsets.all(24),
           child: Text(
             'render: ${details.exception.toString()}',
-            direction: TextDirection.ltr,
+            textDirection: TextDirection.ltr,
             style: const TextStyle(
                 color: Colors.white, fontSize: 12, height: 1.4),
           ),
