@@ -1,115 +1,31 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import '../models/subscription.dart';
 import 'link_parser.dart';
-import 'builtin_configs.dart';
 import 'protected_defaults.dart';
 import 'xray_json.dart';
-
-/// دلیل شکست دریافت اشتراک — برای پیام خطای دقیق در UI.
-enum SubFetchErrorKind {
-  httpError, // پاسخ سرور با کد غیر ۲۰۰ (404, 403, 5xx, ...)
-  timeout,
-  dnsFailure, // نام دامنه resolve نشد
-  networkError, // بقیه‌ی خطاهای شبکه/اتصال
-  emptyOrInvalid, // پاسخ ۲۰۰ بود ولی هیچ سروری از آن استخراج نشد
-  unknown,
-}
-
-/// خطای دریافت اشتراک با جزئیات کافی برای نمایش به کاربر و تصمیم‌گیری
-/// دربارهٔ نگه‌داشتن کش قبلی.
-class SubscriptionFetchException implements Exception {
-  final SubFetchErrorKind kind;
-  final int? statusCode;
-  final String? reasonPhrase;
-  final String message;
-
-  const SubscriptionFetchException(
-    this.kind,
-    this.message, {
-    this.statusCode,
-    this.reasonPhrase,
-  });
-
-  @override
-  String toString() => message;
-}
 
 class SubscriptionService {
   static const String _key = 'subscriptions_v3';
   static const String _removedDefaultsKey = 'subscriptions_removed_defaults_v1';
 
-  static const String _msMigratedKey = 'morning_shape_url_migrated_v2';
-
-  /// One-shot: clear stale Morning-Shape cache so the next refresh pulls
-  /// the full 666 configs from the new endpoint (BLOCKER 5).
-  static Future<void> _migrateMorningShapeCache(List<Subscription> subs) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (prefs.getBool(_msMigratedKey) == true) return;
-      var changed = false;
-      for (final s in subs) {
-        if (_isMorningShape(s)) {
-          // Drop stale ~200-entry cache; force network on next refresh.
-          s.cachedLinks = <String>[];
-          s.serverCount = 0;
-          s.lastUpdated = null;
-          changed = true;
-        }
-      }
-      if (changed) await save(subs);
-      await prefs.setBool(_msMigratedKey, true);
-    } catch (_) {}
-  }
-
-
-
-  /// اشتراک‌های پیش‌فرض.
-  /// Phase 1 QA: Netra (and every other hardcoded default) completely removed.
-  /// No protected default subscriptions are injected into the app anymore.
-  static List<Subscription> get defaultSubscriptions => const <Subscription>[];
+  /// اشتراک‌های پیش‌فرض. لینک‌ها اینجا نیستند: از جدول رمزشدهٔ
+  /// [ProtectedDefaults] (ساخته‌شده در CI) فقط لحظهٔ دانلود خوانده می‌شوند.
+  static List<Subscription> get defaultSubscriptions => [
+        for (final e in ProtectedDefaults.entries)
+          Subscription(id: e[0], name: e[1], url: '', isDefault: true),
+      ];
 
   /// آدرس واقعی برای دانلود. برای اشتراک پیش‌فرض از جدول محافظت‌شده می‌آید.
-  ///
-  /// BLOCKER 5 — self-contained Morning-Shape migration:
-  /// The protected-defaults table is built from a CI secret, but we still
-  /// hard-override the known Morning-Shape identity to the new endpoint so
-  /// end users do NOT need to edit any GitHub secret. Display name stays
-  /// "Morning-Shape". Cache is busted on fetch (see _fetchOnce).
-  static const String _morningShapeNewUrl =
-      'https://morning-shape-fb9a.jdjdxjjsj-wklakd.workers.dev/sub?id=413f4627-bfcb-41ff-8b6b-a0d830364376';
-
-  static bool _isMorningShape(Subscription sub) {
-    final id = sub.id.toLowerCase();
-    final name = sub.name.toLowerCase();
-    return id.contains('morning') ||
-        id.contains('morning-shape') ||
-        name.contains('morning-shape') ||
-        name.contains('morning shape') ||
-        name == 'morning-shape';
-  }
-
   static String urlFor(Subscription sub) {
-    // Runtime override — always wins for Morning-Shape identities.
-    if (_isMorningShape(sub)) return _morningShapeNewUrl;
-
     if (sub.isDefault) {
       final u = ProtectedDefaults.urlFor(sub.id);
-      if (u != null && u.isNotEmpty) {
-        // Also catch old URL patterns if the secret still has them.
-        if (u.toLowerCase().contains('morning') ||
-            u.contains('morning-shape')) {
-          return _morningShapeNewUrl;
-        }
-        return u;
-      }
+      if (u != null && u.isNotEmpty) return u;
     }
     return sub.url;
   }
@@ -128,7 +44,6 @@ class SubscriptionService {
 
   /// اشتراک پیش‌فرضی که کاربر حذف کرده نباید در اجرای بعدی برگردد.
   static Future<void> markRemoved(Subscription subscription) async {
-    if (subscription.id == BuiltinConfigs.groupId) return; // هرگز حذف نمی‌شود
     if (!subscription.isDefault) return;
     final prefs = await SharedPreferences.getInstance();
     final removed = await _loadRemovedDefaults(prefs);
@@ -158,29 +73,9 @@ class SubscriptionService {
           .map((item) => Subscription.fromJson(Map<String, dynamic>.from(item)))
           .toList();
 
-      // حذف Morning-Shape از ذخیره‌ی موجود
-      subscriptions.removeWhere((s) => _isMorningShape(s));
-
-      // Phase 1 QA: purge any leftover Netra (or other protected defaults)
-      // that were previously injected so they never reappear.
-      final before = subscriptions.length;
-      subscriptions.removeWhere((s) {
-        if (!s.isDefault) return false;
-        final id = s.id.toLowerCase();
-        final name = s.name.toLowerCase();
-        return id.contains('netra') || name.contains('netra');
-      });
-      if (subscriptions.length != before) {
-        debugPrint(
-            '[SubscriptionService] purged Netra default(s); remaining=${subscriptions.length}');
-      }
-
       final removed = await _loadRemovedDefaults(prefs);
       for (final defaultSub in defaultSubscriptions) {
-        if (removed.contains(defaultSub.id) &&
-            defaultSub.id != BuiltinConfigs.groupId) {
-          continue;
-        }
+        if (removed.contains(defaultSub.id)) continue;
         if (!subscriptions.any((s) => s.id == defaultSub.id)) {
           subscriptions.add(defaultSub);
         }
@@ -210,182 +105,71 @@ class SubscriptionService {
 
   // ---------------------------------------------------------------- network
 
-  // برخی ارائه‌دهنده‌ها User-Agent غیرمرورگری را بلاک می‌کنند (403/404 جعلی).
-  static const String _browserUserAgent =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-
   static Future<List<VpnServer>> fetch(Subscription subscription) async {
-    // گروه Built-in از شبکه fetch نمی‌شود — مستقیم از cache.
-    if (subscription.id == BuiltinConfigs.groupId) {
-      return fromCache(subscription);
-    }
-    // Morning-Shape: never serve the stale ~200 cache; always hit the new URL.
-    if (_isMorningShape(subscription) && subscription.serverCount > 0 && subscription.serverCount < 500) {
-      subscription.cachedLinks = <String>[];
-      subscription.serverCount = 0;
-    }
-    // ۴۲۹ (Too Many Requests) معمولاً موقتی است؛ قبل از تسلیم‌شدن با یک کمی
-    // فاصله دوباره امتحان می‌کنیم (حداکثر ۲ تلاش اضافه).
-    const maxRetries = 2;
-    SubscriptionFetchException? lastRateLimitError;
-
-    for (var attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        return await _fetchOnce(subscription);
-      } on SubscriptionFetchException catch (e) {
-        final is429 = e.kind == SubFetchErrorKind.httpError && e.statusCode == 429;
-        if (!is429 || attempt == maxRetries) rethrow;
-        lastRateLimitError = e;
-        await Future<void>.delayed(Duration(seconds: attempt == 0 ? 2 : 5));
-      }
-    }
-    // به این خط نمی‌رسیم؛ فقط برای رضایت آنالایزر.
-    throw lastRateLimitError ??
-        const SubscriptionFetchException(
-            SubFetchErrorKind.unknown, 'Unknown fetch error');
-  }
-
-  static Future<List<VpnServer>> _fetchOnce(Subscription subscription) async {
     final http.Response response;
     try {
-      final ua = subscription.customUserAgent.trim().isNotEmpty
-          ? subscription.customUserAgent.trim()
-          : _browserUserAgent;
       response = await http
           .get(
             Uri.parse(urlFor(subscription)),
-            headers: <String, String>{
-              'User-Agent': ua,
+            headers: const {
+              'User-Agent': 'HasanVPN/10.0',
               'Accept': '*/*',
-              'Accept-Language': 'en-US,en;q=0.9,fa;q=0.8',
-              'Accept-Encoding': 'gzip, deflate',
-              'Connection': 'keep-alive',
             },
           )
-          .timeout(const Duration(seconds: 40));
+          .timeout(const Duration(seconds: 20));
     } on TimeoutException {
-      throw const SubscriptionFetchException(
-        SubFetchErrorKind.timeout,
-        'Timeout — سرور در ۴۰ ثانیه پاسخ نداد',
-      );
-    } on SocketException catch (e) {
-      // پیام e.message معمولاً شامل آدرس کامل است؛ برای اشتراک پیش‌فرض
-      // (لینک محافظت‌شده) نباید در پیام خطا لو برود.
-      final isDns = e.osError?.errorCode == 7 || // EAI_NONAME (Android/Linux)
-          e.message.toLowerCase().contains('lookup') ||
-          e.message.toLowerCase().contains('nodename') ||
-          e.message.toLowerCase().contains('resolve');
-      throw SubscriptionFetchException(
-        isDns ? SubFetchErrorKind.dnsFailure : SubFetchErrorKind.networkError,
-        subscription.isDefault
-            ? (isDns ? 'DNS resolution failed' : 'Network error')
-            : (isDns
-                ? 'DNS resolution failed: ${e.message}'
-                : 'Network error: ${e.message}'),
-      );
+      throw Exception('timeout');
     } catch (e) {
-      throw SubscriptionFetchException(
-        SubFetchErrorKind.unknown,
-        subscription.isDefault ? 'Network error' : 'Error: $e',
-      );
+      // پیام خطای http شامل آدرس کامل است؛ برای اشتراک پیش‌فرض نباید لو برود.
+      if (subscription.isDefault) throw Exception('network error');
+      rethrow;
     }
 
     if (response.statusCode != 200) {
-      throw SubscriptionFetchException(
-        SubFetchErrorKind.httpError,
-        'HTTP ${response.statusCode}'
-        '${response.reasonPhrase != null ? ' ${response.reasonPhrase}' : ''}',
-        statusCode: response.statusCode,
-        reasonPhrase: response.reasonPhrase,
-      );
+      throw Exception('HTTP ${response.statusCode}');
     }
 
     // بدنه را خودمان UTF-8 رمزگشایی می‌کنیم؛ response.body بدون charset در هدر
     // به latin1 می‌رود و نام‌های فارسی/ایموجی خراب می‌شوند.
     var content = utf8.decode(response.bodyBytes, allowMalformed: true).trim();
-    final servers = parseContent(content, subscription.id);
+    content = _maybeDecodeBase64(content);
+
+    final servers = parseContent(content, subscription.id,
+        userOwned: !subscription.isDefault);
     if (servers.isEmpty) {
-      // پاسخ خراب یا خالی نباید کش قبلی را پاک کند — throw می‌کنیم قبل از
-      // این‌که subscription.cachedLinks/serverCount دست بخورد.
-      throw const SubscriptionFetchException(
-        SubFetchErrorKind.emptyOrInvalid,
-        'پاسخ ۲۰۰ بود ولی هیچ سروری از آن استخراج نشد (فرمت نامعتبر؟)',
-      );
+      // پاسخ خراب یا خالی نباید کش قبلی را پاک کند.
+      throw Exception('no servers found');
     }
 
     subscription.cachedLinks = servers.map((s) => s.shareLink).toList();
     return servers;
   }
 
-
-  /// FIX: اگه ساب overrideAddress داره، آدرس host همه‌ی لینک‌ها رو
-  /// با اون جایگزین کن. برای انتخاب IP کلاودفلر و عبور از محدودیت آپلود.
-  static String _applyAddressOverride(String link, String override) {
-    if (override.trim().isEmpty) return link;
-    try {
-      final uri = Uri.parse(link);
-      if (uri.host.isEmpty) return link;
-      var newHost = override.trim();
-      int? newPort;
-      // اگه override با :port داده شده
-      final colon = newHost.lastIndexOf(':');
-      if (colon > 0 && !newHost.contains('[')) {
-        final maybePort = int.tryParse(newHost.substring(colon + 1));
-        if (maybePort != null) {
-          newPort = maybePort;
-          newHost = newHost.substring(0, colon);
-        }
-      }
-      final rebuilt = uri.replace(
-        host: newHost,
-        port: newPort,
-      );
-      return rebuilt.toString();
-    } catch (_) {
-      return link;
-    }
-  }
-
   static List<VpnServer> fromCache(Subscription subscription) {
-    return _build(subscription.cachedLinks, subscription.id,
-        overrideAddress: subscription.overrideAddress);
+    return _build(
+        subscription.cachedLinks, subscription.id, !subscription.isDefault);
   }
 
   // ---------------------------------------------------------------- parsing
 
-  static List<VpnServer> parseContent(String rawContent, String subscriptionId) {
-    // بخش ۸ — اگر محتوا Base64 بود (استاندارد اشتراک‌ها) اول دیکود می‌کنیم.
-    // اینجا هم انجام می‌دهیم تا paste-مستقیم هم کار کند؛ روی متن دیکودشده
-    // دوباره اجرا شدنش no-op است.
-    final content = maybeDecodeBase64(rawContent);
+  static List<VpnServer> parseContent(String content, String subscriptionId,
+      {bool userOwned = false}) {
     final trimmed = content.trim();
     var links = <String>[];
 
-    // کانفیگ کامل Xray JSON تک (مثل Patterniha) → یک سرور واحد
+    // کانفیگ کامل Xray JSON (مثل Patterniha) → یک سرور واحد
     if (XrayJson.looksLike(trimmed)) {
       final id = LinkParser.stableId('sub', trimmed);
       final server = XrayJson.parse(trimmed, id: id);
       if (server != null) {
-        debugPrint('[Subscription] content kind: single xray-json config');
+        server.isDeletable = userOwned;
         return <VpnServer>[server];
-      }
-    }
-
-    // بخش ۱.۳ — چند کانفیگ کامل Xray JSON پشت‌سرهم (sub-generator workers:
-    // ۲۱ آبجکت "{...}\n{...}") → هر آبجکت یک سرور.
-    if (trimmed.startsWith('{')) {
-      final multi = XrayJson.parseAll(trimmed, idPrefix: 'sub');
-      if (multi.isNotEmpty) {
-        debugPrint('[Subscription] content kind: multi xray-json '
-            '(${multi.length} configs) — user-owned (copyable)');
-        return multi;
       }
     }
 
     // آرایه‌ای از کانفیگ‌های Xray JSON (مثل Patterniha Serverless)
     if (trimmed.startsWith('[')) {
-      final xrayServers = _xrayArrayFromJson(trimmed);
+      final xrayServers = _xrayArrayFromJson(trimmed, userOwned);
       if (xrayServers.isNotEmpty) return xrayServers;
     }
 
@@ -396,49 +180,22 @@ class SubscriptionService {
       links = LinkParser.extractLinks(content);
     }
 
-    if (links.isNotEmpty) {
-      debugPrint('[Subscription] content kind: links '
-          '(${links.length} link(s) extracted)');
-    } else {
-      debugPrint('[Subscription] content kind: UNRECOGNIZED '
-          '(len=${content.length}, head=${content.substring(0, content.length < 40 ? content.length : 40)})');
-    }
-
-    // FIX: ssd:// — چند سرور. این هم برای کل content و هم لینک‌های تک است.
-    final allServers = <VpnServer>[];
-    for (final link in links) {
-      if (link.toLowerCase().startsWith('ssd://')) {
-        final servers = LinkParser.parseSsd(link, subscriptionId);
-        allServers.addAll(servers);
-      }
-    }
-
-    if (allServers.isNotEmpty) {
-      // بقیه لینک‌ها رو هم اضافه کن
-      final rest = links
-          .where((l) => !l.toLowerCase().startsWith('ssd://'))
-          .toList();
-      allServers.addAll(_build(rest, subscriptionId));
-      // بخش ۱.۳ — سرورهای سابسکریپشن سرورِ کاربر هستند (کپی/ویرایش/حذف).
-      return allServers;
-    }
-
-    return _build(links, subscriptionId);
+    return _build(links, subscriptionId, userOwned);
   }
 
-  static List<VpnServer> _build(List<String> links, String subscriptionId,
-      {String overrideAddress = ''}) {
+  static List<VpnServer> _build(
+      List<String> links, String subscriptionId, bool userOwned) {
     final servers = <VpnServer>[];
     final seen = <String>{};
 
     for (final link in links) {
-      // FIX: اعمال overrideAddress روی host قبل از parse
-      final effectiveLink = _applyAddressOverride(link, overrideAddress);
-      final id = LinkParser.stableId('sub', effectiveLink);
+      final id = LinkParser.stableId('sub', link);
       if (!seen.add(id)) continue;
-      final server = LinkParser.parse(effectiveLink, id: id);
+      final server = LinkParser.parse(link, id: id);
       if (server != null) {
-        // بخش ۱.۳ — سرور کاربر: قابل کپی/ویرایش/حذف.
+        // فقط سرورهای اشتراک پیش‌فرض (رایگان برنامه) محافظت می‌شوند؛
+        // سرورهای اشتراکی که خود کاربر افزوده، قابل حذف و کپی‌اند.
+        server.isDeletable = userOwned;
         servers.add(server);
       }
     }
@@ -474,7 +231,7 @@ class SubscriptionService {
   /// آرایه‌ای از کانفیگ‌های Xray JSON → لیست سرورها.
   /// بعضی اشتراک‌ها (مثل Patterniha) به‌جای لینک، آرایه‌ای از JSON کامل
   /// با outbounds/routing می‌فرستند.
-  static List<VpnServer> _xrayArrayFromJson(String content) {
+  static List<VpnServer> _xrayArrayFromJson(String content, bool userOwned) {
     final servers = <VpnServer>[];
     try {
       final decoded = jsonDecode(content);
@@ -486,7 +243,7 @@ class SubscriptionService {
         final id = LinkParser.stableId('xray', jsonString);
         final server = XrayJson.parse(jsonString, id: id);
         if (server != null) {
-          // بخش ۱.۳ — سرور کاربر: قابل کپی/ویرایش/حذف.
+          server.isDeletable = userOwned;
           servers.add(server);
         }
       }
@@ -495,8 +252,7 @@ class SubscriptionService {
   }
 
   /// اشتراک‌ها معمولاً Base64 هستند (استاندارد یا URL-safe، با یا بدون padding).
-  /// public شد تا لایه‌های دیگر (مثل paste-مستقیم) هم بتوانند استفاده کنند.
-  static String maybeDecodeBase64(String content) {
+  static String _maybeDecodeBase64(String content) {
     final compact = content.replaceAll(RegExp(r'\s+'), '');
 
     if (compact.length < 24) return content;
