@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'services/v2ray_engine.dart';
 import 'services/settings_service.dart';

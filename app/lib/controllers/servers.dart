@@ -192,10 +192,8 @@ class ServerRepository extends ChangeNotifier {
             s.lastErrorCode = null;
             return servers;
           } catch (e) {
-            s.lastError =
-                e is SubscriptionFetchException ? e.message : e.toString();
-            s.lastErrorCode =
-                e is SubscriptionFetchException ? e.statusCode : null;
+            s.lastError = e.toString();
+            s.lastErrorCode = null;
             return SubscriptionService.fromCache(s);
           }
         }

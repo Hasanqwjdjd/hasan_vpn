@@ -65,7 +65,12 @@ final List<Destination> kDestinations = [
     stringKey: 'home_settings',
     art: const TileArt.svg('$_assets/ic_app_settings.svg'),
     tint: Ios.tileGray,
-    builder: (_) => const SettingsScreen(),
+    builder: (_) => SettingsScreen(
+      themeMode: 'system',
+      language: 'fa',
+      onThemeChanged: (_) {},
+      onLanguageChanged: (_) {},
+    ),
   ),
   Destination(
     id: 'cloud',
