@@ -1,7 +1,7 @@
 name: hasan_vpn
 description: Hasan VPN
 publish_to: "none"
-version: 2.10.4+104
+version: 2.10.5+105
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
