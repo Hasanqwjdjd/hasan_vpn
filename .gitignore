@@ -14,3 +14,9 @@ __pycache__/
 aether*.toml
 app/plugins/
 app/pubspec.lock
+hasan.keystore
+android-keystore.b64
+.flutter-plugins
+.flutter-plugins-dependencies
+build_src/
+artifacts/

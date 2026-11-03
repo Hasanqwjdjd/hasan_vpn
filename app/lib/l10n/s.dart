@@ -23,8 +23,7 @@ class S {
   static String tf(String key, List<Object> args) {
     var out = t(key);
     for (var i = 0; i < args.length; i++) {
-      out = out.replaceAll('{$i}', args[i].toString()).replaceAll(
-          'ellan{$i}', args[i].toString());
+      out = out.replaceAll('{$i}', args[i].toString());
     }
     // الگوی رایج Android: %1$s را هم پشتیبانی می‌کنیم
     for (var i = 0; i < args.length; i++) {

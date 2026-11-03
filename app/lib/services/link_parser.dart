@@ -233,7 +233,6 @@ class LinkParser {
       }
       if (inner is! Map) return null;
 
-      final iface = inner['interface'];
       final peer = inner['peer'];
       if (peer is! Map) return null;
       final port = int.tryParse((awg['port'] ?? '51820').toString()) ?? 51820;

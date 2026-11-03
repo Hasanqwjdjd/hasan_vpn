@@ -511,7 +511,6 @@ class AetherProfile {
       case 'turbo':
       case 'balanced':
       case 'thorough':
-      case 'verified':
       case 'ironclad':
         return s;
       default:

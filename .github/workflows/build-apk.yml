@@ -101,31 +101,20 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > hasan.keystore
-            SP="$KEYSTORE_PASSWORD"
-            echo "STORE_PASS=$SP" >> "$GITHUB_ENV"
-            echo "KEY_PASS=${KEY_PASSWORD:-$SP}" >> "$GITHUB_ENV"
-            echo "KEY_ALIAS_NAME=${KEY_ALIAS:-hasan}" >> "$GITHUB_ENV"
-            echo "Using keystore from GitHub Secrets"
-          else
-            echo "::warning::KEYSTORE_BASE64 تنظیم نشده؛ از کلید پیش‌فرض استفاده می‌شود."
-            if [ ! -f hasan.keystore ]; then
-              keytool -genkey -v \
-                -keystore hasan.keystore \
-                -alias hasan \
-                -keyalg RSA \
-                -keysize 2048 \
-                -validity 10000 \
-                -storepass hasan12345 \
-                -keypass hasan12345 \
-                -dname "CN=Hasan, OU=Hasan, O=Hasan, L=Tehran, S=Tehran, C=IR"
-            fi
-            SP="hasan12345"
-            echo "STORE_PASS=$SP" >> "$GITHUB_ENV"
-            echo "KEY_PASS=hasan12345" >> "$GITHUB_ENV"
-            echo "KEY_ALIAS_NAME=hasan" >> "$GITHUB_ENV"
+          # کلید امضا فقط از GitHub Secrets می‌آید. قبلاً یک مسیر جایگزین با
+          # رمز ثابتِ هاردکدشده داخل همین فایل بود؛ آن مسیر حذف شد، چون هر کسی
+          # با دیدن ریپو می‌توانست با همان کلید آپدیت امضا کند.
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::KEYSTORE_BASE64/KEYSTORE_PASSWORD تنظیم نشده — بیلد امضانشده متوقف شد."
+            echo "GitHub → Settings → Secrets and variables → Actions را ببینید."
+            exit 1
           fi
+          echo "$KEYSTORE_BASE64" | base64 -d > hasan.keystore
+          SP="$KEYSTORE_PASSWORD"
+          echo "STORE_PASS=$SP" >> "$GITHUB_ENV"
+          echo "KEY_PASS=${KEY_PASSWORD:-$SP}" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS_NAME=${KEY_ALIAS:-hasan}" >> "$GITHUB_ENV"
+          echo "Using keystore from GitHub Secrets"
           keytool -list -keystore hasan.keystore -storepass "$SP" >/dev/null
           echo "keystore OK"
 
@@ -408,6 +397,10 @@ jobs:
           """
           if 'android.permission.INTERNET' not in text:
               text = text.replace("<application", perms + "    <application", 1)
+          # نام برنامه روی لانچر: قالب flutter create نام پکیج را می‌گذارد،
+          # پس لانچر «hasan_vpn» نشان می‌داد نه «Hasan VPN».
+          text = text.replace('android:label="hasan_vpn"',
+                              'android:label="Hasan VPN"')
           # بخش ۹ — نتیجه‌ی تست واقعی (release v2.7.9): extractNativeLibs=false
           # حجم APK را از 73MB به 161MB رساند (libs فشرده‌نشده در APK برای
           # mmap). طبق مشخصات کاربر برگشتیم به "true" + حذف .so های

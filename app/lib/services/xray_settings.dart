@@ -520,11 +520,6 @@ class XraySettings {
       // DNS leak prevention: هیچ DNS query‌ای نباید مستقیم بره.
       // Xray DNS module خودش جواب می‌ده و query‌ها را از تونل می‌فرستد.
       if (settings['dnsLeakProtection'] != false) {
-        final inbounds = List<Map<String, dynamic>>.from(
-          (map['inbounds'] as List? ?? const [])
-              .whereType<Map>()
-              .map((e) => Map<String, dynamic>.from(e)),
-        );
         // مطمئن شو dns-out outbound هست.
         final outs = List<Map<String, dynamic>>.from(
           (map['outbounds'] as List? ?? const [])

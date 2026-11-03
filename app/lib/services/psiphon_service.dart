@@ -10,7 +10,6 @@ import 'socks_xray_builder.dart';
 import 'xray_settings.dart';
 import 'psiphon_auto.dart';
 import 'v2ray_engine.dart';
-import 'connection_log_service.dart';
 
 typedef PsiphonProgress = void Function(String message);
 
@@ -261,7 +260,7 @@ class PsiphonService {
 
         if (ok) {
           port = p;
-          lastRegion = result!['region']?.toString();
+          lastRegion = result['region']?.toString();
           if (a.mode != 'manual') {
             // ignore: unawaited_futures
             PsiphonAuto.rememberSuccess(a);

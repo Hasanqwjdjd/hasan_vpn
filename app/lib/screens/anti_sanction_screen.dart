@@ -94,7 +94,6 @@ class _AntiSanctionScreenState extends State<AntiSanctionScreen> {
     final muted = AppColors.muted(context);
     final muted2 = AppColors.muted2(context);
     final surface = AppColors.surface(context);
-    final border = AppColors.border(context);
 
     return Scaffold(
       backgroundColor: AppColors.bg(context),

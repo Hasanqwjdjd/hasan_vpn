@@ -11,7 +11,6 @@ import '../models/server.dart';
 import 'socks_probe.dart';
 import 'v2ray_engine.dart';
 import 'warp_registration_proxy.dart';
-import 'connection_log_service.dart';
 
 typedef AetherProgress = void Function(String message);
 

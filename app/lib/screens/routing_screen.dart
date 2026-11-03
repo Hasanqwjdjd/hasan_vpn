@@ -129,7 +129,7 @@ class _RoutingScreenState extends State<RoutingScreen> {
       if (isNew) {
         _rules.add(rule);
       } else {
-        _rules[index!] = rule;
+        _rules[index] = rule;
       }
     });
     await _save();

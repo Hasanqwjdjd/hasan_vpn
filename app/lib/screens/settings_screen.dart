@@ -3,17 +3,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'log_viewer_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import '../services/app_colors.dart';
 import '../services/settings_service.dart';
 import 'backup_screen.dart';
 import 'connection_log_screen.dart';
 import '../services/warp_scout_scheduler.dart';
 import '../services/quality_alert.dart';
-import '../services/server_batch_export.dart';
-import '../services/warp_batch_tester.dart';
-import '../services/warp_endpoint_health_monitor.dart';
 import '../services/update_service.dart';
 import 'test_settings_screen.dart';
 import 'anti_sanction_screen.dart';
@@ -403,6 +398,184 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 setState(() => _smartResumeEnabled = v);
                 await _saveSmartResume(v);
               },
+            ),
+          ),
+
+          _sectionTitle(_t('تست دسته‌ای و کیفیت', 'Batch Test & Quality')),
+          _card(
+            context,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: AppColors.accent,
+                  title: Text(
+                    _t('هشدار افت کیفیت', 'Quality drop alert'),
+                    style:
+                        TextStyle(color: AppColors.fg(context), fontSize: 13),
+                  ),
+                  subtitle: Text(
+                    _t(
+                      'اگه امتیاز کیفیت چند بار پشت‌سرهم زیر آستانه بیاد، هشدار بده.',
+                      'Warn when the quality score stays below the threshold.',
+                    ),
+                    style: TextStyle(
+                        color: AppColors.muted2(context),
+                        fontSize: 10.5,
+                        height: 1.4),
+                  ),
+                  value: _qualityAlertEnabled,
+                  onChanged: (v) async {
+                    setState(() => _qualityAlertEnabled = v);
+                    await QualityAlert.instance.setEnabled(v);
+                  },
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _t('آستانهٔ هشدار', 'Alert threshold'),
+                        style: TextStyle(
+                            color: AppColors.muted(context), fontSize: 12.5),
+                      ),
+                    ),
+                    Text(
+                      '$_qualityThreshold',
+                      style: TextStyle(
+                        color: AppColors.accent,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                Slider(
+                  min: 10,
+                  max: 90,
+                  divisions: 16,
+                  activeColor: AppColors.accent,
+                  value: _qualityThreshold.toDouble().clamp(10, 90),
+                  onChanged: _qualityAlertEnabled
+                      ? (v) => setState(() => _qualityThreshold = v.round())
+                      : null,
+                  onChangeEnd: (v) => QualityAlert.instance.setThreshold(v.round()),
+                ),
+                Divider(color: AppColors.border(context)),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: AppColors.accent,
+                  title: Text(
+                    _t('تست خودکار در پس‌زمینه',
+                        'Automatic background testing'),
+                    style:
+                        TextStyle(color: AppColors.fg(context), fontSize: 13),
+                  ),
+                  subtitle: Text(
+                    _t(
+                      'سرورها هر چند دقیقه خودشان تست شوند.',
+                      'Re-test servers every few minutes.',
+                    ),
+                    style: TextStyle(
+                        color: AppColors.muted2(context), fontSize: 10.5),
+                  ),
+                  value: _batchAutoEnabled,
+                  onChanged: (v) async {
+                    setState(() => _batchAutoEnabled = v);
+                    await _saveBatchPref('batch_auto_v1', v);
+                  },
+                ),
+                if (_batchAutoEnabled) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    _t('فاصلهٔ تست (دقیقه)', 'Test interval (minutes)'),
+                    style: TextStyle(
+                        color: AppColors.muted(context), fontSize: 12.5),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    children: [0, 15, 30, 60, 120]
+                        .map((m) => _intervalChip(context, m))
+                        .toList(),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _t('هم‌زمانی تست', 'Parallel tests'),
+                          style: TextStyle(
+                              color: AppColors.muted(context),
+                              fontSize: 12.5),
+                        ),
+                      ),
+                      Text(
+                        '$_batchParallelism',
+                        style: TextStyle(
+                          color: AppColors.accent,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    min: 1,
+                    max: 8,
+                    divisions: 7,
+                    activeColor: AppColors.accent,
+                    value: _batchParallelism.toDouble().clamp(1, 8),
+                    onChanged: (v) =>
+                        setState(() => _batchParallelism = v.round()),
+                    onChangeEnd: (v) =>
+                        _saveBatchPref('batch_parallelism_v1', v.round()),
+                  ),
+                ],
+                Divider(color: AppColors.border(context)),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: AppColors.accent,
+                  title: Text(
+                    _t('اسکن خودکار WARP Scout', 'Automatic WARP Scout'),
+                    style:
+                        TextStyle(color: AppColors.fg(context), fontSize: 13),
+                  ),
+                  subtitle: Text(
+                    _t(
+                      'دوره‌ای endpointهای WARP را دوباره اسکن کن.',
+                      'Periodically re-scan WARP endpoints.',
+                    ),
+                    style: TextStyle(
+                        color: AppColors.muted2(context), fontSize: 10.5),
+                  ),
+                  value: _scoutSchedulerEnabled,
+                  onChanged: (v) async {
+                    setState(() => _scoutSchedulerEnabled = v);
+                    await WarpScoutScheduler.instance.setEnabled(v);
+                  },
+                ),
+                if (_scoutSchedulerEnabled) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    _t('فاصلهٔ اسکن', 'Scan interval'),
+                    style: TextStyle(
+                        color: AppColors.muted(context), fontSize: 12.5),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _intervalsForScout()
+                        .map((m) => _scoutIntervalChip(context, m))
+                        .toList(),
+                  ),
+                ],
+              ],
             ),
           ),
 
@@ -1009,6 +1182,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Icon(Icons.chevron_left,
                 color: AppColors.muted2(context), size: 20),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _intervalChip(BuildContext context, int minutes) {
+    final active = _autoTestMin == minutes;
+    return GestureDetector(
+      onTap: () async {
+        setState(() => _autoTestMin = minutes);
+        await SettingsService.setAutoTestIntervalMin(minutes);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active
+              ? AppColors.accent.withValues(alpha: 0.15)
+              : AppColors.elevated(context),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+              color: active ? AppColors.accent : AppColors.border(context)),
+        ),
+        child: Text(
+          minutes == 0 ? _t('خاموش', 'Off') : '$minutes',
+          style: TextStyle(
+              color: active ? AppColors.accent : AppColors.muted(context),
+              fontSize: 11),
+        ),
+      ),
+    );
+  }
+
+  Widget _scoutIntervalChip(BuildContext context, int minutes) {
+    final active = WarpScoutScheduler.instance.intervalMin == minutes;
+    return GestureDetector(
+      onTap: () async {
+        await WarpScoutScheduler.instance.setIntervalMin(minutes);
+        if (mounted) setState(() {});
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active
+              ? AppColors.accent.withValues(alpha: 0.15)
+              : AppColors.elevated(context),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+              color: active ? AppColors.accent : AppColors.border(context)),
+        ),
+        child: Text(
+          '$minutes',
+          style: TextStyle(
+              color: active ? AppColors.accent : AppColors.muted(context),
+              fontSize: 11),
         ),
       ),
     );

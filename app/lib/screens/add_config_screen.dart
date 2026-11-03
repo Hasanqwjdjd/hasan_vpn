@@ -8,16 +8,13 @@ import '../models/server.dart';
 import '../services/app_colors.dart';
 import '../services/link_parser.dart';
 import '../services/psiphon_auto.dart';
-import '../services/psiphon_service.dart';
 import '../services/geo_flag.dart';
 // بخش ۵ — بازگشت کلاینت Aether (هسته‌ی WARP بومی)
-import '../services/aether_service.dart';
 import '../models/aether_profile.dart';
 import '../services/warp_service.dart';
 import '../services/warp_endpoint_tester.dart';
 import '../services/warp_registration_proxy.dart';
 import '../services/v2ray_engine.dart';
-import '../services/master_dns_service.dart';
 import '../services/warp_masque_service.dart';
 import '../services/mdns_settings.dart';
 import '../services/tor_sni_presets.dart';
@@ -51,7 +48,9 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
   final TextEditingController _sniController = TextEditingController();
   bool _sniEnabled = false;
   bool _isFa = true;
-  String _selectedType = 'manual'; // psiphon|tor|manual|sub|aether
+  // manual | siphon | aether | chain | hysteria2 | warp | warp_masque | ssh
+  // | socks5 | tunnel | masterdns
+  String _selectedType = 'manual';
 
   // بخش ۵ — تنظیمات فرم Aether (بقیهٔ فیلدها = پیش‌فرض AetherProfile؛
   // تنظیمات پیشرفته بعداً از صفحه‌ی ویرایش سرور در دسترس است.)
@@ -197,158 +196,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
     );
-  }
-
-  /// دیالوگ انتخاب SNI جعلی — لیست کامل مثل عکس‌های برنامهٔ مرجع
-  /// دیالوگ انتخاب SNI — وقتی فعال است حتماً یکی باید انتخاب شود.
-  /// لیست کامل (همهٔ دامنه‌های قبلی برنامه + دامنه‌های عکس) بدون حذف.
-  Future<void> _showSniPicker() async {
-    // اگر خالی بود، پیش‌فرض را می‌گذاریم تا همیشه یک مقدار معتبر داشته باشیم
-    var selected = _sniController.text.trim();
-    if (selected.isEmpty) selected = TorSniPresets.defaultSni;
-
-    final customController = TextEditingController(text: selected);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setDialogState) {
-            return AlertDialog(
-              backgroundColor: AppColors.surface(ctx),
-              title: Text(
-                _t('جعل نشانگر نام سرور', 'Spoof Server Name Indicator'),
-                style: TextStyle(color: AppColors.fg(ctx), fontSize: 16),
-              ),
-              content: SizedBox(
-                width: double.maxFinite,
-                height: MediaQuery.of(ctx).size.height * 0.55,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _t(
-                        'یک مورد را انتخاب کنید (الزامی)',
-                        'Select one item (required)',
-                      ),
-                      style: TextStyle(
-                          color: AppColors.muted2(ctx), fontSize: 11),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: customController,
-                      style: TextStyle(color: AppColors.fg(ctx), fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText: _t(
-                            'یا دامنهٔ دلخواه بنویسید…',
-                            'Or type a custom domain…'),
-                        hintStyle:
-                            TextStyle(color: AppColors.muted2(ctx)),
-                        filled: true,
-                        fillColor: AppColors.bg(ctx),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: AppColors.border(ctx)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: AppColors.border(ctx)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(
-                              color: AppColors.accent, width: 1.5),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
-                      ),
-                      onChanged: (v) {
-                        final t = v.trim();
-                        if (t.isNotEmpty) {
-                          setDialogState(() => selected = t);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    Expanded(
-                      child: ListView.separated(
-                        itemCount: TorSniPresets.all.length,
-                        separatorBuilder: (_, __) => Divider(
-                          height: 1,
-                          color: AppColors.border(ctx),
-                        ),
-                        itemBuilder: (context, i) {
-                          final sni = TorSniPresets.all[i];
-                          final isSelected = sni == selected;
-                          return ListTile(
-                            dense: true,
-                            contentPadding:
-                                const EdgeInsets.symmetric(horizontal: 4),
-                            leading: Icon(
-                              isSelected
-                                  ? Icons.radio_button_checked
-                                  : Icons.radio_button_off,
-                              color: isSelected
-                                  ? AppColors.accent
-                                  : AppColors.muted2(ctx),
-                              size: 20,
-                            ),
-                            title: Text(
-                              sni,
-                              style: TextStyle(
-                                color: isSelected
-                                    ? AppColors.accent
-                                    : AppColors.fg(ctx),
-                                fontSize: 13,
-                                fontWeight: isSelected
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                              ),
-                            ),
-                            onTap: () {
-                              setDialogState(() {
-                                selected = sni;
-                                customController.text = sni;
-                              });
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: Text(_t('لغو', 'Cancel'),
-                      style: TextStyle(color: AppColors.muted(ctx))),
-                ),
-                TextButton(
-                  onPressed: () {
-                    // حتماً یک مقدار غیرخالی برگردان
-                    final value = selected.trim().isNotEmpty
-                        ? selected.trim()
-                        : TorSniPresets.defaultSni;
-                    Navigator.pop(ctx, value);
-                  },
-                  child: Text(_t('تأیید', 'OK'),
-                      style: const TextStyle(color: AppColors.accent)),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (result != null && result.isNotEmpty && mounted) {
-      setState(() {
-        _sniController.text = result;
-        _sniEnabled = true; // اگر از دیالوگ انتخاب شد، سوئیچ هم روشن بماند
-      });
-    }
   }
 
   Future<void> _openFreeConfigWizard() async {
@@ -645,7 +492,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     }
   }
 
-  static final RegExp _peerRegex = RegExp(r'^(\[[0-9a-fA-F:.]+\]|[0-9.]+):\d{1,5}$');
   void _addSiphonServer() {
     final sponsor = _psiphonSponsorController.text.trim();
     final channel = _psiphonChannelController.text.trim();
@@ -3616,45 +3462,6 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
     );
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required Color color,
-  }) {
-    OutlineInputBorder border(Color c, [double w = 1]) => OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: c, width: w),
-        );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: AppColors.muted(context),
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          style: TextStyle(color: AppColors.fg(context), fontSize: 13),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: AppColors.muted2(context)),
-            filled: true,
-            fillColor: AppColors.surface(context),
-            border: border(AppColors.border(context)),
-            enabledBorder: border(AppColors.border(context)),
-            focusedBorder: border(color, 1.5),
-          ),
-        ),
-      ],
-    );
-  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -3767,6 +3574,52 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               icon: Icons.waves,
               type: 'hysteria2',
               color: const Color(0xFFEF6C00),
+            ),
+            _buildTypeCard(
+              title: 'WARP / WARP+',
+              subtitle: _t('ثبت خودکار + زنجیرهٔ چند پرشی',
+                  'Auto register + multi-hop chain'),
+              icon: Icons.cloud_queue,
+              type: 'warp',
+              color: const Color(0xFF1976D2),
+            ),
+            _buildTypeCard(
+              title: 'WARP MASQUE',
+              subtitle: _t('WARP روی QUIC/HTTP3 با DNS سفارشی',
+                  'WARP over QUIC/HTTP3 with custom DNS'),
+              icon: Icons.layers_outlined,
+              type: 'warp_masque',
+              color: const Color(0xFF3949AB),
+            ),
+            _buildTypeCard(
+              title: 'SSH',
+              subtitle: _t('تونل SSH + SOCKS5 روی سرور',
+                  'SSH tunnel + SOCKS5 on the server'),
+              icon: Icons.terminal,
+              type: 'ssh',
+              color: const Color(0xFF66BB6A),
+            ),
+            _buildTypeCard(
+              title: 'SOCKS5',
+              subtitle: _t('پروکسی SOCKS5 از راه دور', 'Remote SOCKS5 proxy'),
+              icon: Icons.dns,
+              type: 'socks5',
+              color: const Color(0xFFAB47BC),
+            ),
+            _buildTypeCard(
+              title: _t('تونل DNS', 'DNS Tunnel'),
+              subtitle: _t('DNSTT / Slipstream روی DNS',
+                  'DNSTT / Slipstream over DNS'),
+              icon: Icons.dns_outlined,
+              type: 'tunnel',
+              color: const Color(0xFF42A5F5),
+            ),
+            _buildTypeCard(
+              title: 'MasterDNS',
+              subtitle: _t('حل‌کننده و CDN اختصاصی', 'Custom resolver + CDN'),
+              icon: Icons.travel_explore,
+              type: 'masterdns',
+              color: const Color(0xFF00897B),
             ),
 
             const SizedBox(height: 20),
@@ -3900,6 +3753,18 @@ class _AddConfigScreenState extends State<AddConfigScreen> {
               _buildAetherPanel(),
                         ] else if (_selectedType == 'chain') ...[
               _buildChainForm(),
+            ] else if (_selectedType == 'warp') ...[
+              _buildWarpForm(),
+            ] else if (_selectedType == 'warp_masque') ...[
+              _buildWarpMasqueForm(),
+            ] else if (_selectedType == 'ssh') ...[
+              _buildSshForm(),
+            ] else if (_selectedType == 'socks5') ...[
+              _buildSocks5Form(),
+            ] else if (_selectedType == 'tunnel') ...[
+              _buildTunnelForm(),
+            ] else if (_selectedType == 'masterdns') ...[
+              _buildMasterDnsForm(),
             ],
           ],
         ),

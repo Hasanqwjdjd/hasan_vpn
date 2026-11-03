@@ -559,7 +559,6 @@ class _GamesTabState extends State<_GamesTab>
               final installed = _installed.contains(pkg);
               final iconBytes = _iconCache[pkg];
               final emoji = g['iconEmoji']?.toString() ?? '🎮';
-              final category = g['category']?.toString() ?? '';
               final boost = _boosted[id] == true;
               final ping = _pings[id];
 

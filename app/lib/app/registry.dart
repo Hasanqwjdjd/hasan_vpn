@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../controllers/app_state.dart';
 import '../controllers/connection.dart';
+import '../controllers/servers.dart';
 import '../l10n/s.dart';
 import '../ui/kit/tiles.dart';
 import '../ui/theme/ios_palette.dart';
@@ -17,6 +19,8 @@ import '../screens/scanner_screen.dart';
 import '../screens/store_screen.dart';
 import '../screens/transport_screen.dart';
 import '../screens/widgetstudio_screen.dart';
+import '../screens/add_config_screen.dart';
+import '../screens/subscriptions_screen.dart';
 import '../screens/wg_screen.dart';
 
 /// رجیستری مقصدهای صفحه‌خانه — پورت `ui/home/HomeDestinations.kt`.
@@ -65,11 +69,13 @@ final List<Destination> kDestinations = [
     stringKey: 'home_settings',
     art: const TileArt.svg('$_assets/ic_app_settings.svg'),
     tint: Ios.tileGray,
+    // تم/زبان از استورهای سراسری خوانده و همان‌جا ذخیره می‌شوند؛ قبلاً مقادیر
+    // ثابت با کال‌بک خالی پاس می‌شد و تغییر تم/زبان هیچ اثری نداشت.
     builder: (_) => SettingsScreen(
-      themeMode: 'system',
-      language: 'fa',
-      onThemeChanged: (_) {},
-      onLanguageChanged: (_) {},
+      themeMode: AppearanceStore.instance.theme,
+      language: LocaleStore.instance.lang,
+      onThemeChanged: (v) => AppearanceStore.instance.setTheme(v),
+      onLanguageChanged: (v) => LocaleStore.instance.set(v),
     ),
   ),
   Destination(
@@ -178,6 +184,33 @@ final List<Destination> kDestinations = [
     art: const TileArt.glyph(Icons.widgets_outlined),
     tint: Ios.tileIndigo,
     builder: (_) => const WidgetStudioScreen(),
+  ),
+  // افزودن کانفیگ — تمام فرم‌های پروتکل (Siphon/Aether/Chain/HY2/WARP/SSH/
+  // SOCKS5/DNS Tunnel/MasterDNS) فقط از این صفحه در دسترس‌اند.
+  Destination(
+    id: 'addconfig',
+    stringKey: 'add_config',
+    art: const TileArt.glyph(Icons.add_circle_outline),
+    tint: Ios.tileGreen,
+    builder: (_) => AddConfigScreen(
+      language: LocaleStore.instance.lang,
+      onServerAdded: (server) => ServerRepository.instance.addServer(server),
+      onServerAddedWithoutTest: (server) =>
+          ServerRepository.instance.addServer(server),
+    ),
+  ),
+  // مدیریت اشتراک‌ها — با مهاجرت پوسته به این رجیستری، این صفحه باید یک
+  // مقصد داشت وگرنه افزودن/حذف اشتراک از برنامه حذف می‌شد.
+  Destination(
+    id: 'subscriptions',
+    stringKey: 'subscriptions',
+    art: const TileArt.svg('$_assets/ic_glyph_layers.svg'),
+    tint: Ios.tilePink,
+    builder: (_) => SubscriptionsScreen(
+      subscriptions: ServerRepository.instance.subs,
+      onChanged: (next) => ServerRepository.instance.setSubs(next),
+      language: LocaleStore.instance.lang,
+    ),
   ),
 ];
 

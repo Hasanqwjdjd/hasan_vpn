@@ -813,7 +813,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
   }
 
-  @override
   bool _isPatternihaPresent() {
     for (final s in _subs) {
       if ('${s.id} ${s.name}'.toLowerCase().contains('patterniha')) {

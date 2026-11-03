@@ -13,7 +13,6 @@ import 'warp_endpoint_tester.dart';
 import 'connection_log_service.dart';
 import 'warp_real_tunnel_tester.dart';
 import 'v2ray_engine.dart';
-import 'warp_endpoint_scanner.dart';
 
 /// WARP / WARP Plus key generator + endpoint scanner.
 ///
@@ -353,16 +352,6 @@ class WarpService {
         if (hits.isNotEmpty) {
           onProgress?.call(
               'Verifying ${hits.length} candidates via real tunnel...');
-          final verifyServerFor = (WarpEndpoint ep) => VpnServer(
-                id: 'warp_verify',
-                name: 'WARP verify',
-                flag: '\u{1F310}',
-                shareLink: 'vpn://verify',
-                protocol: VpnProtocol.amneziaWg,
-                host: ep.host,
-                port: ep.port,
-                isDeletable: false,
-              );
           final verified = await WarpRealTunnelTester.findFirstWorking(
             hits: hits,
             makeServerFromEndpoint: (ep) {

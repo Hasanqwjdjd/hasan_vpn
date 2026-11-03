@@ -2,7 +2,6 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'xray_settings.dart';
-import 'connection_quality.dart';
 
 /// Live speed / status notification (Dart side).
 ///

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/server.dart';
 import '../services/app_colors.dart';
-import '../services/home_widget_service.dart';
 import '../services/network_prober.dart';
 import '../services/socks_probe.dart';
 import '../services/tor_bridges.dart';
